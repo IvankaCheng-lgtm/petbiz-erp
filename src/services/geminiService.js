@@ -52,51 +52,37 @@ export async function askGemini(prompt, context = "") {
   };
 
   try {
-    // 1. 這裡改成 v1 正式版路徑，確保穩定性
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // 使用 v1 穩定版
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // 2. 這裡建議直接把 body 寫進來，確保格式完全符合 Google 要求
       body: JSON.stringify({
         contents: [
           {
-            parts: [{ text: userText }],
+            parts: [
+              {
+                // 這裡把系統指令和使用者的問題結合，這在任何版本都不會出錯
+                text: `你現在是萌獸探險隊的營運參謀。以下是系統指令：${SYSTEM_INSTRUCTION}\n\n現在請回答使用者的問題：${userText}`,
+              },
+            ],
           },
         ],
-        system_instruction: {
-          parts: [{ text: SYSTEM_INSTRUCTION }],
-        },
       }),
     });
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       const msg = data?.error?.message ?? "";
-
-      // 保留你原本優秀的錯誤判斷機制
-      if (
-        res.status === 429 ||
-        msg.includes("quota") ||
-        msg.includes("RESOURCE_EXHAUSTED")
-      )
-        return "⏳ 請求過於頻繁（免費方案每分鐘限制）。請等待 60 秒後再試。";
-
-      if (res.status === 400 || res.status === 403)
-        return `❌ API 金鑰無效或權限不足（${res.status}）。請至 Google AI Studio 重新取得 Key。`;
-
-      // 如果出現 404，這裡會顯示更詳細的錯誤訊息幫我們除錯
       return `😿 錯誤（${res.status}）：${msg || "模型路徑找不到"}`;
     }
 
     const data = await res.json();
-
     return (
-      data.candidates?.[0]?.content?.parts?.[0]?.text ??
-      "😿 AI 未回傳內容，請再試一次。"
+      data.candidates?.[0]?.content?.parts?.[0]?.text ?? "😿 AI 未回傳內容"
     );
   } catch (err) {
-    return "🌐 網路連線異常，請確認網路後再試。";
+    return "🌐 網路異常，請確認連線。";
   }
 }
