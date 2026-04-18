@@ -53,7 +53,7 @@ export async function askGemini(prompt, context = "") {
 
   try {
     // 1. 這裡改成 v1 正式版路徑，確保穩定性
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const res = await fetch(url, {
       method: "POST",
