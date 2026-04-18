@@ -107,26 +107,34 @@ export default function usePetBusiness() {
 
   // 【2. 即時監聽】：從 Firebase 抓取資料 (跨裝置同步)
   useEffect(() => {
-    const unsub = onSnapshot(ERP_DOC_REF, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setRevenues(data.revenues || []);
-        setExpenses(data.expenses || []);
-        setInventory(data.inventory || []);
-        setProduction(data.production || []);
-        setSavedFormulas(data.savedFormulas || []);
-      } else {
-        // 第一次使用：將示範數據推上雲端
-        syncToCloud({
-          revenues: SEED_REVENUES,
-          expenses: SEED_EXPENSES,
-          inventory: SEED_INVENTORY,
-          production: [],
-          savedFormulas: [],
-        });
+    const unsub = onSnapshot(
+      ERP_DOC_REF,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setRevenues(data.revenues || []);
+          setExpenses(data.expenses || []);
+          setInventory(data.inventory || []);
+          setProduction(data.production || []);
+          setSavedFormulas(data.savedFormulas || []);
+        } else {
+          // 第一次使用且文件不存在：載入示範數據
+          syncToCloud({
+            revenues: SEED_REVENUES,
+            expenses: SEED_EXPENSES,
+            inventory: SEED_INVENTORY,
+            production: [],
+            savedFormulas: [],
+            isInitialized: true,
+          });
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.error('[Firebase] onSnapshot error:', err);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
     return () => unsub();
   }, [syncToCloud]);
 
@@ -288,24 +296,7 @@ export default function usePetBusiness() {
   // ── 生產動作 ────────────────────────────────────────────
   const addProductionBatch = useCallback(
     (params) => {
-      const {
-        date,
-        note,
-        machineWatt,
-        hours,
-        usedIngredients,
-        usedPackaging,
-        outputQty,
-        outputUnit,
-        packSize,
-        resultQty,
-        targetItemId,
-        ingredientCost,
-        electricCost,
-        packagingCost,
-        totalCost,
-        costPerPack,
-      } = params;
+      const { date, note, hours, usedIngredients, usedPackaging, resultQty, targetItemId, electricCost } = params;
 
       const newProduction = [...production, { id: uid(), ...params }];
       const newExpenses = [
@@ -398,33 +389,59 @@ export default function usePetBusiness() {
   );
 
   // ── 系統功能 ────────────────────────────────────────────
-  const clearAllData = useCallback(() => {
+  const clearAllData = useCallback(async () => {
+    // 加上確認視窗，避免手滑
+    if (
+      !window.confirm(
+        "確定要清空「萌獸探險隊」所有雲端帳務資料嗎？此動作無法復原。",
+      )
+    )
+      return;
+
     const empty = {
       revenues: [],
       expenses: [],
       inventory: [],
       production: [],
       savedFormulas: [],
+      isInitialized: true, // 【關鍵】：加一個旗標，告訴程式「這不是新帳號，這是清空後的狀態」
     };
+
+    // 先更新本地 UI
     setRevenues([]);
     setExpenses([]);
     setInventory([]);
     setProduction([]);
     setSavedFormulas([]);
-    syncToCloud(empty);
+
+    // 同步到雲端
+    await syncToCloud(empty);
+    alert("雲端資料已全數清空");
   }, [syncToCloud]);
 
   const importData = useCallback(
-    (jsonStr) => {
+    async (jsonStr) => {
       try {
         const data = JSON.parse(jsonStr);
-        setRevenues(data.revenues || []);
-        setExpenses(data.expenses || []);
-        setInventory(data.inventory || []);
-        setProduction(data.production || []);
-        syncToCloud(data);
+        const updatedData = {
+          revenues: data.revenues || [],
+          expenses: data.expenses || [],
+          inventory: data.inventory || [],
+          production: data.production || [],
+          savedFormulas: data.savedFormulas || [],
+          isInitialized: true, // 匯入後也標記為已初始化
+        };
+
+        setRevenues(updatedData.revenues);
+        setExpenses(updatedData.expenses);
+        setInventory(updatedData.inventory);
+        setProduction(updatedData.production);
+        setSavedFormulas(updatedData.savedFormulas);
+
+        await syncToCloud(updatedData);
         return true;
-      } catch {
+      } catch (err) {
+        console.error("匯入失敗:", err);
         return false;
       }
     },
