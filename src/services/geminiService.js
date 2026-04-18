@@ -17,7 +17,12 @@ export function maskSensitiveData(text) {
 
 export async function askGemini(prompt, context = "") {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) return "❌ VITE_GEMINI_API_KEY 未設定，請檢查 .env 檔案。";
+
+  // 加入這行測試：如果抓不到 Key，就直接顯示出來
+  if (!apiKey) {
+    console.error("API Key is missing!");
+    return "❌ 錯誤：Vercel 抓不到 VITE_GEMINI_API_KEY，請檢查環境變數設定。";
+  }
 
   const safePrompt = maskSensitiveData(prompt);
   const safeContext = maskSensitiveData(context);
