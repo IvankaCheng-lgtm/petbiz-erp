@@ -1,0 +1,555 @@
+import { useState, useMemo } from 'react'
+import { Plus, Trash2, Save, BookOpen, ChevronDown, ChevronUp, Calculator } from 'lucide-react'
+import { SectionCard, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
+
+const BRAND_DARK = '#722927'
+const uid = () => Math.random().toString(36).slice(2, 8)
+
+// 空白食材列
+const emptyIngredient = () => ({
+  _key: uid(), name: '', amount: '',
+  protein: '', fat: '', satFat: '', transFat: '',
+  carb: '', sugar: '', fiber: '', moisture: '', ash: '', sodium: '',
+  fatModifier: false, fatModPct: 50,
+})
+
+// 小數欄位輸入
+function N({ value, onChange, placeholder = '0' }) {
+  return (
+    <input type="number" min="0" step="0.01" placeholder={placeholder}
+      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-orange-300 transition"
+      value={value}
+      onChange={e => onChange(e.target.value)} />
+  )
+}
+
+export default function Nutrition({ data }) {
+  const { savedFormulas, saveFormula, deleteFormula } = data
+
+  const [mode,        setMode]        = useState('general')
+  const [formulaName, setFormulaName] = useState('')
+  const [showSaved,   setShowSaved]   = useState(false)
+  const [fiberConvert, setFiberConvert] = useState(false)
+
+  // ── 烘乾換算器 ─────────────────────────────────────────────────
+  const [dryBefore,  setDryBefore]  = useState('')
+  const [dryAfter,   setDryAfter]   = useState('')
+
+  const dryCalc = useMemo(() => {
+    const before = parseFloat(dryBefore)
+    const after  = parseFloat(dryAfter)
+    if (!before || !after || after >= before) return null
+    const lossRatio  = (before - after) / before
+    const concFactor = before / after
+    return {
+      lossRatio:   Math.round(lossRatio * 1000) / 10,
+      concFactor:  Math.round(concFactor * 100) / 100,
+      adjust: (v) => Math.min(100, Math.round(v * concFactor * 100) / 100),
+    }
+  }, [dryBefore, dryAfter])
+
+  // 食材列表
+  const [ingredients, setIngredients] = useState([emptyIngredient()])
+
+  // 計算結果（點「計算」後才更新）
+  const [result, setResult] = useState(null)
+
+  // ── 食材操作 ─────────────────────────────────────────────
+  function addRow() { setIngredients(p => [...p, emptyIngredient()]) }
+  function removeRow(key) { setIngredients(p => p.length > 1 ? p.filter(r => r._key !== key) : p) }
+  function updateRow(key, field, val) {
+    setIngredients(p => p.map(r => r._key === key ? { ...r, [field]: val } : r))
+  }
+
+  // ── 加總所有食材（考慮去脂） ─────────────────────────────
+  // 依實際使用量加權：標示值為每100g含量，實際 = 標示 × (amount/100)
+  function sumField(field) {
+    return ingredients.reduce((s, r) => {
+      const v      = parseFloat(r[field])  || 0
+      const amount = parseFloat(r.amount)  || 0
+      const scale  = amount / 100
+      let actual   = v * scale
+      if (field === 'fat') {
+        actual = r.fatModifier ? actual * (1 - (parseFloat(r.fatModPct) || 50) / 100) : actual
+      }
+      if ((field === 'satFat' || field === 'transFat') && r.fatModifier) {
+        actual = actual * (1 - (parseFloat(r.fatModPct) || 50) / 100)
+      }
+      return s + actual
+    }, 0)
+  }
+
+  // ── 計算 ─────────────────────────────────────────────────
+  function handleCalculate() {
+    if (mode === 'general') {
+      const protein  = sumField('protein')
+      const fat      = sumField('fat')
+      const satFat   = sumField('satFat')
+      const transFat = sumField('transFat')
+      const carb     = sumField('carb')
+      const sugar    = sumField('sugar')
+      const sodium   = sumField('sodium')
+      const moisture = sumField('moisture')
+      const calcCal  = protein * 4 + fat * 9 + carb * 4
+      const dm = (v) => moisture < 100 ? Math.round(v / (100 - moisture) * 100 * 10) / 10 : 0
+      setResult({
+        mode: 'general',
+        protein: Math.round(protein * 100) / 100,
+        fat:     Math.round(fat * 100) / 100,
+        satFat:  Math.round(satFat * 100) / 100,
+        transFat:Math.round(transFat * 100) / 100,
+        carb:    Math.round(carb * 100) / 100,
+        sugar:   Math.round(sugar * 100) / 100,
+        sodium:  Math.round(sodium * 100) / 100,
+        moisture,
+        calcCal: Math.round(calcCal),
+        dmProtein: dm(protein),
+        dmFat:     dm(fat),
+        dmCarb:    dm(carb),
+      })
+    } else {
+      const protein  = sumField('protein')
+      const fat      = sumField('fat')
+      const rawFiber = sumField('fiber')
+      const fiber    = fiberConvert ? Math.round(rawFiber * 0.6 * 100) / 100 : Math.round(rawFiber * 100) / 100
+      const moisture = sumField('moisture')
+      const ash      = sumField('ash')
+      const carb     = Math.max(0, 100 - protein - fat - fiber - moisture - ash)
+      const me       = 10 * (3.5 * protein + 8.5 * fat + 3.5 * carb)
+      const dm = (v) => moisture < 100 ? Math.round(v / (100 - moisture) * 100 * 10) / 10 : 0
+      setResult({
+        mode: 'aafco',
+        protein:   Math.round(protein * 100) / 100,
+        fat:       Math.round(fat * 100) / 100,
+        fiber,
+        rawFiber:  Math.round(rawFiber * 100) / 100,
+        moisture:  Math.round(moisture * 100) / 100,
+        ash:       Math.round(ash * 100) / 100,
+        carb:      Math.round(carb * 100) / 100,
+        me:        Math.round(me),
+        dmProtein: dm(protein),
+        dmFat:     dm(fat),
+        dmFiber:   dm(fiber),
+        dmCarb:    dm(carb),
+      })
+    }
+  }
+
+  // ── 儲存配方 ─────────────────────────────────────────────
+  function handleSave() {
+    if (!formulaName.trim() || !result) return
+    saveFormula(formulaName.trim(), mode, ingredients, result)
+    setFormulaName('')
+  }
+
+  function loadFormula(f) {
+    setMode(f.mode)
+    setIngredients(f.inputs)
+    setResult(f.results)
+    setShowSaved(false)
+  }
+
+  // 一般模式欄位定義
+  const generalCols = [
+    { key: 'protein',  label: '蛋白質(g)' },
+    { key: 'fat',      label: '脂肪(g)' },
+    { key: 'satFat',   label: '飽和脂肪(g)' },
+    { key: 'transFat', label: '反式脂肪(g)' },
+    { key: 'carb',     label: '碳水(g)' },
+    { key: 'sugar',    label: '糖(g)' },
+    { key: 'sodium',   label: '鈉(mg)' },
+    { key: 'moisture', label: '水分(%)' },
+  ]
+
+  // AAFCO 模式欄位定義
+  const aafcoCols = [
+    { key: 'protein',  label: '粗蛋白(%)' },
+    { key: 'fat',      label: '粗脂肪(%)' },
+    { key: 'fiber',    label: fiberConvert ? '總膳食纖維(%)' : '粗纖維(%)' },
+    { key: 'moisture', label: '水分(%)' },
+    { key: 'ash',      label: '灰分(%)' },
+  ]
+
+  const cols = mode === 'general' ? generalCols : aafcoCols
+
+  return (
+    <div className="p-4 sm:p-6 space-y-5">
+
+      {/* 頁首 */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800">🧪 營養計算室</h1>
+          <p className="text-sm text-gray-400 mt-0.5">一般營養標示 · AAFCO 寵物食品規範</p>
+        </div>
+        <button onClick={() => setShowSaved(v => !v)}
+          className={btnSecondary + ' flex items-center gap-2 text-sm'}>
+          <BookOpen size={15} />
+          已儲存配方（{savedFormulas.length}）
+          {showSaved ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      </div>
+
+      {/* 已儲存配方 */}
+      {showSaved && (
+        <SectionCard title="已儲存配方">
+          {savedFormulas.length === 0
+            ? <p className="text-sm text-gray-400">尚無儲存配方</p>
+            : (
+              <div className="space-y-2">
+                {savedFormulas.map(f => (
+                  <div key={f.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-2.5">
+                    <div>
+                      <span className="text-sm font-semibold text-gray-800">{f.name}</span>
+                      <span className="ml-2 text-xs text-gray-400">{f.mode === 'general' ? '一般' : 'AAFCO'}</span>
+                      <span className="ml-2 text-xs text-gray-400">{f.savedAt?.slice(0, 10)}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => loadFormula(f)}
+                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg transition-colors">
+                        載入
+                      </button>
+                      <button onClick={() => deleteFormula(f.id)} className={btnDanger}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          }
+        </SectionCard>
+      )}
+
+      {/* 模式切換 */}
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+        {[['general', '一般營養'], ['aafco', '寵物 AAFCO']].map(([key, label]) => (
+          <button key={key} onClick={() => { setMode(key); setResult(null) }}
+            className={`px-5 py-2 rounded-md text-sm font-medium transition-colors
+              ${mode === key ? 'bg-white shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'}`}
+            style={mode === key ? { color: BRAND_DARK } : {}}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── 食材輸入區 ── */}
+      <SectionCard title="🥩 食材輸入">
+        <div className="space-y-3">
+
+          {/* 修飾器選項 */}
+          <div className="flex flex-wrap gap-4 pb-2 border-b border-gray-100">
+            {mode === 'aafco' && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={fiberConvert}
+                  onChange={e => setFiberConvert(e.target.checked)}
+                  className="accent-orange-400" />
+                纖維換算（衛福部總膳食纖維 × 0.6 → 粗纖維）
+              </label>
+            )}
+          </div>
+
+          {/* 欄位標題列 */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs" style={{ minWidth: mode === 'general' ? '900px' : '680px' }}>
+              <thead>
+                <tr className="text-gray-400 uppercase tracking-wide border-b border-gray-100">
+                  <th className="pb-2 text-left font-medium w-28">食材名稱</th>
+                  <th className="pb-2 text-right font-medium px-1 w-20">使用量(g)</th>
+                  {cols.map(c => (
+                    <th key={c.key} className="pb-2 text-right font-medium px-1">{c.label}</th>
+                  ))}
+                  <th className="pb-2 text-center font-medium w-20">去脂處理</th>
+                  <th className="pb-2 w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {ingredients.map((row, idx) => (
+                  <tr key={row._key} className="hover:bg-gray-50/50">
+                    {/* 食材名稱 */}
+                    <td className="py-2 pr-2">
+                      <input type="text" placeholder={`食材 ${idx + 1}`}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-300 transition"
+                        value={row.name}
+                        onChange={e => updateRow(row._key, 'name', e.target.value)} />
+                    </td>
+                    {/* 實際使用量 */}
+                    <td className="py-2 px-1">
+                      <div className="relative">
+                        <N value={row.amount} onChange={v => updateRow(row._key, 'amount', v)} placeholder="g" />
+                        {row.amount && (
+                          <span className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-orange-400 pointer-events-none">g</span>
+                        )}
+                      </div>
+                    </td>
+                    {/* 營養素欄位 */}
+                    {cols.map(c => (
+                      <td key={c.key} className="py-2 px-1">
+                        <N value={row[c.key]} onChange={v => updateRow(row._key, c.key, v)} />
+                      </td>
+                    ))}
+                    {/* 去脂處理 */}
+                    <td className="py-2 px-2 text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <input type="checkbox" checked={row.fatModifier}
+                          onChange={e => updateRow(row._key, 'fatModifier', e.target.checked)}
+                          className="accent-orange-400" />
+                        {row.fatModifier && (
+                          <div className="flex items-center gap-1">
+                            <input type="number" min="1" max="99"
+                              className="w-12 border border-gray-200 rounded px-1 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-orange-300"
+                              value={row.fatModPct}
+                              onChange={e => updateRow(row._key, 'fatModPct', parseFloat(e.target.value) || 50)} />
+                            <span className="text-xs text-gray-400">%</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    {/* 刪除 */}
+                    <td className="py-2 text-center">
+                      <button onClick={() => removeRow(row._key)}
+                        disabled={ingredients.length === 1}
+                        className="text-gray-300 hover:text-red-400 disabled:opacity-20 transition-colors">
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 新增食材 + 計算按鈕 */}
+          <div className="flex gap-2 pt-1">
+            <button onClick={addRow}
+              className="flex items-center gap-1 border-2 border-dashed border-gray-200 hover:border-orange-300 hover:text-orange-500 text-gray-400 rounded-xl px-4 py-2 text-sm font-medium transition-colors">
+              <Plus size={14} /> 新增食材
+            </button>
+            <button onClick={handleCalculate}
+              className="flex items-center gap-2 text-white font-semibold px-6 py-2 rounded-xl text-sm transition-colors ml-auto"
+              style={{ backgroundColor: BRAND_DARK }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#5a1f1d'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = BRAND_DARK}>
+              <Calculator size={16} /> 計算
+            </button>
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* ── 結果區（點計算後才顯示）── */}
+      {result && (
+        <div className="space-y-4">
+          {result.mode === 'general' ? (
+            <>
+              {/* 營養標示表 */}
+              <SectionCard title="📊 營養標示結果">
+                <div className="border border-gray-200 rounded-xl overflow-hidden text-sm">
+                  <div className="bg-gray-800 text-white px-4 py-2 font-bold text-base">營養標示</div>
+                  <div className="px-4 py-2 border-b border-gray-200 flex justify-between">
+                    <span className="font-bold text-lg">熱量（計算值）</span>
+                    <span className="font-bold text-lg">{result.calcCal} 大卡</span>
+                  </div>
+                  {[
+                    ['蛋白質', result.protein, 'g'],
+                    ['脂肪', result.fat, 'g'],
+                    ['　飽和脂肪', result.satFat, 'g'],
+                    ['　反式脂肪', result.transFat, 'g'],
+                    ['碳水化合物', result.carb, 'g'],
+                    ['　糖', result.sugar, 'g'],
+                    ['鈉', result.sodium, 'mg'],
+                  ].map(([label, val, unit]) => (
+                    <div key={label} className="px-4 py-1.5 border-b border-gray-100 flex justify-between">
+                      <span className="text-gray-700">{label}</span>
+                      <span className="font-medium">{val} {unit}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 熱量公式說明 */}
+                <div className="mt-3 bg-blue-50 rounded-xl px-4 py-2.5 text-xs text-blue-600">
+                  熱量 = 蛋白質({result.protein}g)×4 + 脂肪({result.fat}g)×9 + 碳水({result.carb}g)×4 = <strong>{result.calcCal} kcal</strong>
+                </div>
+              </SectionCard>
+
+              {/* 乾物比 */}
+              {result.moisture > 0 && (
+                <SectionCard title="💧 乾物比分析 (Dry Matter)">
+                  <p className="text-xs text-gray-400 mb-3">公式：乾物% = 標示% ÷ (100% - 水分{result.moisture}%) × 100%</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[['蛋白質', result.dmProtein], ['脂肪', result.dmFat], ['碳水', result.dmCarb]].map(([label, val]) => (
+                      <div key={label} className="bg-blue-50 rounded-xl px-3 py-2.5 text-center">
+                        <p className="text-xs text-gray-500">{label} 乾物比</p>
+                        <p className="text-xl font-bold text-blue-600">{val}%</p>
+                      </div>
+                    ))}
+                    <div className="bg-gray-50 rounded-xl px-3 py-2.5 text-center">
+                      <p className="text-xs text-gray-500">水分</p>
+                      <p className="text-xl font-bold text-gray-600">{result.moisture}%</p>
+                    </div>
+                  </div>
+                </SectionCard>
+              )}
+            </>
+          ) : (
+            <>
+              {/* AAFCO 保證分析 */}
+              <SectionCard title="🐾 保證分析 (Guaranteed Analysis)">
+                <div className="space-y-2 text-sm">
+                  {[
+                    ['粗蛋白 Crude Protein', `${result.protein}%`, 'Min', 'emerald'],
+                    ['粗脂肪 Crude Fat',     `${result.fat}%`,     'Min', 'emerald'],
+                    ['粗纖維 Crude Fiber',   `${result.fiber}%`, 'Max', 'orange'],
+                    ['水分 Moisture',        `${result.moisture}%`, 'Max', 'orange'],
+                    ['灰分 Ash',             `${result.ash}%`,      '',    'gray'],
+                    ['碳水化合物 (計算值)',   `${result.carb}%`,     '',    'blue'],
+                  ].map(([label, val, tag, color]) => (
+                    <div key={label} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                      <span className="text-gray-700">{label}</span>
+                      <div className="flex items-center gap-2">
+                        {tag && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium
+                            ${color === 'emerald' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {tag}
+                          </span>
+                        )}
+                        <span className="font-bold text-gray-800">{val}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+
+              {/* 纖維換算說明 */}
+              {result.rawFiber !== result.fiber && (
+                <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-2.5 text-xs text-orange-600">
+                  💡 纖維換算：總膨食纖維 <strong>{result.rawFiber}%</strong> × 0.6 = 粗纖維 <strong>{result.fiber}%</strong>
+                </div>
+              )}
+
+              {/* 代謝能 */}
+              <SectionCard title="⚡ 代謝能 (Modified Atwater)">
+                <div className="text-center py-2">
+                  <p className="text-xs text-gray-400 mb-1">ME = 10 × (3.5×{result.protein} + 8.5×{result.fat} + 3.5×{result.carb})</p>
+                  <p className="text-4xl font-black" style={{ color: BRAND_DARK }}>{result.me}</p>
+                  <p className="text-sm text-gray-500 mt-1">kcal / kg</p>
+                </div>
+              </SectionCard>
+
+              {/* 乾物比 */}
+              {result.moisture > 0 && (
+                <SectionCard title="💧 乾物比分析 (Dry Matter Basis)">
+                  <p className="text-xs text-gray-400 mb-3">幫助比較凍乾與鮮食的真實營養濃度</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[['粗蛋白', result.dmProtein], ['粗脂肪', result.dmFat], ['粗纖維', result.dmFiber], ['碳水', result.dmCarb]].map(([label, val]) => (
+                      <div key={label} className="bg-blue-50 rounded-xl px-3 py-2.5 text-center">
+                        <p className="text-xs text-gray-500">{label} 乾物比</p>
+                        <p className="text-xl font-bold text-blue-600">{val}%</p>
+                      </div>
+                    ))}
+                  </div>
+                </SectionCard>
+              )}
+            </>
+          )}
+
+          {/* 儲存配方 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex gap-2">
+            <input type="text" className={inputCls} placeholder="輸入配方名稱後儲存..."
+              value={formulaName} onChange={e => setFormulaName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()} />
+            <button onClick={handleSave} disabled={!formulaName.trim()}
+              className={btnPrimary + ' flex items-center gap-1 shrink-0 disabled:opacity-40'}>
+              <Save size={15} /> 儲存配方
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 尚未計算提示 */}
+      {!result && (
+        <div className="bg-gray-50 border border-gray-100 rounded-2xl px-6 py-10 text-center text-gray-400">
+          <Calculator size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">輸入食材營養成分後，點擊「計算」按鈕查看結果</p>
+        </div>
+      )}
+
+      {/* ── 烘乾換算器 ── */}
+      <SectionCard title="🔥 烘乾換算器">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400">
+            輸入烘乾前後的重量，自動計算水分流失比例與濃縮倍數，並校正 AAFCO 百分比標示。
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">烘乾前重量 (g)</label>
+              <input type="number" min="0" step="0.1" className={inputCls + ' text-sm'}
+                placeholder="例：1000"
+                value={dryBefore} onChange={e => setDryBefore(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">烘乾後重量 (g)</label>
+              <input type="number" min="0" step="0.1" className={inputCls + ' text-sm'}
+                placeholder="例：250"
+                value={dryAfter} onChange={e => setDryAfter(e.target.value)} />
+            </div>
+            {dryCalc ? (
+              <>
+                <div className="bg-orange-50 rounded-xl px-3 py-2.5 text-center">
+                  <p className="text-xs text-gray-500">水分流失</p>
+                  <p className="text-xl font-bold text-orange-500">{dryCalc.lossRatio}%</p>
+                </div>
+                <div className="bg-purple-50 rounded-xl px-3 py-2.5 text-center">
+                  <p className="text-xs text-gray-500">濃縮倍數</p>
+                  <p className="text-xl font-bold text-purple-600">{dryCalc.concFactor}x</p>
+                </div>
+              </>
+            ) : (
+              <div className="col-span-2 bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-400 flex items-center">
+                輸入烘乾前後重量即可計算
+              </div>
+            )}
+          </div>
+          {dryCalc && mode === 'aafco' && result && (
+            <div className="mt-2 border border-purple-100 rounded-xl overflow-hidden">
+              <div className="bg-purple-50 px-4 py-2 text-xs font-semibold text-purple-700">
+                📊 AAFCO 烘乾後校正百分比（原始 × {dryCalc.concFactor}x）
+              </div>
+              <div className="divide-y divide-gray-100">
+                {[
+                  ['粗蛋白', result.protein],
+                  ['粗脂肪', result.fat],
+                  ['粗纖維', result.fiber],
+                  ['灰分',   result.ash],
+                  ['碳水化合物', result.carb],
+                ].map(([label, val]) => (
+                  <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
+                    <span className="text-gray-600">{label}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-400 text-xs">{val}%</span>
+                      <span className="text-gray-400 text-xs">→</span>
+                      <span className="font-bold text-purple-700">{dryCalc.adjust(val)}%</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between px-4 py-2 text-sm bg-blue-50">
+                  <span className="text-gray-600">水分（烘乾後估算）</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-400 text-xs">{result.moisture}%</span>
+                    <span className="text-gray-400 text-xs">→</span>
+                    <span className="font-bold text-blue-600">
+                      {Math.max(0, Math.round((result.moisture - dryCalc.lossRatio) * 10) / 10)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {dryCalc && mode === 'aafco' && !result && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+              ⚠️ 請先輸入食材並點擊「計算」，才能顯示 AAFCO 校正結果。
+            </p>
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
