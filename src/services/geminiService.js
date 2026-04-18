@@ -25,8 +25,7 @@ export function maskSensitiveData(text) {
 
 export async function askGemini(prompt, context = "") {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-  if (!apiKey) return "❌ VITE_GEMINI_API_KEY 未設定，請檢查 .env 檔案。";
+  if (!apiKey) return "❌ 錯誤：找不到 API 金鑰，請檢查 Vercel 環境變數。";
 
   const safePrompt = maskSensitiveData(prompt);
 
@@ -37,15 +36,25 @@ export async function askGemini(prompt, context = "") {
     : safePrompt;
 
   const body = {
-    system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-
-    contents: [{ role: "user", parts: [{ text: userText }] }],
+    system_instruction: {
+      parts: [{ text: SYSTEM_INSTRUCTION }],
+    },
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: userText }],
+      },
+    ],
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+    ],
   };
 
   try {
+    // 【關鍵修改】：將網址改為 Google 官方絕對路徑，並保留你成功的 2.5 版本
     const res = await fetch(
-      `/gemini-api/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
