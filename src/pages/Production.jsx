@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   Zap,
   AlertTriangle,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import {
   SectionCard,
@@ -17,6 +19,73 @@ import {
 } from "../components/ui";
 import { fmt } from "../utils/format";
 import { calcElectricityCost, getElectricRate } from "../hooks/usePetBusiness";
+import { askGemini } from "../services/geminiService";
+
+// ── AI 食材比例計算助手 ──────────────────────────────────────────────
+function AiRecipeAssistant({ cItems, production }) {
+  const [question, setQuestion] = useState('')
+  const [answer,   setAnswer]   = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
+
+  async function handleAsk() {
+    if (!question.trim() || loading) return
+    setLoading(true)
+    setAnswer('')
+    setError('')
+    const lastBatch = [...production].sort((a, b) => b.date.localeCompare(a.date))[0]
+    const ingredientList = cItems.length > 0
+      ? cItems.map(i => `${i.itemName}（庫存 ${i.currentQty}${i.unit}，單價 $${i.unitPrice}/${i.unit}）`).join('\n')
+      : '目前無食材庫存'
+    const lastBatchInfo = lastBatch
+      ? `最近一次生產（${lastBatch.date}）：${lastBatch.note || '無備註'}，產出 ${lastBatch.resultQty} 包。食材：${lastBatch.usedIngredients?.map(i => `${i.itemName} ${i.qty}${cItems.find(c => c.id === i.itemId)?.unit || ''}`).join('、') || '無'}`
+      : '尚無生產紀錄'
+    const context = `目前 C食材庫存：
+${ingredientList}
+
+${lastBatchInfo}
+
+你是寵物食品生產配方專家。請根據使用者的問題幫助計算食材比例調整。回答請：1.明確列出每種食材調整後用量（含單位） 2.說明比例公式 3.如果庫存不足請提醒。用繁體中文簡潔回答。`
+    try {
+      const result = await askGemini(question, context)
+      setAnswer(result)
+    } catch {
+      setError('AI 回答失敗，請稍後再試。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <SectionCard title="🤖 AI 食材比例計算助手">
+      <div className="space-y-4">
+        <p className="text-xs text-gray-400">
+          可詢問比例調整，例如：「原本配方用 100g 雞胸肉，這次有 300g，其餘食材要改多少？」
+          或「原本產出 100g，這次想產出 500g，食材要改為多少？」
+        </p>
+        <div className="flex gap-2">
+          <input type="text" className={inputCls + ' flex-1'}
+            placeholder="輸入比例調整問題..."
+            value={question} disabled={loading}
+            onChange={e => setQuestion(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !loading && question.trim() && handleAsk()} />
+          <button onClick={handleAsk} disabled={loading || !question.trim()}
+            className="flex items-center gap-1.5 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            style={{ backgroundColor: '#722927' }}>
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+            {loading ? '計算中...' : 'AI 計算'}
+          </button>
+        </div>
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        {answer && (
+          <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+            {answer}
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  )
+}
 
 const today = () => new Date().toISOString().slice(0, 10);
 const STEPS = ["食材投入", "產出設定", "電力成本", "包材選用", "成本分析"];
@@ -298,7 +367,7 @@ export default function Production({ data }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
-            電費精算與生產紀錄
+            批次生產紀錄
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
             夏季（6~9月）$6.24/度 · 非夏季 $5.07/度
@@ -1028,6 +1097,9 @@ export default function Production({ data }) {
           </table>
         </div>
       </SectionCard>
+
+      {/* ── AI 食材比例計算助手 ── */}
+      <AiRecipeAssistant cItems={cItems} production={production} />
     </div>
   );
 }

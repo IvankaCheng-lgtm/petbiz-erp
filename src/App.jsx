@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   { key: 'dashboard',   label: '營業總覽',   icon: '📊' },
   { key: 'financials',  label: '收支管理',   icon: '💰' },
   { key: 'procurement', label: '進貨與庫存', icon: '📦' },
-  { key: 'production',  label: '電費與生產', icon: '⚡' },
+  { key: 'production',  label: '批次生產紀錄', icon: '🏭' },
   { key: 'pnl',         label: '盈虧損益表', icon: '📑' },
   { key: 'performance', label: '通路表現',   icon: '🏆' },
   { key: 'nutrition',    label: '營養計算室', icon: '🧪' },
