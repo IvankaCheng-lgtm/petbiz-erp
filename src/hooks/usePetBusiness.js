@@ -231,6 +231,22 @@ export default function usePetBusiness() {
     cloudUpdate("inventory", () => SEED_INVENTORY);
   }, [cloudUpdate]);
 
+  const importInventoryItems = useCallback((items) => {
+    setInventory(prev => {
+      const next = [...prev];
+      items.forEach(item => {
+        const idx = next.findIndex(i => i.itemName === item.itemName && i.category === item.category);
+        if (idx !== -1) {
+          next[idx] = { ...next[idx], ...item };
+        } else {
+          next.push({ id: uid(), ...item });
+        }
+      });
+      cloudUpdate("inventory", () => next);
+      return next;
+    });
+  }, [cloudUpdate]);
+
   // ── 生產 ──────────────────────────────────────────────────────
   // expiryData: { normalExp, fridgeExp, freezerExp } — 選填，有值才寫入 expiryBatches
   const addProductionBatch = useCallback(async (params) => {
@@ -543,7 +559,7 @@ export default function usePetBusiness() {
     addRevenue, deleteRevenue, toggleRevenueReported,
     addExpense, deleteExpense, toggleExpenseReported,
     addPurchase,
-    addInventoryItem, updateInventoryItem, deleteInventoryItem, resetInventoryToSeed,
+    addInventoryItem, updateInventoryItem, deleteInventoryItem, resetInventoryToSeed, importInventoryItems,
     addProductionBatch, deleteProduction,
     saveFormula, deleteFormula,
     addMarketEvent, updateMarketEvent, deleteMarketEvent, deleteMarketSale,

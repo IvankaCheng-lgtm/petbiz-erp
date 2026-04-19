@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Calendar } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Calendar, Upload, Download } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt } from '../utils/format'
 import { askGemini } from '../services/geminiService'
@@ -278,11 +279,12 @@ const emptyRow = () => ({
 })
 
 export default function Procurement({ data }) {
-  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory } = data
+  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory, importInventoryItems } = data
 
-  const [activeTab,  setActiveTab]  = useState('A用品')
-  const [modal,      setModal]      = useState(null)
-  const [editTarget, setEditTarget] = useState(null)
+  const [activeTab,    setActiveTab]    = useState('A用品')
+  const [modal,        setModal]        = useState(null)
+  const [editTarget,   setEditTarget]   = useState(null)
+  const [importMsg,    setImportMsg]    = useState('')
   const [purchaseForm, setPurchaseForm] = useState({
     date: today(), itemId: '', itemName: '', category: 'C食材', qty: '', unitPrice: '', note: '',
   })
@@ -290,6 +292,7 @@ export default function Procurement({ data }) {
   const [rows, setRows] = useState([emptyRow()])
   const [editForm, setEditForm] = useState({})
   const [adjustForm, setAdjustForm] = useState({ change: '', reason: '' })
+  const xlsxRef = useRef()
   // A/B：定價/售價/成本；C/D：單價/總價
   const isAB = activeTab === 'A用品' || activeTab === 'B食品'
   const isCD = activeTab === 'C食材' || activeTab === 'D包材'
@@ -386,6 +389,84 @@ export default function Procurement({ data }) {
     setModal(null)
   }
 
+  // 匯出盤點表格
+  function exportStockCheck() {
+    const abItems = inventory.filter(i => i.category === 'A用品' || i.category === 'B食品')
+    const rows = abItems.map(i => ({
+      '分類':     i.category,
+      '品項名稱': i.itemName,
+      '條碼':     i.barcode || '',
+      '系統庫存': i.currentQty,
+      '單位':     i.unit,
+      '實盤數量': '',
+      '差異':     '',
+      '備註':     '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = [10, 18, 16, 10, 6, 10, 8, 16].map(w => ({ wch: w }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '盤點表')
+    const date = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `庫存盤點表_${date}.xlsx`)
+  }
+    const headers = [[
+      '分類(A用品/B食品/C食材/D包材)', '品項名稱', '現有數量', '安全水位', '單位',
+      '供應商', '條碼', '定價', '售價', '成本', '單價'
+    ]]
+    const example = [
+      ['A用品', '範例用品', 100, 20, '個', '供應商A', '4710000000001', 299, 249, 80, ''],
+      ['B食品', '範例食品', 50, 10, '包', '供應商B', '4710000000002', 199, 159, 60, ''],
+      ['C食材', '範例食材', 30, 5, 'kg', '供應商C', '', '', '', '', 280],
+      ['D包材', '範例包材', 500, 100, '個', '供應商D', '', '', '', '', 3.5],
+    ]
+    const ws = XLSX.utils.aoa_to_sheet([...headers, ...example])
+    ws['!cols'] = [16,16,10,10,6,14,16,8,8,8,8].map(w => ({ wch: w }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '庫存')
+    XLSX.writeFile(wb, '庫存匹入範本.xlsx')
+  }
+
+  // 匹入 Excel
+  function handleImportExcel(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+        const VALID_CATS = ['A用品', 'B食品', 'C食材', 'D包材']
+        const items = rows
+          .filter(r => VALID_CATS.includes(r['分類(A用品/B食品/C食材/D包材)']) && r['品項名稱'])
+          .map(r => ({
+            category:   r['分類(A用品/B食品/C食材/D包材)'],
+            itemName:   String(r['品項名稱']).trim(),
+            currentQty: parseFloat(r['現有數量'])  || 0,
+            safetyQty:  parseFloat(r['安全水位'])  || 0,
+            unit:       String(r['單位'] || '個').trim(),
+            supplier:   String(r['供應商'] || '').trim(),
+            barcode:    String(r['條碼']   || '').trim(),
+            listPrice:  parseFloat(r['定價'])    || 0,
+            salePrice:  parseFloat(r['售價'])    || 0,
+            cost:       parseFloat(r['成本'])    || 0,
+            unitPrice:  parseFloat(r['單價'])    || 0,
+          }))
+        if (items.length === 0) {
+          setImportMsg('⚠️ 未讀到有效資料，請確認欄位名稱符合範本格式')
+        } else {
+          importInventoryItems(items)
+          setImportMsg(`✅ 已匹入 ${items.length} 筆庫存（同名品項自動更新，新品項自動新增）`)
+        }
+      } catch {
+        setImportMsg('❌ 檔案解析失敗，請確認為正確的 Excel 檔案')
+      }
+      setTimeout(() => setImportMsg(''), 5000)
+    }
+    reader.readAsArrayBuffer(file)
+    e.target.value = ''
+  }
+
   const filtered = useMemo(() => inventory.filter(i => i.category === activeTab), [inventory, activeTab])
 
   const stockStatus = (item) => {
@@ -407,12 +488,35 @@ export default function Procurement({ data }) {
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800">進貨分析與庫存</h1>
-        <button onClick={openAdd} className={btnPrimary + ' flex items-center gap-1 text-sm'}>
-          <Plus size={15} /> 新增品項
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={downloadTemplate}
+            className="flex items-center gap-1.5 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-medium px-3 py-2 rounded-xl transition-colors">
+            <Download size={15} /> 下載匹入範本
+          </button>
+          <button onClick={exportStockCheck}
+            className="flex items-center gap-1.5 text-sm bg-orange-50 hover:bg-orange-100 text-orange-700 font-medium px-3 py-2 rounded-xl transition-colors">
+            <Download size={15} /> 匯出盤點表
+          </button>
+          <button onClick={() => xlsxRef.current.click()}
+            className="flex items-center gap-1.5 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium px-3 py-2 rounded-xl transition-colors">
+            <Upload size={15} /> Excel 匹入庫存
+          </button>
+          <input ref={xlsxRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportExcel} />
+          <button onClick={openAdd} className={btnPrimary + ' flex items-center gap-1 text-sm'}>
+            <Plus size={15} /> 新增品項
+          </button>
+        </div>
       </div>
+
+      {importMsg && (
+        <div className={`px-4 py-3 rounded-xl text-sm font-medium ${
+          importMsg.startsWith('✅') ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'
+        }`}>
+          {importMsg}
+        </div>
+      )}
 
       {/* Tab */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
