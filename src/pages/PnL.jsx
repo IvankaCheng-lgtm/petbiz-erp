@@ -97,15 +97,13 @@ export default function PnL({ data }) {
 
   // 月度結算資料
   const monthlySummary = useMemo(() => {
-    const mRevs = revenues.filter(r => r.date.startsWith(currentMonth))
-    const mExps = expenses.filter(e => e.date.startsWith(currentMonth))
-    const totalRev  = mRevs.reduce((s, r) => s + r.amount, 0)
-    const totalExp  = mExps.reduce((s, e) => s + e.amount, 0)
+    const totalRev  = filteredRevenues.reduce((s, r) => s + r.amount, 0)
+    const totalExp  = filteredExpenses.reduce((s, e) => s + e.amount, 0)
     const netProfit = totalRev - totalExp
     const abInv     = inventory.filter(i => i.category === 'A用品' || i.category === 'B食品')
     const invValue  = abInv.reduce((s, i) => s + (i.salePrice || 0) * i.currentQty, 0)
     return { month: currentMonth, totalRev, totalExp, netProfit, invValue }
-  }, [revenues, expenses, inventory, currentMonth])
+  }, [filteredRevenues, filteredExpenses, inventory, currentMonth])
 
   function handleExportMonthly() {
     const rows = buildMonthlyReport(currentMonth, revenues, expenses, inventory, orders)
@@ -141,25 +139,19 @@ export default function PnL({ data }) {
     return { totalRev, ecRev, mktRev, byCategory, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
   }, [filteredRevenues, filteredExpenses, actualCogs])
 
-  // 財務指標：當月毛利 + 營運開销
+  // 財務指標：範圍內毛利 + 營運開销
   const financialMetrics = useMemo(() => {
-    const mRevs = revenues.filter(r => r.date.startsWith(currentMonth))
-    const mExps = expenses.filter(e => e.date.startsWith(currentMonth))
-
-    const monthRev  = mRevs.reduce((s, r) => s + r.amount, 0)
-    // 當月銷貨成本：進貨 + 生產電費（直接生產製造成本）
-    const monthCogs = mExps
+    const monthRev  = filteredRevenues.reduce((s, r) => s + r.amount, 0)
+    const monthCogs = filteredExpenses
       .filter(e => e.type === '進貨' || (e.type === '電費' && e.isProductionCost))
       .reduce((s, e) => s + e.amount, 0)
     const grossProfit = monthRev - monthCogs
-
-    const booth    = mExps.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
-    const shipping = mExps.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
-    const ads      = mExps.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0)
+    const booth    = filteredExpenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
+    const shipping = filteredExpenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
+    const ads      = filteredExpenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0)
     const opExp    = booth + shipping + ads
-
     return { monthRev, monthCogs, grossProfit, opExp, booth, shipping, ads }
-  }, [revenues, expenses, currentMonth])
+  }, [filteredRevenues, filteredExpenses])
 
   // 庫存深度分析
   const inventoryMetrics = useMemo(() => {
@@ -432,7 +424,7 @@ export default function PnL({ data }) {
         {/* 財務儀表板 */}
         <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
           <h3 className="font-bold text-gray-800 text-sm">📊 財務儀表板
-            <span className="text-xs font-normal text-gray-400 ml-1">(本月)</span>
+            <span className="text-xs font-normal text-gray-400 ml-1">({rangeLabel})</span>
           </h3>
           <div className="flex items-end gap-2">
             <span className={`text-3xl font-black ${financialMetrics.grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
