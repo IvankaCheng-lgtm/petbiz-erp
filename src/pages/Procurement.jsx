@@ -823,7 +823,7 @@ export default function Procurement({ data }) {
         </Modal>
       )}
 
-      {/* ── 進貨 Modal ── */}}
+      {/* ── 進貨 Modal ── */}
       {modal === 'purchase' && (
         <Modal title={`進貨：${purchaseForm.itemName}`} size="sm" onClose={() => setModal(null)}>
           <form onSubmit={submitPurchase} className="space-y-4">
