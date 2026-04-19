@@ -8,6 +8,7 @@ import { KpiCard, SectionCard, btnPrimary } from '../components/ui'
 import { fmt, buildMonthlyTrend } from '../utils/format'
 import { getAccountingReminders } from '../utils/accounting'
 import AIAccountingAssistant from '../components/AIAccountingAssistant'
+import InventoryAI from '../components/InventoryAI'
 import { askGemini } from '../services/geminiService'
 
 const FILTERS = ['月', '季', '年']
@@ -20,7 +21,7 @@ const REMINDER_STYLE = {
 }
 
 export default function Dashboard({ data }) {
-  const { kpi, inventoryAlerts, revenues, expenses, upcomingEvents = [] } = data
+  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [] } = data
   const [filter, setFilter] = useState('月')
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -253,6 +254,9 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
           </LineChart>
         </ResponsiveContainer>
       </SectionCard>
+
+      {/* AI 庫存健康分析 */}
+      <InventoryAI inventory={inventory} revenues={revenues} />
 
       {/* AI 洞察 */}
       <SectionCard title="🤖 AI 營運洞察">

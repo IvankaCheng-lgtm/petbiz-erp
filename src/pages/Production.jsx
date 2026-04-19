@@ -161,10 +161,15 @@ export default function Production({ data }) {
   const [ingredients, setIngredients] = useState([]);
 
   // 步驟二：產出
-  const [outputQty, setOutputQty] = useState("");
-  const [outputUnit, setOutputUnit] = useState("克");
-  const [packSize, setPackSize] = useState("");
+  const [outputQty, setOutputQty]       = useState("");
+  const [outputUnit, setOutputUnit]     = useState("克");
+  const [packSize, setPackSize]         = useState("");
   const [targetItemId, setTargetItemId] = useState("");
+  const [batchNote, setBatchNote]       = useState("");
+  // 有效日期（常溫/冷藏/冷凍）
+  const [shelfExpiry,  setShelfExpiry]  = useState("");
+  const [fridgeExpiry, setFridgeExpiry] = useState("");
+  const [frozenExpiry, setFrozenExpiry] = useState("");
 
   // 步驟三：電力
   const [machineWatt, setMachineWatt] = useState(1100);
@@ -298,6 +303,10 @@ export default function Production({ data }) {
     setOutputUnit("克");
     setPackSize("");
     setTargetItemId("");
+    setBatchNote("");
+    setShelfExpiry("");
+    setFridgeExpiry("");
+    setFrozenExpiry("");
     setMachineWatt(1100);
     setHours(16);
     setPackaging([]);
@@ -351,6 +360,15 @@ export default function Production({ data }) {
       packagingCost,
       totalCost: Math.round(totalCost * 100) / 100,
       costPerPack,
+      // 有效期批次資訊
+      expiryBatch: (shelfExpiry || fridgeExpiry || frozenExpiry) ? {
+        productionDate: date,
+        batchNote: batchNote || note || '',
+        qty: resultQty,
+        shelfExpiry:  shelfExpiry  || null,
+        fridgeExpiry: fridgeExpiry || null,
+        frozenExpiry: frozenExpiry || null,
+      } : null,
     });
 
     resetForm();
@@ -616,6 +634,29 @@ export default function Production({ data }) {
                     ))}
                   </select>
                 </FormRow>
+
+                {/* 批次有效日期 */}
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-3">
+                  <p className="text-xs font-semibold text-blue-700">📅 批次有效日期（選填，將自動寫入庫存）</p>
+                  <FormRow label="批次備註">
+                    <input type="text" className={inputCls} placeholder="例：凍举雞肉片 2025-07批"
+                      value={batchNote} onChange={e => setBatchNote(e.target.value)} />
+                  </FormRow>
+                  <div className="grid grid-cols-3 gap-2">
+                    <FormRow label="常溫到期">
+                      <input type="date" className={inputCls}
+                        value={shelfExpiry} onChange={e => setShelfExpiry(e.target.value)} />
+                    </FormRow>
+                    <FormRow label="冷藏到期">
+                      <input type="date" className={inputCls}
+                        value={fridgeExpiry} onChange={e => setFridgeExpiry(e.target.value)} />
+                    </FormRow>
+                    <FormRow label="冷凍到期">
+                      <input type="date" className={inputCls}
+                        value={frozenExpiry} onChange={e => setFrozenExpiry(e.target.value)} />
+                    </FormRow>
+                  </div>
+                </div>
               </div>
             )}
 

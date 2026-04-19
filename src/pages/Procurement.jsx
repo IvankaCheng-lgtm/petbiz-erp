@@ -1,10 +1,174 @@
-import { useState, useMemo } from 'react'
-import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check } from 'lucide-react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Barcode, Calendar } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt } from '../utils/format'
 import { askGemini } from '../services/geminiService'
+import InventoryAI from '../components/InventoryAI'
 
 // ── AI 文案產生區塊 ─────────────────────────────────────────────────
+// 工具：日期 + 天數 → 到期日
+function addDays(dateStr, days) {
+  if (!dateStr || !days) return ''
+  const d = new Date(dateStr)
+  d.setDate(d.getDate() + parseInt(days))
+  return d.toISOString().slice(0, 10)
+}
+
+// ── 編輯品項 Modal ──────────────────────────────────────────────
+function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onClose }) {
+  const barcodeRef  = useRef(null)
+  const itemNameRef = useRef(null)
+  const isAB = editTarget?.category === 'A用品' || editTarget?.category === 'B食品'
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isAB && barcodeRef.current) barcodeRef.current.focus()
+      else if (itemNameRef.current) itemNameRef.current.focus()
+    }, 80)
+    return () => clearTimeout(timer)
+  }, [])
+
+  function handleBarcodeEnter(e) {
+    if (e.key === 'Enter') { e.preventDefault(); itemNameRef.current?.focus() }
+  }
+
+  function handleProdDateChange(val) {
+    setEditForm(p => ({
+      ...p,
+      prodDate:     val,
+      shelfExpiry:  addDays(val, p.shelfDays),
+      fridgeExpiry: addDays(val, p.fridgeDays),
+      frozenExpiry: addDays(val, p.frozenDays),
+    }))
+  }
+
+  return (
+    <Modal title="編輯品項" size="md" onClose={onClose}>
+      <form onSubmit={onSubmit} className="space-y-4">
+        {isAB && (
+          <FormRow label="📷 國際條碼（選填，支援掃描槍）">
+            <input ref={barcodeRef} type="text" className={inputCls}
+              placeholder="例：4710123456789，掃描完成後自動跳轉"
+              value={editForm.barcode}
+              onChange={e => setEditForm(p => ({ ...p, barcode: e.target.value }))}
+              onKeyDown={handleBarcodeEnter} />
+          </FormRow>
+        )}
+        <FormRow label="品項名稱">
+          <input ref={itemNameRef} type="text" className={inputCls}
+            value={editForm.itemName}
+            onChange={e => setEditForm(p => ({ ...p, itemName: e.target.value }))} required />
+        </FormRow>
+        <FormRow label="供應商">
+          <input type="text" className={inputCls} placeholder="選填" value={editForm.supplier}
+            onChange={e => setEditForm(p => ({ ...p, supplier: e.target.value }))} />
+        </FormRow>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="現有數量">
+            <input type="number" min="0" className={inputCls} value={editForm.currentQty}
+              onChange={e => setEditForm(p => ({ ...p, currentQty: e.target.value }))} required />
+          </FormRow>
+          <FormRow label="安全水位">
+            <input type="number" min="0" className={inputCls} value={editForm.safetyQty}
+              onChange={e => setEditForm(p => ({ ...p, safetyQty: e.target.value }))} required />
+          </FormRow>
+        </div>
+        <FormRow label="單位">
+          <input type="text" className={inputCls} value={editForm.unit}
+            onChange={e => setEditForm(p => ({ ...p, unit: e.target.value }))} required />
+        </FormRow>
+
+        {editTarget?.category === 'B食品' && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-3">
+            <p className="text-xs font-semibold text-blue-700">📅 標準保存天數（選填）</p>
+            <div className="grid grid-cols-3 gap-2">
+              <FormRow label="常溫（天）">
+                <input type="number" min="0" className={inputCls} placeholder="例：30"
+                  value={editForm.shelfDays ?? ''}
+                  onChange={e => setEditForm(p => ({ ...p, shelfDays: e.target.value }))} />
+              </FormRow>
+              <FormRow label="冷藏（天）">
+                <input type="number" min="0" className={inputCls} placeholder="例：180"
+                  value={editForm.fridgeDays ?? ''}
+                  onChange={e => setEditForm(p => ({ ...p, fridgeDays: e.target.value }))} />
+              </FormRow>
+              <FormRow label="冷凍（天）">
+                <input type="number" min="0" className={inputCls} placeholder="例：365"
+                  value={editForm.frozenDays ?? ''}
+                  onChange={e => setEditForm(p => ({ ...p, frozenDays: e.target.value }))} />
+              </FormRow>
+            </div>
+            <div className="border-t border-blue-100 pt-3 space-y-2">
+              <p className="text-xs font-semibold text-blue-700">✨ 輸入生產日期，自動預測到期日</p>
+              <FormRow label="生產日期">
+                <input type="date" className={inputCls}
+                  value={editForm.prodDate || ''}
+                  onChange={e => handleProdDateChange(e.target.value)} />
+              </FormRow>
+              {editForm.prodDate && (
+                <div className="grid grid-cols-3 gap-2">
+                  <FormRow label="常溫到期">
+                    <input type="date" className={inputCls} value={editForm.shelfExpiry || ''}
+                      onChange={e => setEditForm(p => ({ ...p, shelfExpiry: e.target.value }))} />
+                  </FormRow>
+                  <FormRow label="冷藏到期">
+                    <input type="date" className={inputCls} value={editForm.fridgeExpiry || ''}
+                      onChange={e => setEditForm(p => ({ ...p, fridgeExpiry: e.target.value }))} />
+                  </FormRow>
+                  <FormRow label="冷凍到期">
+                    <input type="date" className={inputCls} value={editForm.frozenExpiry || ''}
+                      onChange={e => setEditForm(p => ({ ...p, frozenExpiry: e.target.value }))} />
+                  </FormRow>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isAB ? (
+          <div className="grid grid-cols-3 gap-3">
+            <FormRow label="定價（元）">
+              <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={editForm.listPrice}
+                onChange={e => setEditForm(p => ({ ...p, listPrice: e.target.value }))} />
+            </FormRow>
+            <FormRow label="售價（元）">
+              <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={editForm.salePrice}
+                onChange={e => setEditForm(p => ({ ...p, salePrice: e.target.value }))} />
+            </FormRow>
+            <FormRow label="成本（元）">
+              <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={editForm.cost}
+                onChange={e => setEditForm(p => ({ ...p, cost: e.target.value }))} />
+            </FormRow>
+          </div>
+        ) : (
+          <FormRow label="單價（元）">
+            <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={editForm.unitPrice}
+              onChange={e => setEditForm(p => ({ ...p, unitPrice: e.target.value }))} />
+          </FormRow>
+        )}
+
+        {isAB && editForm.salePrice && editForm.cost && (
+          <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-sm flex justify-between">
+            <span className="text-gray-500">毛利率預覽</span>
+            <span className="font-bold text-emerald-600">
+              {((parseFloat(editForm.salePrice) - parseFloat(editForm.cost)) / parseFloat(editForm.salePrice) * 100).toFixed(1)}%
+            </span>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <button type="submit" className={btnPrimary + ' flex-1'}>儲存</button>
+          <button type="button" onClick={onClose} className={btnSecondary}>取消</button>
+        </div>
+
+        {isAB && (
+          <AiCopywriter itemName={editForm.itemName || ''} category={editTarget?.category || ''} inventory={inventory} />
+        )}
+      </form>
+    </Modal>
+  )
+}
+
 function AiCopywriter({ itemName, category, inventory }) {
   const [loading,  setLoading]  = useState(false)
   const [copies,   setCopies]   = useState([])   // [{text, copied}]
@@ -114,7 +278,7 @@ const emptyRow = () => ({
 })
 
 export default function Procurement({ data }) {
-  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem } = data
+  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [] } = data
 
   const [activeTab,  setActiveTab]  = useState('A用品')
   const [modal,      setModal]      = useState(null)
@@ -160,11 +324,19 @@ export default function Procurement({ data }) {
     setEditTarget(item)
     setEditForm({
       ...item,
-      supplier:  item.supplier  || '',
-      listPrice: item.listPrice || '',
-      salePrice: item.salePrice || '',
-      cost:      item.cost      || '',
-      unitPrice: item.unitPrice || '',
+      supplier:   item.supplier   || '',
+      barcode:    item.barcode    || '',
+      prodDate:   '',
+      shelfDays:  item.shelfDays  ?? '',
+      fridgeDays: item.fridgeDays ?? '',
+      frozenDays: item.frozenDays ?? '',
+      shelfExpiry:  '',
+      fridgeExpiry: '',
+      frozenExpiry: '',
+      listPrice:  item.listPrice  || '',
+      salePrice:  item.salePrice  || '',
+      cost:       item.cost       || '',
+      unitPrice:  item.unitPrice  || '',
     })
     setModal('edit')
   }
@@ -176,6 +348,10 @@ export default function Procurement({ data }) {
       currentQty: parseFloat(editForm.currentQty),
       safetyQty:  parseFloat(editForm.safetyQty),
       supplier:   editForm.supplier.trim(),
+      barcode:    editForm.barcode?.trim() || '',
+      shelfDays:  editForm.shelfDays  !== '' ? parseInt(editForm.shelfDays)  : null,
+      fridgeDays: editForm.fridgeDays !== '' ? parseInt(editForm.fridgeDays) : null,
+      frozenDays: editForm.frozenDays !== '' ? parseInt(editForm.frozenDays) : null,
       listPrice:  parseFloat(editForm.listPrice)  || 0,
       salePrice:  parseFloat(editForm.salePrice)  || 0,
       cost:       parseFloat(editForm.cost)       || 0,
@@ -307,6 +483,12 @@ export default function Procurement({ data }) {
                           className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
                           <Package size={12} /> 進貨
                         </button>
+                        {item.category === 'B食品' && (
+                          <button onClick={() => { setEditTarget(item); setModal('expiry') }}
+                            className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
+                            <Calendar size={12} /> 效期
+                          </button>
+                        )}
                         <button onClick={() => openEdit(item)}
                           className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors">
                           <Edit2 size={13} />
@@ -454,80 +636,65 @@ export default function Procurement({ data }) {
 
       {/* ── 編輯品項 Modal ── */}
       {modal === 'edit' && (
-        <Modal title="編輯品項" size="md" onClose={() => setModal(null)}>
-          <form onSubmit={submitEdit} className="space-y-4">
-            <FormRow label="品項名稱">
-              <input type="text" className={inputCls} value={editForm.itemName}
-                onChange={e => setEditForm(p => ({ ...p, itemName: e.target.value }))} required />
-            </FormRow>
-            <FormRow label="供應商">
-              <input type="text" className={inputCls} placeholder="選填" value={editForm.supplier}
-                onChange={e => setEditForm(p => ({ ...p, supplier: e.target.value }))} />
-            </FormRow>
-            <div className="grid grid-cols-2 gap-3">
-              <FormRow label="現有數量">
-                <input type="number" min="0" className={inputCls} value={editForm.currentQty}
-                  onChange={e => setEditForm(p => ({ ...p, currentQty: e.target.value }))} required />
-              </FormRow>
-              <FormRow label="安全水位">
-                <input type="number" min="0" className={inputCls} value={editForm.safetyQty}
-                  onChange={e => setEditForm(p => ({ ...p, safetyQty: e.target.value }))} required />
-              </FormRow>
-            </div>
-            <FormRow label="單位">
-              <input type="text" className={inputCls} value={editForm.unit}
-                onChange={e => setEditForm(p => ({ ...p, unit: e.target.value }))} required />
-            </FormRow>
+        <EditModal
+          editForm={editForm}
+          setEditForm={setEditForm}
+          editTarget={editTarget}
+          inventory={inventory}
+          onSubmit={submitEdit}
+          onClose={() => setModal(null)}
+        />
+      )}
 
-            {/* A/B：定價/售價/成本；C/D：單價 */}
-            {(editTarget?.category === 'A用品' || editTarget?.category === 'B食品') ? (
-              <div className="grid grid-cols-3 gap-3">
-                <FormRow label="定價（元）">
-                  <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={editForm.listPrice}
-                    onChange={e => setEditForm(p => ({ ...p, listPrice: e.target.value }))} />
-                </FormRow>
-                <FormRow label="售價（元）">
-                  <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={editForm.salePrice}
-                    onChange={e => setEditForm(p => ({ ...p, salePrice: e.target.value }))} />
-                </FormRow>
-                <FormRow label="成本（元）">
-                  <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={editForm.cost}
-                    onChange={e => setEditForm(p => ({ ...p, cost: e.target.value }))} />
-                </FormRow>
-              </div>
-            ) : (
-              <FormRow label="單價（元）">
-                <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={editForm.unitPrice}
-                  onChange={e => setEditForm(p => ({ ...p, unitPrice: e.target.value }))} />
-              </FormRow>
-            )}
-
-            {/* A/B 毛利率預覽 */}
-            {(editTarget?.category === 'A用品' || editTarget?.category === 'B食品') && editForm.salePrice && editForm.cost && (
-              <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-sm flex justify-between">
-                <span className="text-gray-500">毛利率預覽</span>
-                <span className="font-bold text-emerald-600">
-                  {((parseFloat(editForm.salePrice) - parseFloat(editForm.cost)) / parseFloat(editForm.salePrice) * 100).toFixed(1)}%
-                </span>
+      {/* ── 效期批次 Modal ── */}
+      {modal === 'expiry' && editTarget && (
+        <Modal title={`${editTarget.itemName} — 有效期批次`} size="md" onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            {/* 標準有效期說明 */}
+            {(editTarget.shelfDays || editTarget.fridgeDays || editTarget.frozenDays) && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700 flex flex-wrap gap-4">
+                {editTarget.shelfDays  && <span>常溫：{editTarget.shelfDays} 天</span>}
+                {editTarget.fridgeDays && <span>冷藏：{editTarget.fridgeDays} 天</span>}
+                {editTarget.frozenDays && <span>冷凍：{editTarget.frozenDays} 天</span>}
               </div>
             )}
 
-            <div className="flex gap-2 pt-2">
-              <button type="submit" className={btnPrimary + ' flex-1'}>儲存</button>
-              <button type="button" onClick={() => setModal(null)} className={btnSecondary}>取消</button>
-            </div>
-
-            {/* AI 文案：僅對 A用品 / B食品 顯示 */}
-            {(editTarget?.category === 'A用品' || editTarget?.category === 'B食品') && (
-              <AiCopywriter
-                itemName={editForm.itemName || ''}
-                category={editTarget?.category || ''}
-                inventory={inventory}
-              />
-            )}
-          </form>
+            {/* 批次列表 */}
+            {(editTarget.expiryBatches?.length ?? 0) === 0
+              ? <p className="text-sm text-gray-400 text-center py-6">尚無批次效期資料，可從生產批次自動寫入</p>
+              : (
+                <div className="space-y-2">
+                  {editTarget.expiryBatches.map((b, i) => {
+                    const now = new Date()
+                    const shelfExp  = b.shelfExpiry  ? new Date(b.shelfExpiry)  : null
+                    const fridgeExp = b.fridgeExpiry ? new Date(b.fridgeExpiry) : null
+                    const frozenExp = b.frozenExpiry ? new Date(b.frozenExpiry) : null
+                    const isExpired = shelfExp && shelfExp < now
+                    return (
+                      <div key={i} className={`rounded-xl px-4 py-3 border text-sm ${isExpired ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-100'}`}>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-semibold text-gray-800">{b.batchNote || `批次 ${i + 1}`}</span>
+                          <span className="text-xs text-gray-400">{b.productionDate}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-3 text-xs">
+                          {b.qty && <span className="text-gray-600">數量：{b.qty} 包</span>}
+                          {shelfExp  && <span className={shelfExp  < now ? 'text-red-500 font-bold' : 'text-gray-500'}>常溫到期：{b.shelfExpiry}</span>}
+                          {fridgeExp && <span className={fridgeExp < now ? 'text-red-500 font-bold' : 'text-blue-500'}>冷藏到期：{b.fridgeExpiry}</span>}
+                          {frozenExp && <span className={frozenExp < now ? 'text-red-500 font-bold' : 'text-indigo-500'}>冷凍到期：{b.frozenExpiry}</span>}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            }
+            <button onClick={() => setModal(null)} className={btnSecondary + ' w-full'}>關閉</button>
+          </div>
         </Modal>
       )}
+
+      {/* ── AI 庫存健康分析 ── */}
+      <InventoryAI inventory={inventory} revenues={revenues} />
 
       {/* ── 進貨 Modal ── */}
       {modal === 'purchase' && (

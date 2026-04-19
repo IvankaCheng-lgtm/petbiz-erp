@@ -29,6 +29,52 @@ const SEED_INVENTORY = [
 
 const ERP_DOC_REF = doc(db, "moe_beast_erp", "main_record");
 
+/**
+ * FIFO 批次扣除：依 normalExp 升冪排序，從最快過期的批次開始扣。
+ * 回傳更新後的 item（currentQty 和 expiryBatches 均已更新）。
+ */
+function deductFIFO(item, qtyToDeduct) {
+  const batches = item.expiryBatches;
+
+  // 無批次資料：直接扣總數
+  if (!batches || batches.length === 0) {
+    return { ...item, currentQty: Math.max(0, item.currentQty - qtyToDeduct) };
+  }
+
+  // 依 normalExp 升冪排序（無到期日的排到最後）
+  const sorted = [...batches].sort((a, b) => {
+    if (!a.normalExp && !b.normalExp) return 0;
+    if (!a.normalExp) return 1;
+    if (!b.normalExp) return -1;
+    return a.normalExp.localeCompare(b.normalExp);
+  });
+
+  // 用 for 迴圈確保跨批次扣除正確累減
+  let remaining = qtyToDeduct;
+  const updatedBatches = [];
+
+  for (const batch of sorted) {
+    if (remaining <= 0) {
+      // 已扣足，剩餘批次保持不變
+      updatedBatches.push(batch);
+      continue;
+    }
+    const deduct = Math.min(batch.qty, remaining);
+    remaining -= deduct;
+    const newQty = batch.qty - deduct;
+    // 數量 > 0 才保留，= 0 則清除此批次
+    if (newQty > 0) {
+      updatedBatches.push({ ...batch, qty: newQty });
+    }
+  }
+
+  return {
+    ...item,
+    currentQty:    Math.max(0, item.currentQty - qtyToDeduct),
+    expiryBatches: updatedBatches,
+  };
+}
+
 export default function usePetBusiness() {
   const [revenues,      setRevenues]      = useState([]);
   const [expenses,      setExpenses]      = useState([]);
@@ -38,7 +84,6 @@ export default function usePetBusiness() {
   const [marketEvents,  setMarketEvents]  = useState([]);
   const [loading,       setLoading]       = useState(true);
 
-  // 核心：先 getDoc 取最新值再修改寫回，避免 stale closure
   const cloudUpdate = useCallback(async (field, updater) => {
     try {
       const snap = await getDoc(ERP_DOC_REF);
@@ -50,7 +95,6 @@ export default function usePetBusiness() {
     }
   }, []);
 
-  // 即時監聽
   useEffect(() => {
     const unsub = onSnapshot(
       ERP_DOC_REF,
@@ -94,7 +138,6 @@ export default function usePetBusiness() {
     [inventory]
   );
 
-  // 未來 7 天即將出攤的市集
   const upcomingEvents = useMemo(() => {
     const now  = new Date(); now.setHours(0, 0, 0, 0);
     const in7  = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -161,9 +204,17 @@ export default function usePetBusiness() {
     cloudUpdate("inventory", list => [...list, item]);
   }, [cloudUpdate]);
 
+  // 支援 barcode、shelfLifeNormal/Fridge/Freezer 欄位
   const updateInventoryItem = useCallback((id, data) => {
-    setInventory(prev => prev.map(i => i.id === id ? { ...i, ...data } : i));
-    cloudUpdate("inventory", list => list.map(i => i.id === id ? { ...i, ...data } : i));
+    const cleaned = {
+      ...data,
+      barcode:          data.barcode          || null,
+      shelfLifeNormal:  data.shelfLifeNormal  ?? null,
+      shelfLifeFridge:  data.shelfLifeFridge  ?? null,
+      shelfLifeFreezer: data.shelfLifeFreezer ?? null,
+    };
+    setInventory(prev => prev.map(i => i.id === id ? { ...i, ...cleaned } : i));
+    cloudUpdate("inventory", list => list.map(i => i.id === id ? { ...i, ...cleaned } : i));
   }, [cloudUpdate]);
 
   const deleteInventoryItem = useCallback((id) => {
@@ -177,10 +228,11 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   // ── 生產 ──────────────────────────────────────────────────────
+  // expiryData: { normalExp, fridgeExp, freezerExp } — 選填，有值才寫入 expiryBatches
   const addProductionBatch = useCallback(async (params) => {
-    const { date, note, hours, usedIngredients, usedPackaging, resultQty, targetItemId, electricCost } = params;
+    const { date, note, hours, usedIngredients, usedPackaging, resultQty, targetItemId, electricCost, expiryData } = params;
     const newBatch = { id: uid(), ...params };
-    const newExp   = {
+    const newExp = {
       id: uid(), date, type: "電費",
       note: `生產電費：${note || "烘乾機"}（${hours}h）`,
       amount: Math.round(electricCost * 100) / 100,
@@ -188,17 +240,35 @@ export default function usePetBusiness() {
     };
     const applyInv = (list) => {
       let next = [...list];
+      // 食材和包材扣除也使用 FIFO
       usedIngredients.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
-        if (idx !== -1) next[idx] = { ...next[idx], currentQty: Math.max(0, next[idx].currentQty - qty) };
+        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
       usedPackaging.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
-        if (idx !== -1) next[idx] = { ...next[idx], currentQty: Math.max(0, next[idx].currentQty - qty) };
+        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
       if (targetItemId) {
         const idx = next.findIndex(i => i.id === targetItemId);
-        if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + resultQty };
+        if (idx !== -1) {
+          const prevBatches = next[idx].expiryBatches ?? [];
+          // expiryBatches 格式：[{ batchId, normalExp, fridgeExp, freezerExp, qty }]
+          const newBatches = expiryData
+            ? [...prevBatches, {
+                batchId:    uid(),
+                normalExp:  expiryData.normalExp  || null,
+                fridgeExp:  expiryData.fridgeExp  || null,
+                freezerExp: expiryData.freezerExp || null,
+                qty:        resultQty,
+              }]
+            : prevBatches;
+          next[idx] = {
+            ...next[idx],
+            currentQty:    next[idx].currentQty + resultQty,
+            expiryBatches: newBatches,
+          };
+        }
       }
       return next;
     };
@@ -245,24 +315,22 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   // ── 市集現場收款 ──────────────────────────────────────────────
-  // items: [{ itemId, itemName, qty, unitPrice, category }]
   const processMarketSale = useCallback(async ({ items, paymentMethod, totalAmount, eventId }) => {
     const today = new Date().toISOString().slice(0, 10);
-    // 依商品實際 category 映射到 revenue category
-    const catMap = { 'A用品': '用品', 'B食品': '食品' };
-    const cats = [...new Set(items.map(i => catMap[i.category] ?? '食品'))];
-    const category = cats.length === 1 ? cats[0] : '食品'; // 混合則預設食品
+    const catMap = { "A用品": "用品", "B食品": "食品" };
+    const cats = [...new Set(items.map(i => catMap[i.category] ?? "食品"))];
+    const category = cats.length === 1 ? cats[0] : "食品";
     const revenueItem = {
       id: uid(), date: today, channel: "市集", category,
       amount: totalAmount, isReported: false, paymentMethod, eventId,
-      items, // 儲存購買明細供結算統計查看
+      items,
     };
     setRevenues(prev => [...prev, revenueItem]);
     setInventory(prev => {
       let next = [...prev];
       items.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
-        if (idx !== -1) next[idx] = { ...next[idx], currentQty: Math.max(0, next[idx].currentQty - qty) };
+        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
       return next;
     });
@@ -271,7 +339,7 @@ export default function usePetBusiness() {
       let next = [...list];
       items.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
-        if (idx !== -1) next[idx] = { ...next[idx], currentQty: Math.max(0, next[idx].currentQty - qty) };
+        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
       return next;
     });
