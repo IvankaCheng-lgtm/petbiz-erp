@@ -1,0 +1,6 @@
+category === 'A¥Î«~' || editTarget?.category === 'B­¹«~'
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isAB && barcodeRef.current) barcodeRef.current.focus()
+      else if (itemNameR

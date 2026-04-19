@@ -54,6 +54,12 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
               onChange={e => setEditForm(p => ({ ...p, barcode: e.target.value }))}
               onKeyDown={handleBarcodeEnter} />
           </FormRow>
+          <FormRow label="📄 商品貨號（選填）">
+            <input type="text" className={inputCls}
+              placeholder="例：SKU-001"
+              value={editForm.sku || ''}
+              onChange={e => setEditForm(p => ({ ...p, sku: e.target.value }))} />
+          </FormRow>
         )}
         <FormRow label="品項名稱">
           <input ref={itemNameRef} type="text" className={inputCls}
@@ -330,7 +336,8 @@ export default function Procurement({ data }) {
       ...item,
       supplier:   item.supplier   || '',
       barcode:    item.barcode    || '',
-      prodDate:   '',
+      sku:        item.sku        || '',
+      prodDate:   ''
       shelfDays:  item.shelfDays  ?? '',
       fridgeDays: item.fridgeDays ?? '',
       frozenDays: item.frozenDays ?? '',
@@ -353,6 +360,7 @@ export default function Procurement({ data }) {
       safetyQty:  parseFloat(editForm.safetyQty),
       supplier:   editForm.supplier.trim(),
       barcode:    editForm.barcode?.trim() || '',
+      sku:        editForm.sku?.trim()    || '',
       shelfDays:  editForm.shelfDays  !== '' ? parseInt(editForm.shelfDays)  : null,
       fridgeDays: editForm.fridgeDays !== '' ? parseInt(editForm.fridgeDays) : null,
       frozenDays: editForm.frozenDays !== '' ? parseInt(editForm.frozenDays) : null,
@@ -539,6 +547,7 @@ export default function Procurement({ data }) {
             <thead>
               <tr className="border-b border-gray-100 text-gray-500 text-xs uppercase tracking-wide">
                 <th className="pb-3 text-left">品項名稱</th>
+                <th className="pb-3 text-left">貨號</th>
                 <th className="pb-3 text-left">供應商</th>
                 <th className="pb-3 text-right">庫存</th>
                 <th className="pb-3 text-right">安全水位</th>
@@ -567,6 +576,7 @@ export default function Procurement({ data }) {
                 return (
                   <tr key={item.id}
                     className={`hover:bg-gray-50 transition-colors ${item.currentQty < item.safetyQty ? 'bg-red-50/40' : ''}`}>
+                    <td className="py-3 text-xs text-gray-500">{item.sku || '—'}</td>
                     <td className="py-3 font-medium text-gray-800">
                       <div className="flex items-center gap-2">
                         {item.currentQty < item.safetyQty && <AlertTriangle size={13} className="text-red-500 shrink-0" />}
