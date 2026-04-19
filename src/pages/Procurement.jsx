@@ -337,7 +337,7 @@ export default function Procurement({ data }) {
       supplier:   item.supplier   || '',
       barcode:    item.barcode    || '',
       sku:        item.sku        || '',
-      prodDate:   ''
+      prodDate:   '',
       shelfDays:  item.shelfDays  ?? '',
       fridgeDays: item.fridgeDays ?? '',
       frozenDays: item.frozenDays ?? '',
