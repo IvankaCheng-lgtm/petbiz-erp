@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react'
-import { Plus, Trash2, ShoppingCart, X, Calendar, BarChart2, Store, Sparkles, Loader2, TrendingUp } from 'lucide-react'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { Html5QrcodeScanner } from 'html5-qrcode'
+import { Plus, Trash2, ShoppingCart, X, Calendar, BarChart2, Store, Sparkles, Loader2, TrendingUp, Camera } from 'lucide-react'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt } from '../utils/format'
@@ -176,8 +177,56 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   const [cart, setCart]               = useState([])
   const [paymentMethod, setPaymentMethod] = useState('現金')
   const [done, setDone]               = useState(false)
-  const [discountPct, setDiscountPct] = useState('')  // 折扣 %，選填
-  const [discountAmt, setDiscountAmt] = useState('')  // 折抄元，選填
+  const [discountPct, setDiscountPct] = useState('')
+  const [discountAmt, setDiscountAmt] = useState('')
+  const [isScanning,  setIsScanning]  = useState(false)
+  const [scanMsg,     setScanMsg]     = useState('')   // 成功/查無訊息
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const scannerRef  = useRef(null)
+  const barcodeRef  = useRef(null)
+
+  // 頁面載入後自動 focus 條碼輸入框
+  useEffect(() => { barcodeRef.current?.focus() }, [])
+
+  useEffect(() => {
+    if (!isScanning) {
+      // 關閉時清理 scanner
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(() => {})
+        scannerRef.current = null
+      }
+      return
+    }
+    // 初始化 scanner
+    const scanner = new Html5QrcodeScanner(
+      'reader',
+      { fps: 10, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0, supportedScanTypes: [0] },
+      false
+    )
+    scanner.render(
+      (decodedText) => {
+        const matched = inventory.find(
+          i => i.barcode && i.barcode === decodedText &&
+               (i.category === 'A用品' || i.category === 'B食品')
+        )
+        if (matched) {
+          // 提示音（選填，瀏覽器允許時才播）
+          try { new AudioContext().createOscillator().start(0) } catch {}
+          addToCart(matched)
+          setScanMsg(`✅ 已加入：${matched.itemName}`)
+        } else {
+          setScanMsg('⚠️ 查無此商品')
+        }
+        setTimeout(() => setScanMsg(''), 2500)
+      },
+      () => {} // 掃描中的錯誤（非致命）靜默忽略
+    )
+    scannerRef.current = scanner
+    return () => {
+      scanner.clear().catch(() => {})
+      scannerRef.current = null
+    }
+  }, [isScanning]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeEvents = useMemo(
     () => marketEvents.filter(e => e.status === '已報名'),
@@ -201,7 +250,27 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   }, [subtotal, discountPct, discountAmt])
   const savedAmt = subtotal - totalAmount
 
-  function addToCart(item) {
+  function handleBarcodeEnter(e) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const val = barcodeInput.trim()
+    if (!val) return
+    const matched = inventory.find(
+      i => i.barcode && i.barcode === val &&
+           (i.category === 'A用品' || i.category === 'B食品')
+    )
+    if (matched) {
+      addToCart(matched)
+      setScanMsg(`✅ 已加入：${matched.itemName}`)
+    } else {
+      setScanMsg('⚠️ 查無此商品')
+    }
+    setBarcodeInput('')
+    setTimeout(() => setScanMsg(''), 2500)
+    barcodeRef.current?.focus()
+  }
+
+  function addToCart(item) {  // 同時被掃碼回調呼叫，需定義在 useEffect 之後
     setCart(prev => {
       const idx = prev.findIndex(c => c.itemId === item.id)
       if (idx !== -1) {
@@ -232,6 +301,56 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
     <div className="space-y-5">
       <h2 className="font-bold text-gray-800">現場即時記帳</h2>
 
+      {/* 掃碼區 */}
+      <SectionCard title="條碼掃描">
+        <div className="space-y-3">
+          {/* 掃描槍 / 鍵盤輸入框 */}
+          <div className="relative">
+            <input
+              ref={barcodeRef}
+              type="text"
+              placeholder="掃描條碼..."
+              value={barcodeInput}
+              onChange={e => setBarcodeInput(e.target.value)}
+              onKeyDown={handleBarcodeEnter}
+              className="w-full border-2 border-emerald-200 focus:border-emerald-400 rounded-xl px-4 py-3 text-sm focus:outline-none pr-24"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-300 pointer-events-none">Enter 確認</span>
+          </div>
+          <button
+            onClick={() => { setIsScanning(p => !p); setScanMsg('') }}
+            className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-base font-bold border-2 transition-colors active:scale-95
+              ${isScanning
+                ? 'bg-red-50 text-red-600 border-red-300 hover:bg-red-100'
+                : 'bg-emerald-50 text-emerald-600 border-emerald-300 hover:bg-emerald-100'}`}>
+            <Camera size={20} />
+            {isScanning ? '關閉相機' : '開啟相機掃碼'}
+          </button>
+
+          {isScanning && (
+            <div
+              id="reader"
+              className="w-full rounded-2xl overflow-hidden"
+              style={{ maxWidth: '100%' }}
+            />
+          )}
+
+          {scanMsg && (
+            <div className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold ${
+              scanMsg.startsWith('✅') ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-500'
+            }`}>
+              {scanMsg}
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {isScanning && (
+        <p className="text-xs text-center text-gray-400">掃描完成或關閉相機後，商品列表與購物車將重新顯示。</p>
+      )}
+
+      {!isScanning && (
+      <>
       {/* 選擇市集 */}
       <SectionCard title="選擇今日市集">
         {activeEvents.length === 0
@@ -350,6 +469,8 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
           )}
         </SectionCard>
       </div>
+      </>
+      )}
     </div>
   )
 }

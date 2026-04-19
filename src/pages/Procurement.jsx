@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Barcode, Calendar } from 'lucide-react'
+import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Calendar } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt } from '../utils/format'
 import { askGemini } from '../services/geminiService'
@@ -273,7 +273,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 const emptyRow = () => ({
   _key: Math.random().toString(36).slice(2),
-  itemName: '', currentQty: '', safetyQty: '', unit: '個', supplier: '',
+  barcode: '', itemName: '', currentQty: '', safetyQty: '', unit: '個', supplier: '',
   listPrice: '', salePrice: '', cost: '', unitPrice: '',
 })
 
@@ -311,6 +311,7 @@ export default function Procurement({ data }) {
         safetyQty:  parseFloat(row.safetyQty)  || 0,
         unit:       row.unit || '個',
         supplier:   row.supplier.trim(),
+        barcode:    row.barcode?.trim() || '',
         listPrice:  parseFloat(row.listPrice)  || 0,
         salePrice:  parseFloat(row.salePrice)  || 0,
         cost:       parseFloat(row.cost)       || 0,
@@ -385,7 +386,7 @@ export default function Procurement({ data }) {
     return ((item.salePrice - item.cost) / item.salePrice * 100).toFixed(1)
   }
 
-  const colSpan = isAB ? 10 : 9
+  const colSpan = isAB ? 11 : 9
 
   // 新增 Modal 的欄位是否為 CD 類
   const addIsCD = addCategory === 'C食材' || addCategory === 'D包材'
@@ -572,51 +573,73 @@ export default function Procurement({ data }) {
             )}
 
             {/* 動態列 */}
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
               {rows.map((row, idx) => (
-                !addIsCD ? (
-                  <div key={row._key} className="grid grid-cols-[1.2fr_60px_60px_44px_72px_68px_68px_68px_24px] gap-1 items-center">
-                    <input type="text" placeholder={`品項 ${idx + 1}`} className={inputCls + ' text-xs'} value={row.itemName}
-                      onChange={e => updateRow(row._key, 'itemName', e.target.value)} required={idx === 0} />
-                    <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.currentQty}
-                      onChange={e => updateRow(row._key, 'currentQty', e.target.value)} />
-                    <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.safetyQty}
-                      onChange={e => updateRow(row._key, 'safetyQty', e.target.value)} />
-                    <input type="text" placeholder="個" className={inputCls + ' text-xs text-center'} value={row.unit}
-                      onChange={e => updateRow(row._key, 'unit', e.target.value)} />
-                    <input type="text" placeholder="選填" className={inputCls + ' text-xs'} value={row.supplier}
-                      onChange={e => updateRow(row._key, 'supplier', e.target.value)} />
-                    <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.listPrice}
-                      onChange={e => updateRow(row._key, 'listPrice', e.target.value)} />
-                    <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.salePrice}
-                      onChange={e => updateRow(row._key, 'salePrice', e.target.value)} />
-                    <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.cost}
-                      onChange={e => updateRow(row._key, 'cost', e.target.value)} />
-                    <button type="button" onClick={() => removeRow(row._key)} disabled={rows.length === 1}
-                      className="text-gray-300 hover:text-red-400 disabled:opacity-20 transition-colors flex items-center justify-center">
-                      <X size={15} />
-                    </button>
-                  </div>
-                ) : (
-                  <div key={row._key} className="grid grid-cols-[1.2fr_60px_60px_44px_80px_68px_24px] gap-1 items-center">
-                    <input type="text" placeholder={`品項 ${idx + 1}`} className={inputCls + ' text-xs'} value={row.itemName}
-                      onChange={e => updateRow(row._key, 'itemName', e.target.value)} required={idx === 0} />
-                    <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.currentQty}
-                      onChange={e => updateRow(row._key, 'currentQty', e.target.value)} />
-                    <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.safetyQty}
-                      onChange={e => updateRow(row._key, 'safetyQty', e.target.value)} />
-                    <input type="text" placeholder="個" className={inputCls + ' text-xs text-center'} value={row.unit}
-                      onChange={e => updateRow(row._key, 'unit', e.target.value)} />
-                    <input type="text" placeholder="選填" className={inputCls + ' text-xs'} value={row.supplier}
-                      onChange={e => updateRow(row._key, 'supplier', e.target.value)} />
-                    <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.unitPrice}
-                      onChange={e => updateRow(row._key, 'unitPrice', e.target.value)} />
-                    <button type="button" onClick={() => removeRow(row._key)} disabled={rows.length === 1}
-                      className="text-gray-300 hover:text-red-400 disabled:opacity-20 transition-colors flex items-center justify-center">
-                      <X size={15} />
-                    </button>
-                  </div>
-                )
+                <div key={row._key} className="space-y-1">
+                  {!addIsCD ? (
+                    <div className="grid grid-cols-[1.2fr_60px_60px_44px_72px_68px_68px_68px_24px] gap-1 items-center">
+                      <input type="text" placeholder={`品項 ${idx + 1}`} className={inputCls + ' text-xs'} value={row.itemName}
+                        onChange={e => updateRow(row._key, 'itemName', e.target.value)} required={idx === 0} />
+                      <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.currentQty}
+                        onChange={e => updateRow(row._key, 'currentQty', e.target.value)} />
+                      <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.safetyQty}
+                        onChange={e => updateRow(row._key, 'safetyQty', e.target.value)} />
+                      <input type="text" placeholder="個" className={inputCls + ' text-xs text-center'} value={row.unit}
+                        onChange={e => updateRow(row._key, 'unit', e.target.value)} />
+                      <input type="text" placeholder="選填" className={inputCls + ' text-xs'} value={row.supplier}
+                        onChange={e => updateRow(row._key, 'supplier', e.target.value)} />
+                      <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.listPrice}
+                        onChange={e => updateRow(row._key, 'listPrice', e.target.value)} />
+                      <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.salePrice}
+                        onChange={e => updateRow(row._key, 'salePrice', e.target.value)} />
+                      <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.cost}
+                        onChange={e => updateRow(row._key, 'cost', e.target.value)} />
+                      <button type="button" onClick={() => removeRow(row._key)} disabled={rows.length === 1}
+                        className="text-gray-300 hover:text-red-400 disabled:opacity-20 transition-colors flex items-center justify-center">
+                        <X size={15} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-[1.2fr_60px_60px_44px_80px_68px_24px] gap-1 items-center">
+                      <input type="text" placeholder={`品項 ${idx + 1}`} className={inputCls + ' text-xs'} value={row.itemName}
+                        onChange={e => updateRow(row._key, 'itemName', e.target.value)} required={idx === 0} />
+                      <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.currentQty}
+                        onChange={e => updateRow(row._key, 'currentQty', e.target.value)} />
+                      <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.safetyQty}
+                        onChange={e => updateRow(row._key, 'safetyQty', e.target.value)} />
+                      <input type="text" placeholder="個" className={inputCls + ' text-xs text-center'} value={row.unit}
+                        onChange={e => updateRow(row._key, 'unit', e.target.value)} />
+                      <input type="text" placeholder="選填" className={inputCls + ' text-xs'} value={row.supplier}
+                        onChange={e => updateRow(row._key, 'supplier', e.target.value)} />
+                      <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.unitPrice}
+                        onChange={e => updateRow(row._key, 'unitPrice', e.target.value)} />
+                      <button type="button" onClick={() => removeRow(row._key)} disabled={rows.length === 1}
+                        className="text-gray-300 hover:text-red-400 disabled:opacity-20 transition-colors flex items-center justify-center">
+                        <X size={15} />
+                      </button>
+                    </div>
+                  )}
+                  {/* 條碼欄：僅 A/B 類顯示 */}
+                  {!addIsCD && (
+                    <div className="pl-1">
+                      <input
+                        type="text"
+                        placeholder="📷 國際條碼（選填，可用掃描槍，Enter 跳下一欄）"
+                        className={inputCls + ' text-xs text-gray-500 w-full'}
+                        value={row.barcode}
+                        onChange={e => updateRow(row._key, 'barcode', e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            // 跳到同列的品項名稱（前一個 input）
+                            const inputs = e.currentTarget.closest('.space-y-1')?.querySelectorAll('input')
+                            if (inputs) inputs[0]?.focus()
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
 
