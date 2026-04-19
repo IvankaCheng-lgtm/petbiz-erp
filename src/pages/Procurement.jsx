@@ -47,6 +47,7 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
     <Modal title="編輯品項" size="md" onClose={onClose}>
       <form onSubmit={onSubmit} className="space-y-4">
         {isAB && (
+          <>
           <FormRow label="📷 國際條碼（選填，支援掃描槍）">
             <input ref={barcodeRef} type="text" className={inputCls}
               placeholder="例：4710123456789，掃描完成後自動跳轉"
@@ -60,6 +61,7 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
               value={editForm.sku || ''}
               onChange={e => setEditForm(p => ({ ...p, sku: e.target.value }))} />
           </FormRow>
+          </>
         )}
         <FormRow label="品項名稱">
           <input ref={itemNameRef} type="text" className={inputCls}
