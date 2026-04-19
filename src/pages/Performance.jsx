@@ -9,20 +9,44 @@ import { fmt, CATEGORY_COLORS, CHANNEL_COLORS } from '../utils/format'
 const PIE_COLORS = ['#FFB84D', '#10B981', '#8B5CF6', '#3B82F6']
 
 export default function Performance({ data }) {
-  const { revenues, expenses, orders = [] } = data
+  const { revenues, expenses, orders = [], inventory = [] } = data
 
-  // 電商平台名稱（對應到「電商」通路）
-  const EC_PLATFORMS = ['萌獸官網', 'PChome', 'Yahoo', '跑皮']
+  const EC_PLATFORMS = ['萌獸官網', 'PChome', 'Yahoo', '蝦皮']
+
+  // 庫存 cost 對照表
+  const inventoryCostMap = useMemo(() => {
+    const map = {}
+    inventory.forEach(i => { map[i.id] = i.cost || 0 })
+    return map
+  }, [inventory])
+
+  // 從 orders.items 計算實際商品成本（qty × inventory.cost）
+  const actualCogs = useMemo(() =>
+    orders.reduce((s, o) =>
+      s + (o.items || []).reduce((ss, it) =>
+        ss + it.qty * (inventoryCostMap[it.itemId] || 0), 0), 0),
+    [orders, inventoryCostMap]
+  )
+
+  // 從 expenses 取進貨成本（C食材/D包材）
+  const purchaseCogs = useMemo(
+    () => expenses.filter(e => e.type === '進貨').reduce((s, e) => s + e.amount, 0),
+    [expenses]
+  )
+
+  // 取兩者較大值作為總成本（避免重複計算）
+  const totalCogs = useMemo(
+    () => Math.max(actualCogs, purchaseCogs),
+    [actualCogs, purchaseCogs]
+  )
 
   const categoryData = useMemo(() => {
-    // 包含手動營收的傳統類別 + 訂單產生的「電商銷售」展開為商品分類
     const cats = ['食品', '烘焙', '蛋糕', '用品']
     const manualCats = cats.map(cat => ({
       name: cat,
       value: revenues.filter(r => r.category === cat).reduce((s, r) => s + r.amount, 0),
     }))
 
-    // 將訂單產生的營收依商品 items 展開分類
     const orderCatMap = {}
     revenues
       .filter(r => EC_PLATFORMS.includes(r.channel) && r.items)
@@ -40,20 +64,15 @@ export default function Performance({ data }) {
   }, [revenues])
 
   const channelData = useMemo(() => {
-    const totalCogs = expenses.filter(e => e.type === '進貨').reduce((s, e) => s + e.amount, 0)
-
-    // 電商營收：手動 + 訂單
     const ecRev = revenues
       .filter(r => r.channel === '電商' || EC_PLATFORMS.includes(r.channel))
       .reduce((s, r) => s + r.amount, 0)
 
-    // 市集營收
     const mktRev = revenues
       .filter(r => r.channel === '市集')
       .reduce((s, r) => s + r.amount, 0)
 
     const totalRev = ecRev + mktRev
-    // 用實際營收總和計算 cogsRatio，避免分母為 0
     const cogsRatio = totalRev > 0 ? totalCogs / totalRev : 0
 
     const boothCost = expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
@@ -65,7 +84,7 @@ export default function Performance({ data }) {
       { name: '電商', 營收: ecRev,  毛利: Math.round(ecGross),  毛利率: ecRev  > 0 ? +(ecGross  / ecRev  * 100).toFixed(1) : 0 },
       { name: '市集', 營收: mktRev, 毛利: Math.round(mktGross), 毛利率: mktRev > 0 ? +(mktGross / mktRev * 100).toFixed(1) : 0 },
     ]
-  }, [revenues, expenses])
+  }, [revenues, expenses, totalCogs])
 
   const monthlyChannel = useMemo(() => {
     const now = new Date()
@@ -117,6 +136,11 @@ export default function Performance({ data }) {
 
         {/* 通路毛利對比 */}
         <SectionCard title="通路毛利對比">
+          {totalCogs === 0 && (
+            <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
+              ⚠️ 未找到商品成本資料，請確認庫存品項已填寫「成本」欄位。
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 mb-4">
             {channelData.map(ch => (
               <div key={ch.name} className={`rounded-xl p-4 ${ch.name === '電商' ? 'bg-orange-50' : 'bg-emerald-50'}`}>

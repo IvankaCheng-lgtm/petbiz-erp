@@ -80,15 +80,14 @@ export default function PnL({ data }) {
 
   // 財務指標：Gross Profit + Operating Expenses
   const financialMetrics = useMemo(() => {
-    const cogs        = expenses.filter(e => e.type === '進貨' && e.isProductionCost).reduce((s, e) => s + e.amount, 0)
-    const totalRev    = revenues.reduce((s, r) => s + r.amount, 0)
-    const grossProfit = totalRev - cogs
-    const booth       = expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
-    const shipping    = expenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
-    const ads         = expenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0)
-    const opExp       = booth + shipping + ads
-    return { grossProfit, cogs, opExp, booth, shipping, ads }
-  }, [revenues, expenses])
+    // 毛利與 pnl 保持一致：用所有進貨成本計算
+    const grossProfit = pnl.grossProfit
+    const booth    = expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
+    const shipping = expenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
+    const ads      = expenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0)
+    const opExp    = booth + shipping + ads
+    return { grossProfit, opExp, booth, shipping, ads }
+  }, [pnl.grossProfit, expenses])
 
   // 庫存深度分析
   const inventoryMetrics = useMemo(() => {
@@ -347,6 +346,7 @@ export default function PnL({ data }) {
             }`}>
               {pnl.totalRev > 0 ? (financialMetrics.grossProfit / pnl.totalRev * 100).toFixed(1) : '0.0'}%
             </span>
+            <span className="text-xs text-gray-400 ml-1">(營收 - 進貨成本)</span>
           </div>
           <div className="border-t border-gray-100 pt-3 space-y-1.5">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">營運開销佔比</p>
