@@ -176,7 +176,6 @@ export default function SalesOrder({ data }) {
   const scannerRef   = useRef(null)
   const barcodeRef   = useRef(null)
   const saleItemsRef = useRef([])
-  const readerRef    = useRef(null)
 
   // 頁面載入後 focus 條碼輸入框
   useEffect(() => { barcodeRef.current?.focus() }, [])
@@ -189,37 +188,26 @@ export default function SalesOrder({ data }) {
   // 保持 ref 與最新 saleItems 同步，讓 scanner callback 能讀到最新值
   useEffect(() => { saleItemsRef.current = saleItems }, [saleItems])
 
-  // 相機掃碼：用 readerRef 確保 DOM 元素已存在再啟動
+  // 相機掃碼：reader div 常駐 DOM，用 CSS 控制顯示
   useEffect(() => {
     if (!isScanning) {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {}).finally(() => {
-          scannerRef.current?.clear()
-          scannerRef.current = null
-        })
+      const s = scannerRef.current
+      if (s) {
+        scannerRef.current = null
+        s.stop().catch(() => {}).finally(() => { try { s.clear() } catch {} })
       }
       return
     }
-    // 等 DOM 渲染完成再啟動
-    const timer = setTimeout(() => {
-      if (!readerRef.current) return
-      const scanner = new Html5Qrcode(readerRef.current.id)
-      scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (text) => { handleBarcodeMatch(text, saleItemsRef.current) },
-        () => {}
-      ).catch(() => {})
-      scannerRef.current = scanner
-    }, 100)
+    const s = new Html5Qrcode('so-reader')
+    s.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      (text) => { handleBarcodeMatch(text, saleItemsRef.current) },
+      () => {}
+    ).then(() => { scannerRef.current = s }).catch(() => {})
     return () => {
-      clearTimeout(timer)
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {}).finally(() => {
-          scannerRef.current?.clear()
-          scannerRef.current = null
-        })
-      }
+      scannerRef.current = null
+      s.stop().catch(() => {}).finally(() => { try { s.clear() } catch {} })
     }
   }, [isScanning]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -383,9 +371,11 @@ export default function SalesOrder({ data }) {
             {isScanning ? '關閉相機' : '開啟相機掃碼'}
           </button>
 
-          {isScanning && (
-            <div id="so-reader" ref={readerRef} className="w-full rounded-2xl overflow-hidden" />
-          )}
+          <div
+            id="so-reader"
+            className="w-full rounded-2xl overflow-hidden"
+            style={{ display: isScanning ? 'block' : 'none' }}
+          />
 
           {scanMsg && (
             <div className={`flex items-center justify-center py-3 rounded-xl text-sm font-semibold ${

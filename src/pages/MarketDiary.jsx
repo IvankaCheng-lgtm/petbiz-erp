@@ -186,7 +186,6 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   const scannerRef   = useRef(null)
   const barcodeRef   = useRef(null)
   const inventoryRef = useRef(inventory)
-  const readerRef    = useRef(null)
 
   // 保持 ref 與最新 inventory 同步
   useEffect(() => { inventoryRef.current = inventory }, [inventory])
@@ -196,46 +195,36 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 
   useEffect(() => {
     if (!isScanning) {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {}).finally(() => {
-          scannerRef.current?.clear()
-          scannerRef.current = null
-        })
+      const s = scannerRef.current
+      if (s) {
+        scannerRef.current = null
+        s.stop().catch(() => {}).finally(() => { try { s.clear() } catch {} })
       }
       return
     }
-    const timer = setTimeout(() => {
-      if (!readerRef.current) return
-      const scanner = new Html5Qrcode(readerRef.current.id)
-      scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          const matched = inventoryRef.current.find(
-            i => i.barcode && i.barcode === decodedText &&
-                 (i.category === 'A用品' || i.category === 'B食品')
-          )
-          if (matched) {
-            beep()
-            addToCart(matched)
-            setScanMsg(`✅ 已加入：${matched.itemName}`)
-          } else {
-            setScanMsg('⚠️ 查無此商品')
-          }
-          setTimeout(() => setScanMsg(''), 2500)
-        },
-        () => {}
-      ).catch(() => {})
-      scannerRef.current = scanner
-    }, 100)
+    const s = new Html5Qrcode('reader')
+    s.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      (decodedText) => {
+        const matched = inventoryRef.current.find(
+          i => i.barcode && i.barcode === decodedText &&
+               (i.category === 'A用品' || i.category === 'B食品')
+        )
+        if (matched) {
+          beep()
+          addToCart(matched)
+          setScanMsg(`✅ 已加入：${matched.itemName}`)
+        } else {
+          setScanMsg('⚠️ 查無此商品')
+        }
+        setTimeout(() => setScanMsg(''), 2500)
+      },
+      () => {}
+    ).then(() => { scannerRef.current = s }).catch(() => {})
     return () => {
-      clearTimeout(timer)
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {}).finally(() => {
-          scannerRef.current?.clear()
-          scannerRef.current = null
-        })
-      }
+      scannerRef.current = null
+      s.stop().catch(() => {}).finally(() => { try { s.clear() } catch {} })
     }
   }, [isScanning]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -339,14 +328,11 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
             {isScanning ? '關閉相機' : '開啟相機掃碼'}
           </button>
 
-          {isScanning && (
-            <div
-              id="reader"
-              ref={readerRef}
-              className="w-full rounded-2xl overflow-hidden"
-              style={{ maxWidth: '100%' }}
-            />
-          )}
+          <div
+            id="reader"
+            className="w-full rounded-2xl overflow-hidden"
+            style={{ display: isScanning ? 'block' : 'none', maxWidth: '100%' }}
+          />
 
           {scanMsg && (
             <div className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold ${
