@@ -9,10 +9,14 @@ import { fmt, CATEGORY_COLORS, CHANNEL_COLORS } from '../utils/format'
 const PIE_COLORS = ['#FFB84D', '#10B981', '#8B5CF6', '#3B82F6']
 
 export default function Performance({ data }) {
-  const { revenues, expenses } = data
+  const { revenues, expenses, orders = [] } = data
+
+  // 電商平台名稱（對應到「電商」通路）
+  const EC_PLATFORMS = ['萌獸官網', 'PChome', 'Yahoo', '跑皮']
 
   const categoryData = useMemo(() => {
     const cats = ['食品', '烘焙', '蛋糕', '用品']
+    // 包含手動新增的營收 + 訂單產生的營收
     return cats.map(cat => ({
       name: cat,
       value: revenues.filter(r => r.category === cat).reduce((s, r) => s + r.amount, 0),
@@ -20,18 +24,30 @@ export default function Performance({ data }) {
   }, [revenues])
 
   const channelData = useMemo(() => {
-    const channels = ['電商', '市集']
     const totalCogs = expenses.filter(e => e.type === '進貨').reduce((s, e) => s + e.amount, 0)
-    const totalRev = revenues.reduce((s, r) => s + r.amount, 0)
+    const totalRev  = revenues.reduce((s, r) => s + r.amount, 0)
     const cogsRatio = totalRev > 0 ? totalCogs / totalRev : 0
 
-    return channels.map(ch => {
-      const rev = revenues.filter(r => r.channel === ch).reduce((s, r) => s + r.amount, 0)
-      const boothCost = ch === '市集' ? expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0) : 0
-      const estimatedCogs = rev * cogsRatio
-      const grossProfit = rev - estimatedCogs - boothCost
-      return { name: ch, 營收: rev, 毛利: Math.round(grossProfit), 毛利率: rev > 0 ? +(grossProfit / rev * 100).toFixed(1) : 0 }
-    })
+    // 電商：包含 channel==='電商' 的手動營收 + 各平台訂單營收
+    const ecRevManual = revenues
+      .filter(r => r.channel === '電商')
+      .reduce((s, r) => s + r.amount, 0)
+    const ecRevOrders = revenues
+      .filter(r => EC_PLATFORMS.includes(r.channel))
+      .reduce((s, r) => s + r.amount, 0)
+    const ecRev = ecRevManual + ecRevOrders
+
+    // 市集：channel==='市集'
+    const mktRev = revenues
+      .filter(r => r.channel === '市集')
+      .reduce((s, r) => s + r.amount, 0)
+
+    const boothCost = expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
+
+    return [
+      { name: '電商', 營收: ecRev,  毛利: Math.round(ecRev  - ecRev  * cogsRatio),           毛利率: ecRev  > 0 ? +((ecRev  - ecRev  * cogsRatio) / ecRev  * 100).toFixed(1) : 0 },
+      { name: '市集', 營收: mktRev, 毛利: Math.round(mktRev - mktRev * cogsRatio - boothCost), 毛利率: mktRev > 0 ? +((mktRev - mktRev * cogsRatio - boothCost) / mktRev * 100).toFixed(1) : 0 },
+    ]
   }, [revenues, expenses])
 
   const monthlyChannel = useMemo(() => {
@@ -40,10 +56,10 @@ export default function Performance({ data }) {
       const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
       const label = `${d.getMonth() + 1}月`
       const y = d.getFullYear(), m = d.getMonth() + 1
-      const filter = (ch) => revenues
-        .filter(r => { const rd = new Date(r.date); return rd.getFullYear() === y && rd.getMonth() + 1 === m && r.channel === ch })
-        .reduce((s, r) => s + r.amount, 0)
-      return { label, 電商: filter('電商'), 市集: filter('市集') }
+      const inMonth = (r) => { const rd = new Date(r.date); return rd.getFullYear() === y && rd.getMonth() + 1 === m }
+      const ec  = revenues.filter(r => inMonth(r) && (r.channel === '電商' || EC_PLATFORMS.includes(r.channel))).reduce((s, r) => s + r.amount, 0)
+      const mkt = revenues.filter(r => inMonth(r) && r.channel === '市集').reduce((s, r) => s + r.amount, 0)
+      return { label, 電商: ec, 市集: mkt }
     })
   }, [revenues])
 

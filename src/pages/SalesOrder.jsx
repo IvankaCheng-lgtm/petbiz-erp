@@ -171,6 +171,7 @@ export default function SalesOrder({ data }) {
   const [barcodeInput, setBarcodeInput] = useState('')
   const [done,         setDone]         = useState(false)
   const [platformCost, setPlatformCost] = useState(0)
+  const [costMode,     setCostMode]     = useState('pct') // 'pct' | 'amt'
   const [editOrder,    setEditOrder]    = useState(null)  // 正在編輯的訂單
   const [editForm,     setEditForm]     = useState({})   // 編輯表單暫存
 
@@ -296,12 +297,16 @@ export default function SalesOrder({ data }) {
     if (cart.length === 0) return
     const discountType  = discountPct ? 'pct' : discountAmt ? 'amt' : null
     const discountValue = discountPct ? parseFloat(discountPct) : discountAmt ? parseFloat(discountAmt) : null
-    await processOrder({ platform, items: cart, discountType, discountValue, totalAmount, platformCost: parseFloat(platformCost) || 0 })
+    const computedCost  = costMode === 'pct'
+      ? Math.round(totalAmount * (parseFloat(platformCost) || 0) / 100)
+      : parseFloat(platformCost) || 0
+    await processOrder({ platform, items: cart, discountType, discountValue, totalAmount, platformCost: computedCost })
     setDone(true)
     setCart([])
     setDiscountPct('')
     setDiscountAmt('')
     setPlatformCost(0)
+    setCostMode('pct')
     setTimeout(() => setDone(false), 3000)
   }
 
@@ -368,13 +373,42 @@ export default function SalesOrder({ data }) {
           </div>
           <div>
             <label className="text-xs text-gray-500 mb-1 block">成交手續費 / 廣告費（選填）</label>
-            <input
-              type="number" min="0" step="0.01"
-              placeholder="輸入此訂單相關成本..."
-              value={platformCost}
-              onChange={e => setPlatformCost(e.target.value)}
-              className="w-full sm:w-64 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-            />
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+                <button type="button"
+                  onClick={() => { setCostMode('pct'); setPlatformCost(0) }}
+                  className={`px-3 py-2 transition-colors ${
+                    costMode === 'pct' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}>
+                  %
+                </button>
+                <button type="button"
+                  onClick={() => { setCostMode('amt'); setPlatformCost(0) }}
+                  className={`px-3 py-2 transition-colors ${
+                    costMode === 'amt' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}>
+                  元
+                </button>
+              </div>
+              <div className="relative flex-1 sm:w-48 sm:flex-none">
+                <input
+                  type="number" min="0" step={costMode === 'pct' ? '0.1' : '1'}
+                  max={costMode === 'pct' ? '100' : undefined}
+                  placeholder={costMode === 'pct' ? '例：3.5（%）' : '輸入金額...'}
+                  value={platformCost}
+                  onChange={e => setPlatformCost(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 pr-10"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                  {costMode === 'pct' ? '%' : '元'}
+                </span>
+              </div>
+              {costMode === 'pct' && parseFloat(platformCost) > 0 && totalAmount > 0 && (
+                <span className="text-xs text-gray-500 shrink-0">
+                  ≈ {fmt(Math.round(totalAmount * parseFloat(platformCost) / 100))}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </SectionCard>
