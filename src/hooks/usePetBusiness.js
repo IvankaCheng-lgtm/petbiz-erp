@@ -417,14 +417,23 @@ export default function usePetBusiness() {
       change: -it.qty, reason: `銷售訂單（${platform}）`,
     }));
 
+    // 手續費自動記入支出
+    const costExp = cost > 0 ? {
+      id: uid(), date: today, type: '行銷',
+      note: `平台手續費：${platform}（訂單 ${order.id.slice(-4)}）`,
+      amount: cost, isProductionCost: false, isReported: false, orderId: order.id,
+    } : null;
+
     setOrders(prev => [...prev, order]);
     setRevenues(prev => [...prev, revenueItem]);
     setInventory(applyInv);
     setInventoryLogs(prev => [...prev, ...logs]);
+    if (costExp) setExpenses(prev => [...prev, costExp]);
     await cloudUpdate("orders",         list => [...list, order]);
     await cloudUpdate("revenues",       list => [...list, revenueItem]);
     await cloudUpdate("inventory",      applyInv);
     await cloudUpdate("inventoryLogs",  list => [...list, ...logs]);
+    if (costExp) await cloudUpdate("expenses", list => [...list, costExp]);
   }, [cloudUpdate]);
 
   // ── 市集活動 CRUD ─────────────────────────────────────────────

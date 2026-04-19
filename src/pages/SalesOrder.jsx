@@ -461,7 +461,7 @@ export default function SalesOrder({ data }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* 商品列表 */}
           <SectionCard title="商品列表（點擊加入）">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
               {saleItems.map(item => (
                 <button key={item.id} onClick={() => addToCart(item)}
                   disabled={item.currentQty <= 0}

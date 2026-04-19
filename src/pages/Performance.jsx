@@ -15,38 +15,55 @@ export default function Performance({ data }) {
   const EC_PLATFORMS = ['萌獸官網', 'PChome', 'Yahoo', '跑皮']
 
   const categoryData = useMemo(() => {
+    // 包含手動營收的傳統類別 + 訂單產生的「電商銷售」展開為商品分類
     const cats = ['食品', '烘焙', '蛋糕', '用品']
-    // 包含手動新增的營收 + 訂單產生的營收
-    return cats.map(cat => ({
+    const manualCats = cats.map(cat => ({
       name: cat,
       value: revenues.filter(r => r.category === cat).reduce((s, r) => s + r.amount, 0),
+    }))
+
+    // 將訂單產生的營收依商品 items 展開分類
+    const orderCatMap = {}
+    revenues
+      .filter(r => EC_PLATFORMS.includes(r.channel) && r.items)
+      .forEach(r => {
+        r.items.forEach(it => {
+          const cat = it.category === 'A用品' ? '用品' : '食品'
+          orderCatMap[cat] = (orderCatMap[cat] || 0) + it.qty * it.unitPrice
+        })
+      })
+
+    return cats.map((cat, i) => ({
+      name: cat,
+      value: (manualCats[i].value || 0) + (orderCatMap[cat] || 0),
     })).filter(d => d.value > 0)
   }, [revenues])
 
   const channelData = useMemo(() => {
     const totalCogs = expenses.filter(e => e.type === '進貨').reduce((s, e) => s + e.amount, 0)
-    const totalRev  = revenues.reduce((s, r) => s + r.amount, 0)
-    const cogsRatio = totalRev > 0 ? totalCogs / totalRev : 0
 
-    // 電商：包含 channel==='電商' 的手動營收 + 各平台訂單營收
-    const ecRevManual = revenues
-      .filter(r => r.channel === '電商')
+    // 電商營收：手動 + 訂單
+    const ecRev = revenues
+      .filter(r => r.channel === '電商' || EC_PLATFORMS.includes(r.channel))
       .reduce((s, r) => s + r.amount, 0)
-    const ecRevOrders = revenues
-      .filter(r => EC_PLATFORMS.includes(r.channel))
-      .reduce((s, r) => s + r.amount, 0)
-    const ecRev = ecRevManual + ecRevOrders
 
-    // 市集：channel==='市集'
+    // 市集營收
     const mktRev = revenues
       .filter(r => r.channel === '市集')
       .reduce((s, r) => s + r.amount, 0)
 
+    const totalRev = ecRev + mktRev
+    // 用實際營收總和計算 cogsRatio，避免分母為 0
+    const cogsRatio = totalRev > 0 ? totalCogs / totalRev : 0
+
     const boothCost = expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
 
+    const ecGross  = ecRev  - ecRev  * cogsRatio
+    const mktGross = mktRev - mktRev * cogsRatio - boothCost
+
     return [
-      { name: '電商', 營收: ecRev,  毛利: Math.round(ecRev  - ecRev  * cogsRatio),           毛利率: ecRev  > 0 ? +((ecRev  - ecRev  * cogsRatio) / ecRev  * 100).toFixed(1) : 0 },
-      { name: '市集', 營收: mktRev, 毛利: Math.round(mktRev - mktRev * cogsRatio - boothCost), 毛利率: mktRev > 0 ? +((mktRev - mktRev * cogsRatio - boothCost) / mktRev * 100).toFixed(1) : 0 },
+      { name: '電商', 營收: ecRev,  毛利: Math.round(ecGross),  毛利率: ecRev  > 0 ? +(ecGross  / ecRev  * 100).toFixed(1) : 0 },
+      { name: '市集', 營收: mktRev, 毛利: Math.round(mktGross), 毛利率: mktRev > 0 ? +(mktGross / mktRev * 100).toFixed(1) : 0 },
     ]
   }, [revenues, expenses])
 

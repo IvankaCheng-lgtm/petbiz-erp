@@ -131,15 +131,19 @@ export default function PnL({ data }) {
 
     const result = platforms.map(p => {
       const platformOrders = orders.filter(o => o.platform === p)
-      const rev         = platformOrders.reduce((s, o) => s + (o.total || 0), 0)
-      const itemCost    = rev * cogsRate
+      const rev          = platformOrders.reduce((s, o) => s + (o.total || 0), 0)
+      const itemCost     = rev * cogsRate
+      // 手續費：從訂單的 platformCost 加總（包含自動建立的支出和手動填寫）
       const platformFees = platformOrders.reduce((s, o) => s + (o.platformCost || 0), 0)
-      const adsCost     = adsByPlatform[p] || 0
-      const totalCost   = platformFees + adsCost
-      const netRev      = rev - itemCost
-      const roi         = totalCost > 0 ? netRev / totalCost : null
-      return { platform: p, rev, itemCost, platformFees, adsCost, totalCost, netRev, roi }
-    }).sort((a, b) => (b.roi ?? -1) - (a.roi ?? -1))
+      const adsCost      = adsByPlatform[p] || 0
+      const totalCost    = platformFees + adsCost
+      // 實際獲利 = 營收 - 商品成本 - 手續費 - 廣告費
+      const netProfit    = rev - itemCost - totalCost
+      // ROI 僅在有實際成本時才計算
+      const roi          = totalCost > 0 ? (rev - itemCost) / totalCost : null
+      return { platform: p, rev, itemCost, platformFees, adsCost, totalCost, netProfit, roi }
+    // 改用實際獲利金額排序，而非 ROI
+    }).sort((a, b) => b.netProfit - a.netProfit)
 
     return result
   }, [orders, expenses, pnl.cogs, pnl.totalRev])
@@ -403,17 +407,17 @@ export default function PnL({ data }) {
           ) : (
             <>
               <div className="bg-emerald-50 rounded-xl px-3 py-2.5">
-                <p className="text-xs text-gray-400">表現最佳平台</p>
+                <p className="text-xs text-gray-400">表現最佳平台（依獲利金額）</p>
                 <p className="text-lg font-black text-emerald-600">{platformROI[0].platform}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  ROI：{platformROI[0].roi !== null ? `${platformROI[0].roi.toFixed(1)}x` : '無成本資料'}
-                  　實際獲利：{fmt(Math.round(platformROI[0].netRev))}
+                  獲利：{fmt(Math.round(platformROI[0].netProfit))}
+                  {platformROI[0].roi !== null && <>　ROI：{platformROI[0].roi.toFixed(1)}x</>}
                 </p>
               </div>
               <p className="text-xs text-gray-500 leading-relaxed">
-                💡 {platformROI[0].platform} ROI 最高，建議增加該平台投放。
-                {platformROI.length > 1 && platformROI[platformROI.length - 1].roi !== null && (
-                  <> {platformROI[platformROI.length - 1].platform} ROI 較低，可考慮減少投放。</>
+                💡 {platformROI[0].platform} 獲利最高，建議增加該平台投放。
+                {platformROI.length > 1 && (
+                  <> {platformROI[platformROI.length - 1].platform} 獲利較低，可考慮減少投放。</>
                 )}
               </p>
               <div className="space-y-2">
@@ -422,15 +426,14 @@ export default function PnL({ data }) {
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-gray-700">{p.platform}</span>
                       <span className={`font-bold ${
-                        p.roi === null ? 'text-gray-400' :
-                        p.roi >= 3 ? 'text-emerald-600' : p.roi >= 1 ? 'text-orange-500' : 'text-red-500'
+                        p.netProfit > 0 ? 'text-emerald-600' : 'text-red-500'
                       }`}>
-                        {p.roi !== null ? `ROI ${p.roi.toFixed(1)}x` : '—'}
+                        獲利 {fmt(Math.round(p.netProfit))}
                       </span>
                     </div>
                     <div className="flex justify-between text-gray-400 mt-0.5">
                       <span>營收 {fmt(p.rev)} / 手續費 {fmt(p.platformFees)}</span>
-                      <span>獲利 {fmt(Math.round(p.netRev))}</span>
+                      <span>{p.roi !== null ? `ROI ${p.roi.toFixed(1)}x` : 'ROI 無資料'}</span>
                     </div>
                   </div>
                 ))}
