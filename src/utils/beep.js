@@ -1,4 +1,4 @@
-import { beep } from "../utils/beep"; /**
+/**
  * 播放一個短促的嗶聲（掃碼成功提示）
  * 使用 Web Audio API 合成，無需音效檔
  * @param {number} freq  頻率 Hz，預設 880（高亮清脆）
