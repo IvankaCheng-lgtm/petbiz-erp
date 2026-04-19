@@ -1,36 +1,48 @@
 import { useState, useMemo } from 'react'
-import { Plus, Trash2, ShoppingCart, X, CheckCircle, Calendar, BarChart2, Store } from 'lucide-react'
+import { Plus, Trash2, ShoppingCart, X, Calendar, BarChart2, Store, Sparkles, Loader2, TrendingUp } from 'lucide-react'
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt } from '../utils/format'
+import { askGemini } from '../services/geminiService'
 
 const STATUS_COLOR = { '已報名': 'green', '待報名': 'orange', '已結束': 'gray' }
 const today = () => new Date().toISOString().slice(0, 10)
 
 // ── 行事曆分頁 ────────────────────────────────────────────────
-function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMarketEvent }) {
+function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMarketEvent, addExpense }) {
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '' })
+  const [form, setForm] = useState({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', addToExpense: false })
   const [editId, setEditId] = useState(null)
 
   const sorted = useMemo(() => [...marketEvents].sort((a, b) => b.startDate.localeCompare(a.startDate)), [marketEvents])
 
   function openAdd() {
-    setForm({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '' })
+    setForm({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', addToExpense: false })
     setEditId(null)
     setModal(true)
   }
 
   function openEdit(ev) {
-    setForm({ name: ev.name, startDate: ev.startDate, endDate: ev.endDate, status: ev.status, boothFee: ev.boothFee ?? '' })
+    setForm({ name: ev.name, startDate: ev.startDate, endDate: ev.endDate, status: ev.status, boothFee: ev.boothFee ?? '', addToExpense: false })
     setEditId(ev.id)
     setModal(true)
   }
 
   function handleSubmit(e) {
     e.preventDefault()
-    const data = { ...form, boothFee: parseFloat(form.boothFee) || 0 }
+    const fee = parseFloat(form.boothFee) || 0
+    const data = { name: form.name, startDate: form.startDate, endDate: form.endDate, status: form.status, boothFee: fee }
     if (editId) updateMarketEvent(editId, data)
     else addMarketEvent(data)
+    if (form.addToExpense && fee > 0) {
+      addExpense({
+        date: form.startDate,
+        type: '攤位',
+        note: `市集費用：${form.name}`,
+        amount: fee,
+        isProductionCost: false,
+      })
+    }
     setModal(false)
   }
 
@@ -139,6 +151,14 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
               <input type="number" min="0" className={inputCls} placeholder="0" value={form.boothFee}
                 onChange={e => setForm(p => ({ ...p, boothFee: e.target.value }))} />
             </FormRow>
+            {!editId && parseFloat(form.boothFee) > 0 && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" checked={form.addToExpense}
+                  onChange={e => setForm(p => ({ ...p, addToExpense: e.target.checked }))}
+                  className="accent-orange-500 w-4 h-4" />
+                同時計入支出費用
+              </label>
+            )}
             <div className="flex gap-2 pt-1">
               <button type="submit" className={btnPrimary + ' flex-1'}>{editId ? '儲存' : '新增'}</button>
               <button type="button" onClick={() => setModal(false)} className={btnSecondary}>取消</button>
@@ -178,7 +198,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
         next[idx] = { ...next[idx], qty: next[idx].qty + 1 }
         return next
       }
-      return [...prev, { itemId: item.id, itemName: item.itemName, qty: 1, unitPrice: item.salePrice || item.listPrice || 0 }]
+      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0 }]
     })
   }
 
@@ -405,16 +425,202 @@ function StatsTab({ marketEvents, revenues, expenses }) {
   )
 }
 
+// ── 數據分析分頁 ──────────────────────────────────────────────
+const PIE_COLORS = ['#10B981','#F59E0B','#3B82F6','#8B5CF6','#EF4444','#EC4899','#14B8A6','#F97316']
+
+function AnalysisTab({ marketEvents, revenues }) {
+  const [aiText,    setAiText]    = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError,   setAiError]   = useState('')
+
+  // 每個市集的統計資料
+  const stats = useMemo(() => {
+    return marketEvents.map(ev => {
+      const evRevs = revenues.filter(r =>
+        r.eventId === ev.id ||
+        (r.channel === '市集' && r.date >= ev.startDate && r.date <= ev.endDate)
+      )
+      const totalRev  = evRevs.reduce((s, r) => s + r.amount, 0)
+      const boothFee  = ev.boothFee ?? 0
+      const netProfit = totalRev - boothFee
+      const days      = Math.max(1, Math.ceil((new Date(ev.endDate) - new Date(ev.startDate)) / 86400000) + 1)
+      const avgDaily  = totalRev / days
+      const roi       = boothFee > 0 ? ((netProfit / boothFee) * 100) : null
+      return { id: ev.id, name: ev.name, totalRev, boothFee, netProfit, avgDaily, roi, days }
+    }).filter(s => s.totalRev > 0 || s.boothFee > 0)
+  }, [marketEvents, revenues])
+
+  // 圓餅圖資料：各市集累計營收佔比
+  const pieData = useMemo(() => {
+    const total = stats.reduce((s, e) => s + e.totalRev, 0)
+    return stats
+      .filter(e => e.totalRev > 0)
+      .map(e => ({ name: e.name, value: e.totalRev, pct: total > 0 ? (e.totalRev / total * 100).toFixed(1) : 0 }))
+  }, [stats])
+
+  // 長條圖資料：各場次營收 vs 攤位費
+  const barData = useMemo(() =>
+    stats.map(e => ({ name: e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name, 營收: e.totalRev, 攤位費: e.boothFee, 純利: e.netProfit }))
+  , [stats])
+
+  async function handleAI() {
+    if (stats.length === 0) return
+    setAiLoading(true)
+    setAiError('')
+    setAiText('')
+
+    const context = stats.map(e => {
+      const roiStr = e.roi !== null ? `${e.roi.toFixed(1)}%` : '無攤位費'
+      return `「${e.name}」：累計營收 ${fmt(e.totalRev)}、攤位費 ${fmt(e.boothFee)}、純利 ${fmt(e.netProfit)}、平均日營 ${fmt(Math.round(e.avgDaily))}、ROI ${roiStr}`
+    }).join('\n')
+
+    const prompt = `以下是「萌獸探險隊」寵物食品品牌各市集場地的出攞數據：
+${context}
+
+請根據以上數據，給出一份 200 字內的繁體中文出攞建議，指出表現最佳與最差的場地，並說明原因（例如：攤位費過高、客單價低、ROI 低等）。`
+
+    try {
+      const result = await askGemini(prompt)
+      setAiText(result)
+    } catch {
+      setAiError('AI 分析失敗，請稍後再試。')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  if (stats.length === 0) return (
+    <div className="space-y-5">
+      <h2 className="font-bold text-gray-800">數據分析</h2>
+      <div className="bg-gray-50 rounded-2xl p-12 text-center text-gray-400">
+        <TrendingUp size={40} className="mx-auto mb-3 opacity-20" />
+        <p>尚無市集營收資料，請先新增市集並進行現場記帳。</p>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-5">
+      <h2 className="font-bold text-gray-800">數據分析</h2>
+
+      {/* ROI 表格 */}
+      <SectionCard title="各市集績效概覽">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[520px]">
+            <thead>
+              <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
+                {['市集名稱','累計營收','攤位費','純利','平均日營','ROI'].map(h => (
+                  <th key={h} className="pb-3 text-left">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {stats.map(e => (
+                <tr key={e.id} className="hover:bg-gray-50">
+                  <td className="py-2.5 font-medium text-gray-800">{e.name}</td>
+                  <td className="py-2.5 text-emerald-600 font-semibold">{fmt(e.totalRev)}</td>
+                  <td className="py-2.5 text-orange-500">{fmt(e.boothFee)}</td>
+                  <td className={`py-2.5 font-semibold ${e.netProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(e.netProfit)}</td>
+                  <td className="py-2.5 text-gray-600">{fmt(Math.round(e.avgDaily))}</td>
+                  <td className="py-2.5">
+                    {e.roi !== null
+                      ? <span className={`font-bold ${e.roi >= 100 ? 'text-emerald-600' : e.roi >= 0 ? 'text-orange-500' : 'text-red-500'}`}>{e.roi.toFixed(1)}%</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* 圓餅圖 */}
+        <SectionCard title="營收佔比（圓餅圖）">
+          {pieData.length === 0
+            ? <p className="text-sm text-gray-400 text-center py-6">尚無營收資料</p>
+            : (
+              <>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={85} label={({ name, pct }) => `${name} ${pct}%`} labelLine={false}>
+                      {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={v => fmt(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex flex-wrap gap-2 mt-2 justify-center">
+                  {pieData.map((d, i) => (
+                    <div key={d.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      {d.name}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          }
+        </SectionCard>
+
+        {/* 長條圖 */}
+        <SectionCard title="營收 vs 攤位費（長條圖）">
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={barData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={v => `${(v/1000).toFixed(0)}k`} tick={{ fontSize: 11 }} width={36} />
+              <Tooltip formatter={v => fmt(v)} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="營收" fill="#10B981" radius={[4,4,0,0]} />
+              <Bar dataKey="攤位費" fill="#F59E0B" radius={[4,4,0,0]} />
+              <Bar dataKey="純利" fill="#3B82F6" radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </SectionCard>
+      </div>
+
+      {/* AI 分析 */}
+      <SectionCard title="🤖 AI 出攞建議">
+        <div className="space-y-3">
+          {!aiText && !aiLoading && (
+            <p className="text-sm text-gray-400">點擊下方按鈕，AI 將根據各市集的 ROI、平均日營與攤位費進行分析。</p>
+          )}
+          {aiLoading && (
+            <div className="flex items-center gap-2 text-emerald-500">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm">AI 正在分析市集數據...</span>
+            </div>
+          )}
+          {aiError && <p className="text-sm text-red-500">{aiError}</p>}
+          {aiText && (
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+              {aiText}
+            </div>
+          )}
+          <button onClick={handleAI} disabled={aiLoading}
+            className="flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            style={{ backgroundColor: '#722927' }}>
+            <Sparkles size={15} />
+            {aiLoading ? '分析中...' : '產生 AI 出攞建議'}
+          </button>
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+
 // ── 主頁面 ────────────────────────────────────────────────────
 const TABS = [
-  { key: 'calendar', label: '行事曆', icon: <Calendar size={16} /> },
+  { key: 'calendar', label: '行事曆',   icon: <Calendar size={16} /> },
   { key: 'pos',      label: '現場記帳', icon: <ShoppingCart size={16} /> },
   { key: 'stats',    label: '結算統計', icon: <BarChart2 size={16} /> },
+  { key: 'analysis', label: '數據分析', icon: <TrendingUp size={16} /> },
 ]
 
 export default function MarketDiary({ data }) {
   const { marketEvents, inventory, revenues, expenses,
-          addMarketEvent, updateMarketEvent, deleteMarketEvent, processMarketSale } = data
+          addMarketEvent, updateMarketEvent, deleteMarketEvent,
+          processMarketSale, addExpense } = data
   const [tab, setTab] = useState('calendar')
 
   return (
@@ -447,6 +653,7 @@ export default function MarketDiary({ data }) {
           addMarketEvent={addMarketEvent}
           updateMarketEvent={updateMarketEvent}
           deleteMarketEvent={deleteMarketEvent}
+          addExpense={addExpense}
         />
       )}
       {tab === 'pos' && (
@@ -461,6 +668,12 @@ export default function MarketDiary({ data }) {
           marketEvents={marketEvents}
           revenues={revenues}
           expenses={expenses}
+        />
+      )}
+      {tab === 'analysis' && (
+        <AnalysisTab
+          marketEvents={marketEvents}
+          revenues={revenues}
         />
       )}
     </div>

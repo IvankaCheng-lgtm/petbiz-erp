@@ -245,11 +245,15 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   // ── 市集現場收款 ──────────────────────────────────────────────
-  // items: [{ itemId, itemName, qty, unitPrice }]
+  // items: [{ itemId, itemName, qty, unitPrice, category }]
   const processMarketSale = useCallback(async ({ items, paymentMethod, totalAmount, eventId }) => {
     const today = new Date().toISOString().slice(0, 10);
+    // 依商品實際 category 映射到 revenue category
+    const catMap = { 'A用品': '用品', 'B食品': '食品' };
+    const cats = [...new Set(items.map(i => catMap[i.category] ?? '食品'))];
+    const category = cats.length === 1 ? cats[0] : '食品'; // 混合則預設食品
     const revenueItem = {
-      id: uid(), date: today, channel: "市集", category: "食品",
+      id: uid(), date: today, channel: "市集", category,
       amount: totalAmount, isReported: false, paymentMethod, eventId,
     };
     setRevenues(prev => [...prev, revenueItem]);
