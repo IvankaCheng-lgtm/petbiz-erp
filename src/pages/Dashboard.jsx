@@ -3,7 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { Store } from 'lucide-react'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Sparkles, AlertTriangle, Bell } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Sparkles, AlertTriangle, Bell, ClipboardList } from 'lucide-react'
 import { KpiCard, SectionCard, btnPrimary } from '../components/ui'
 import { fmt, buildMonthlyTrend } from '../utils/format'
 import { getAccountingReminders } from '../utils/accounting'
@@ -21,7 +21,7 @@ const REMINDER_STYLE = {
 }
 
 export default function Dashboard({ data }) {
-  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [] } = data
+  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [] } = data
   const [filter, setFilter] = useState('月')
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -31,6 +31,17 @@ export default function Dashboard({ data }) {
   const unreportedRev = useMemo(() => revenues.filter(r => !r.isReported).length, [revenues])
   const unreportedExp = useMemo(() => expenses.filter(e => !e.isReported).length, [expenses])
   const totalUnreported = unreportedRev + unreportedExp
+
+  // 今日銷售訂單統計
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayOrders = useMemo(
+    () => orders.filter(o => o.orderDate === todayStr),
+    [orders, todayStr]
+  )
+  const todayOrderRevenue = useMemo(
+    () => todayOrders.reduce((s, o) => s + o.total, 0),
+    [todayOrders]
+  )
 
   const trend = useMemo(() => buildMonthlyTrend(revenues, expenses), [revenues, expenses])
 
@@ -123,6 +134,18 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
         <KpiCard title="利潤率"  value={`${kpi.profitRate.toFixed(1)}%`} icon={<TrendingUp size={20} />}
           color={kpi.profitRate >= 25 ? 'green' : kpi.profitRate >= 15 ? 'orange' : 'red'} />
       </div>
+
+      {/* 今日銷售訂單小計 */}
+      {todayOrders.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ClipboardList size={18} className="text-blue-500 shrink-0" />
+            <span className="text-sm font-semibold text-blue-800">今日銷售訂單</span>
+            <span className="bg-blue-100 text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full">{todayOrders.length} 筆</span>
+          </div>
+          <span className="text-lg font-black text-blue-700">{fmt(todayOrderRevenue)}</span>
+        </div>
+      )}
 
       {/* 未來 7 天市集提醒 */}
       {upcomingEvents.length > 0 && (

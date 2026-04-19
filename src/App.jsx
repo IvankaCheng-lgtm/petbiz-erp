@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Menu, X, LogOut } from 'lucide-react'
+import { Menu, X, LogOut, ClipboardList } from 'lucide-react'
 import usePetBusiness from './hooks/usePetBusiness'
 import useAuth from './hooks/useAuth'
 import Login from './pages/Login'
@@ -12,6 +12,7 @@ import Performance from './pages/Performance'
 import Settings    from './pages/Settings'
 import Nutrition   from './pages/Nutrition'
 import MarketDiary from './pages/MarketDiary'
+import SalesOrder  from './pages/SalesOrder'
 import { getAccountingReminders } from './utils/accounting'
 import logoImg from './assets/LOGO.png'
 
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { key: 'pnl',         label: '盈虧損益表', icon: '📑' },
   { key: 'performance', label: '通路表現',   icon: '🏆' },
   { key: 'nutrition',    label: '營養計算室', icon: '🧪' },
+  { key: 'salesorder',  label: '銷售訂單',   icon: <ClipboardList size={18} /> },
   { key: 'marketdiary',  label: '市集日記',   icon: '🏪' },
   { key: 'settings',    label: '系統設置',   icon: '⚙️' },
 ]
@@ -51,6 +53,7 @@ export default function App() {
     pnl:         <PnL         data={bizData} />,
     performance: <Performance data={bizData} />,
     nutrition:    <Nutrition    data={bizData} />,
+    salesorder:   <SalesOrder   data={bizData} />,
     marketdiary:  <MarketDiary  data={bizData} />,
     settings:     <Settings     data={{ ...bizData, auth }} />,
   }

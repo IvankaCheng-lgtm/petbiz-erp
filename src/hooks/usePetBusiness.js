@@ -82,6 +82,7 @@ export default function usePetBusiness() {
   const [production,    setProduction]    = useState([]);
   const [savedFormulas, setSavedFormulas] = useState([]);
   const [marketEvents,  setMarketEvents]  = useState([]);
+  const [orders,        setOrders]        = useState([]);
   const [loading,       setLoading]       = useState(true);
 
   const cloudUpdate = useCallback(async (field, updater) => {
@@ -107,6 +108,7 @@ export default function usePetBusiness() {
           setProduction(d.production   ?? []);
           setSavedFormulas(d.savedFormulas ?? []);
           setMarketEvents(d.marketEvents   ?? []);
+          setOrders(d.orders               ?? []);
         } else {
           setDoc(ERP_DOC_REF, {
             revenues: SEED_REVENUES, expenses: SEED_EXPENSES,
@@ -297,6 +299,41 @@ export default function usePetBusiness() {
     cloudUpdate("savedFormulas", list => list.filter(f => f.id !== id));
   }, [cloudUpdate]);
 
+  // ── 銷售訂單 ──────────────────────────────────────────────────
+  const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount }) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+    const discount = subtotal - totalAmount;
+
+    const order = {
+      id: uid(), platform, items, subtotal, discount, total: totalAmount,
+      orderDate: today, status: "已完成",
+      discountType: discountType ?? null,
+      discountValue: discountValue ?? null,
+    };
+
+    const revenueItem = {
+      id: uid(), date: today, channel: platform, category: "電商銷售",
+      amount: totalAmount, isReported: false, orderId: order.id, items,
+    };
+
+    const applyInv = (list) => {
+      let next = [...list];
+      items.forEach(({ itemId, qty }) => {
+        const idx = next.findIndex(i => i.id === itemId);
+        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
+      });
+      return next;
+    };
+
+    setOrders(prev => [...prev, order]);
+    setRevenues(prev => [...prev, revenueItem]);
+    setInventory(applyInv);
+    await cloudUpdate("orders",    list => [...list, order]);
+    await cloudUpdate("revenues",  list => [...list, revenueItem]);
+    await cloudUpdate("inventory", applyInv);
+  }, [cloudUpdate]);
+
   // ── 市集活動 CRUD ─────────────────────────────────────────────
   const addMarketEvent = useCallback((data) => {
     const item = { id: uid(), ...data };
@@ -348,15 +385,15 @@ export default function usePetBusiness() {
   // ── 系統 ──────────────────────────────────────────────────────
   const clearAllData = useCallback(async () => {
     if (!window.confirm("確定要清空所有雲端帳務資料嗎？此動作無法復原。")) return;
-    const empty = { revenues: [], expenses: [], inventory: [], production: [], savedFormulas: [], marketEvents: [], isInitialized: true };
-    setRevenues([]); setExpenses([]); setInventory([]); setProduction([]); setSavedFormulas([]); setMarketEvents([]);
+    const empty = { revenues: [], expenses: [], inventory: [], production: [], savedFormulas: [], marketEvents: [], orders: [], isInitialized: true };
+    setRevenues([]); setExpenses([]); setInventory([]); setProduction([]); setSavedFormulas([]); setMarketEvents([]); setOrders([]);
     await setDoc(ERP_DOC_REF, empty);
     alert("雲端資料已全數清空");
   }, []);
 
   const exportData = useCallback(() => {
     const blob = new Blob(
-      [JSON.stringify({ revenues, expenses, inventory, production, savedFormulas, marketEvents }, null, 2)],
+      [JSON.stringify({ revenues, expenses, inventory, production, savedFormulas, marketEvents, orders }, null, 2)],
       { type: "application/json" }
     );
     const url = URL.createObjectURL(blob);
@@ -377,11 +414,13 @@ export default function usePetBusiness() {
         production:    d.production    ?? [],
         savedFormulas: d.savedFormulas ?? [],
         marketEvents:  d.marketEvents  ?? [],
+        orders:        d.orders        ?? [],
         isInitialized: true,
       };
       setRevenues(data.revenues); setExpenses(data.expenses);
       setInventory(data.inventory); setProduction(data.production);
       setSavedFormulas(data.savedFormulas); setMarketEvents(data.marketEvents);
+      setOrders(data.orders);
       await setDoc(ERP_DOC_REF, data);
       return true;
     } catch (err) {
@@ -391,7 +430,7 @@ export default function usePetBusiness() {
   }, []);
 
   return {
-    revenues, expenses, inventory, production, savedFormulas, marketEvents, loading,
+    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, loading,
     kpi, inventoryAlerts, upcomingEvents,
     addRevenue, deleteRevenue, toggleRevenueReported,
     addExpense, deleteExpense, toggleExpenseReported,
@@ -400,7 +439,7 @@ export default function usePetBusiness() {
     addProductionBatch, deleteProduction,
     saveFormula, deleteFormula,
     addMarketEvent, updateMarketEvent, deleteMarketEvent,
-    processMarketSale,
+    processMarketSale, processOrder,
     clearAllData, exportData, importData,
   };
 }

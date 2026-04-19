@@ -5,6 +5,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt } from '../utils/format'
 import { askGemini } from '../services/geminiService'
+import { beep } from '../utils/beep'
 
 const STATUS_COLOR = { '已報名': 'green', '待報名': 'orange', '已結束': 'gray' }
 const today = () => new Date().toISOString().slice(0, 10)
@@ -210,8 +211,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
                (i.category === 'A用品' || i.category === 'B食品')
         )
         if (matched) {
-          // 提示音（選填，瀏覽器允許時才播）
-          try { new AudioContext().createOscillator().start(0) } catch {}
+          beep()
           addToCart(matched)
           setScanMsg(`✅ 已加入：${matched.itemName}`)
         } else {
@@ -260,6 +260,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
            (i.category === 'A用品' || i.category === 'B食品')
     )
     if (matched) {
+      beep()
       addToCart(matched)
       setScanMsg(`✅ 已加入：${matched.itemName}`)
     } else {
@@ -421,7 +422,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
                 <p className="text-xs font-medium text-orange-600">折扣（選填）</p>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">打折 %（例：85 = 八五折）</label>
+                    <label className="text-xs text-gray-400 mb-1 block">打折 %（例：15 = 八五折）</label>
                     <input type="number" min="0" max="99" placeholder="不打折請留空"
                       className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
                       value={discountPct}

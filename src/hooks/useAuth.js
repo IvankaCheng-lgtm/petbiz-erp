@@ -3,7 +3,13 @@ import { useState, useCallback } from 'react'
 const LS_KEY = 'petbiz_users'
 
 const DEFAULT_USERS = [
-  { id: '1', username: 'wandi123', password: 'wandi', role: 'admin', createdAt: '2025-01-01' },
+  {
+    id: '1',
+    username: import.meta.env.VITE_DEFAULT_USERNAME ?? 'admin',
+    password: import.meta.env.VITE_DEFAULT_PASSWORD ?? '',
+    role: 'admin',
+    createdAt: '2025-01-01',
+  },
 ]
 
 function loadUsers() {
