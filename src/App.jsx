@@ -10,7 +10,7 @@ import Production  from './pages/Production'
 import PnL         from './pages/PnL'
 import Performance from './pages/Performance'
 import Settings    from './pages/Settings'
-import Nutrition   from './pages/Nutrition'
+import MarketDiary from './pages/MarketDiary'
 import { getAccountingReminders } from './utils/accounting'
 import logoImg from './assets/LOGO.png'
 
@@ -21,8 +21,9 @@ const NAV_ITEMS = [
   { key: 'production',  label: '電費與生產', icon: '⚡' },
   { key: 'pnl',         label: '盈虧損益表', icon: '📑' },
   { key: 'performance', label: '通路表現',   icon: '🏆' },
-  { key: 'nutrition',   label: '營養計算室', icon: '🧪' },
-  { key: 'settings',   label: '系統設置',   icon: '⚙️' },
+  { key: 'nutrition',    label: '營養計算室', icon: '🧪' },
+  { key: 'marketdiary',  label: '市集日記',   icon: '🏪' },
+  { key: 'settings',    label: '系統設置',   icon: '⚙️' },
 ]
 
 export default function App() {
@@ -48,8 +49,9 @@ export default function App() {
     production:  <Production  data={bizData} />,
     pnl:         <PnL         data={bizData} />,
     performance: <Performance data={bizData} />,
-    nutrition:   <Nutrition   data={bizData} />,
-    settings:    <Settings    data={{ ...bizData, auth }} />,
+    nutrition:    <Nutrition    data={bizData} />,
+    marketdiary:  <MarketDiary  data={bizData} />,
+    settings:     <Settings     data={{ ...bizData, auth }} />,
   }
 
   // 未登入則顯示登入頁（必須在所有 hooks 之後）

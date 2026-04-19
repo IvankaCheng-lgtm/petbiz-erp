@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
+import { Store } from 'lucide-react'
 import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Sparkles, AlertTriangle, Bell } from 'lucide-react'
 import { KpiCard, SectionCard, btnPrimary } from '../components/ui'
 import { fmt, buildMonthlyTrend } from '../utils/format'
@@ -19,7 +20,7 @@ const REMINDER_STYLE = {
 }
 
 export default function Dashboard({ data }) {
-  const { kpi, inventoryAlerts, revenues, expenses } = data
+  const { kpi, inventoryAlerts, revenues, expenses, upcomingEvents = [] } = data
   const [filter, setFilter] = useState('月')
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -121,6 +122,38 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
         <KpiCard title="利潤率"  value={`${kpi.profitRate.toFixed(1)}%`} icon={<TrendingUp size={20} />}
           color={kpi.profitRate >= 25 ? 'green' : kpi.profitRate >= 15 ? 'orange' : 'red'} />
       </div>
+
+      {/* 未來 7 天市集提醒 */}
+      {upcomingEvents.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="bg-emerald-500 rounded-xl p-2 text-white">
+              <Store size={16} />
+            </div>
+            <h2 className="font-bold text-emerald-800">即將出攤提醒</h2>
+            <span className="ml-auto bg-emerald-100 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-full">
+              {upcomingEvents.length} 場
+            </span>
+          </div>
+          <div className="space-y-2">
+            {upcomingEvents.map(ev => {
+              const daysLeft = Math.ceil((new Date(ev.startDate) - new Date()) / (1000 * 60 * 60 * 24))
+              return (
+                <div key={ev.id} className="bg-white border border-emerald-100 rounded-xl px-4 py-2.5 flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-semibold text-gray-800">{ev.name}</span>
+                    <span className="text-xs text-gray-400 ml-2">{ev.startDate}</span>
+                  </div>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full
+                    ${daysLeft <= 1 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {daysLeft === 0 ? '今天！' : `${daysLeft} 天後`}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 會計待辦卡片 */}
       {(reminders.length > 0 || totalUnreported > 0) && (
