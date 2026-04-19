@@ -409,6 +409,9 @@ export default function Procurement({ data }) {
     const date = new Date().toISOString().slice(0, 10)
     XLSX.writeFile(wb, `庫存盤點表_${date}.xlsx`)
   }
+
+  // 下載範本 Excel
+  function downloadTemplate() {
     const headers = [[
       '分類(A用品/B食品/C食材/D包材)', '品項名稱', '現有數量', '安全水位', '單位',
       '供應商', '條碼', '定價', '售價', '成本', '單價'
