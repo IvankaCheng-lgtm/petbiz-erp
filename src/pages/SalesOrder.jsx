@@ -201,7 +201,7 @@ export default function SalesOrder({ data }) {
     const s = new Html5Qrcode('so-reader')
     s.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
+      { fps: 10, qrbox: { width: 250, height: 250 }, formatsToSupport: [0, 4] },
       (text) => {
         const matched = saleItemsRef.current.find(i => i.barcode && i.barcode === text)
         if (matched) {

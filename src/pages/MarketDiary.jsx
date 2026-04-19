@@ -205,7 +205,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
     const s = new Html5Qrcode('reader')
     s.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
+      { fps: 10, qrbox: { width: 250, height: 250 }, formatsToSupport: [0, 4] },
       (decodedText) => {
         const matched = inventoryRef.current.find(
           i => i.barcode && i.barcode === decodedText &&
