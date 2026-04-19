@@ -278,7 +278,7 @@ const emptyRow = () => ({
 })
 
 export default function Procurement({ data }) {
-  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [] } = data
+  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory } = data
 
   const [activeTab,  setActiveTab]  = useState('A用品')
   const [modal,      setModal]      = useState(null)
@@ -289,7 +289,7 @@ export default function Procurement({ data }) {
   const [addCategory, setAddCategory] = useState('A用品')
   const [rows, setRows] = useState([emptyRow()])
   const [editForm, setEditForm] = useState({})
-
+  const [adjustForm, setAdjustForm] = useState({ change: '', reason: '' })
   // A/B：定價/售價/成本；C/D：單價/總價
   const isAB = activeTab === 'A用品' || activeTab === 'B食品'
   const isCD = activeTab === 'C食材' || activeTab === 'D包材'
@@ -364,6 +364,20 @@ export default function Procurement({ data }) {
   function openPurchase(item) {
     setPurchaseForm({ date: today(), itemId: item.id, itemName: item.itemName, category: item.category, qty: '', unitPrice: '', note: '' })
     setModal('purchase')
+  }
+
+  function openAdjust(item) {
+    setEditTarget(item)
+    setAdjustForm({ change: '', reason: '' })
+    setModal('adjust')
+  }
+
+  function submitAdjust(e) {
+    e.preventDefault()
+    const change = parseInt(adjustForm.change)
+    if (isNaN(change) || change === 0) return
+    adjustInventory(editTarget.id, editTarget.itemName, change, adjustForm.reason || '庫存盤點')
+    setModal(null)
   }
 
   function submitPurchase(e) {
@@ -484,6 +498,12 @@ export default function Procurement({ data }) {
                           className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
                           <Package size={12} /> 進貨
                         </button>
+                        {(item.category === 'A用品' || item.category === 'B食品') && (
+                          <button onClick={() => openAdjust(item)}
+                            className="bg-orange-50 hover:bg-orange-100 text-orange-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
+                            盤點
+                          </button>
+                        )}
                         {item.category === 'B食品' && (
                           <button onClick={() => { setEditTarget(item); setModal('expiry') }}
                             className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
@@ -719,7 +739,91 @@ export default function Procurement({ data }) {
       {/* ── AI 庫存健康分析 ── */}
       <InventoryAI inventory={inventory} revenues={revenues} />
 
-      {/* ── 進貨 Modal ── */}
+      {/* ── A/B 庫存異動紀錄 ── */}
+      {isAB && (
+        <SectionCard title="📊 庫存異動紀錄">
+          {(() => {
+            const abIds = new Set(inventory.filter(i => i.category === 'A用品' || i.category === 'B食品').map(i => i.id))
+            const logs = inventoryLogs
+              .filter(l => abIds.has(l.itemId))
+              .sort((a, b) => b.date.localeCompare(a.date))
+              .slice(0, 50)
+            if (logs.length === 0) return <p className="text-sm text-gray-400 text-center py-6">尚無異動紀錄</p>
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[480px]">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
+                      {['日期', '品項', '異動數量', '原因'].map(h => (
+                        <th key={h} className="pb-3 text-left">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {logs.map(l => (
+                      <tr key={l.id} className="hover:bg-gray-50">
+                        <td className="py-2.5 text-gray-400 text-xs">{l.date}</td>
+                        <td className="py-2.5 font-medium text-gray-800">{l.itemName}</td>
+                        <td className={`py-2.5 font-bold ${l.change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {l.change > 0 ? `+${l.change}` : l.change}
+                        </td>
+                        <td className="py-2.5 text-gray-500 text-xs">{l.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
+        </SectionCard>
+      )}
+
+      {/* ── 盤點異動 Modal ── */}
+      {modal === 'adjust' && editTarget && (
+        <Modal title={`盤點異動：${editTarget.itemName}`} size="sm" onClose={() => setModal(null)}>
+          <form onSubmit={submitAdjust} className="space-y-4">
+            <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-between">
+              <span className="text-gray-500">目前庫存</span>
+              <span className="font-bold text-gray-800">{editTarget.currentQty} {editTarget.unit}</span>
+            </div>
+            <FormRow label="異動數量">
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  className={inputCls + ' flex-1'}
+                  placeholder="增加輸正數，減少輸負數（如 -3）"
+                  value={adjustForm.change}
+                  onChange={e => setAdjustForm(p => ({ ...p, change: e.target.value }))}
+                  required
+                />
+              </div>
+              {adjustForm.change && !isNaN(parseInt(adjustForm.change)) && (
+                <p className="text-xs mt-1.5">
+                  <span className="text-gray-400">異動後庫存：</span>
+                  <span className={`font-bold ml-1 ${Math.max(0, editTarget.currentQty + parseInt(adjustForm.change)) < editTarget.safetyQty ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {Math.max(0, editTarget.currentQty + parseInt(adjustForm.change))} {editTarget.unit}
+                  </span>
+                </p>
+              )}
+            </FormRow>
+            <FormRow label="異動原因">
+              <input
+                type="text"
+                className={inputCls}
+                placeholder="如：定期盤點、損壞、樣品贈送…（選填）"
+                value={adjustForm.reason}
+                onChange={e => setAdjustForm(p => ({ ...p, reason: e.target.value }))}
+              />
+            </FormRow>
+            <div className="flex gap-2 pt-1">
+              <button type="submit" className={btnPrimary + ' flex-1'}>確認異動</button>
+              <button type="button" onClick={() => setModal(null)} className={btnSecondary}>取消</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── 進貨 Modal ── */}}
       {modal === 'purchase' && (
         <Modal title={`進貨：${purchaseForm.itemName}`} size="sm" onClose={() => setModal(null)}>
           <form onSubmit={submitPurchase} className="space-y-4">

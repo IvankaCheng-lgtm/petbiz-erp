@@ -206,7 +206,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
     let lastScan = 0
     s.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 320, height: 120 }, formatsToSupport: [0, 4] },
+      { fps: 10, qrbox: { width: 400, height: 100 }, formatsToSupport: [0, 4], aspectRatio: 2.0 },
       (decodedText) => {
         const now = Date.now()
         if (now - lastScan < 2000) return
@@ -487,7 +487,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 }
 
 // ── 結算統計分頁 ──────────────────────────────────────────────
-function StatsTab({ marketEvents, revenues, expenses }) {
+function StatsTab({ marketEvents, revenues, expenses, deleteMarketSale }) {
   const [selectedEventId, setSelectedEventId] = useState(marketEvents[0]?.id ?? '')
 
   const selectedEvent = useMemo(
@@ -593,7 +593,14 @@ function StatsTab({ marketEvents, revenues, expenses }) {
                               </span>
                             )}
                           </div>
-                          <span className="font-bold text-gray-800">{fmt(r.amount)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-800">{fmt(r.amount)}</span>
+                            <button
+                              onClick={e => { e.preventDefault(); if (window.confirm('確定刪除此筆交易？庫存將自動補回。')) deleteMarketSale(r.id) }}
+                              className="text-xs bg-red-50 hover:bg-red-100 text-red-400 px-2 py-1 rounded-lg transition-colors shrink-0">
+                              刪除
+                            </button>
+                          </div>
                         </summary>
 
                         {/* 展開內容 */}
@@ -833,7 +840,7 @@ const TABS = [
 export default function MarketDiary({ data }) {
   const { marketEvents, inventory, revenues, expenses,
           addMarketEvent, updateMarketEvent, deleteMarketEvent,
-          processMarketSale, addExpense } = data
+          processMarketSale, addExpense, deleteMarketSale } = data
   const [tab, setTab] = useState('calendar')
 
   return (
@@ -881,6 +888,7 @@ export default function MarketDiary({ data }) {
           marketEvents={marketEvents}
           revenues={revenues}
           expenses={expenses}
+          deleteMarketSale={deleteMarketSale}
         />
       )}
       {tab === 'analysis' && (

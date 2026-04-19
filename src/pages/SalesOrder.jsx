@@ -202,7 +202,7 @@ export default function SalesOrder({ data }) {
     let lastScan = 0
     s.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 320, height: 120 }, formatsToSupport: [0, 4] },
+      { fps: 10, qrbox: { width: 400, height: 100 }, formatsToSupport: [0, 4], aspectRatio: 2.0 },
       (text) => {
         const now = Date.now()
         if (now - lastScan < 2000) return

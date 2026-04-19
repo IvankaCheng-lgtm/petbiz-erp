@@ -83,6 +83,7 @@ export default function usePetBusiness() {
   const [savedFormulas, setSavedFormulas] = useState([]);
   const [marketEvents,  setMarketEvents]  = useState([]);
   const [orders,        setOrders]        = useState([]);
+  const [inventoryLogs, setInventoryLogs] = useState([]);
   const [loading,       setLoading]       = useState(true);
 
   const cloudUpdate = useCallback(async (field, updater) => {
@@ -109,11 +110,12 @@ export default function usePetBusiness() {
           setSavedFormulas(d.savedFormulas ?? []);
           setMarketEvents(d.marketEvents   ?? []);
           setOrders(d.orders               ?? []);
+          setInventoryLogs(d.inventoryLogs ?? []);
         } else {
           setDoc(ERP_DOC_REF, {
             revenues: SEED_REVENUES, expenses: SEED_EXPENSES,
             inventory: SEED_INVENTORY, production: [],
-            savedFormulas: [], marketEvents: [], isInitialized: true,
+            savedFormulas: [], marketEvents: [], inventoryLogs: [], isInitialized: true,
           });
         }
         setLoading(false);
@@ -315,8 +317,51 @@ export default function usePetBusiness() {
     }
   }, [cloudUpdate]);
 
+  const addInventoryLog = useCallback((logs) => {
+    setInventoryLogs(prev => [...prev, ...logs]);
+    cloudUpdate("inventoryLogs", list => [...list, ...logs]);
+  }, [cloudUpdate]);
+
+  const adjustInventory = useCallback((itemId, itemName, change, reason) => {
+    const date = new Date().toISOString().slice(0, 10);
+    const log = { id: uid(), date, itemId, itemName, change, reason: reason || '庫存盤點' };
+    setInventory(prev => prev.map(i => i.id === itemId ? { ...i, currentQty: Math.max(0, i.currentQty + change) } : i));
+    cloudUpdate('inventory', list => list.map(i => i.id === itemId ? { ...i, currentQty: Math.max(0, i.currentQty + change) } : i));
+    setInventoryLogs(prev => [...prev, log]);
+    cloudUpdate('inventoryLogs', list => [...list, log]);
+  }, [cloudUpdate]);
+
   const deleteOrder = useCallback((id) => {
-    setOrders(prev => prev.filter(o => o.id !== id));
+    // 找到訂單，補回庫存
+    setOrders(prev => {
+      const order = prev.find(o => o.id === id);
+      if (order?.items) {
+        const date = new Date().toISOString().slice(0, 10);
+        const logs = order.items.map(it => ({
+          id: uid(), date, itemId: it.itemId, itemName: it.itemName,
+          change: +it.qty, reason: `刪除銷售訂單（${order.platform} ${order.orderDate}）`,
+        }));
+        setInventoryLogs(p => [...p, ...logs]);
+        cloudUpdate("inventoryLogs", list => [...list, ...logs]);
+        setInventory(inv => {
+          const next = [...inv];
+          order.items.forEach(({ itemId, qty }) => {
+            const idx = next.findIndex(i => i.id === itemId);
+            if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
+          });
+          return next;
+        });
+        cloudUpdate("inventory", list => {
+          const next = [...list];
+          order.items.forEach(({ itemId, qty }) => {
+            const idx = next.findIndex(i => i.id === itemId);
+            if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
+          });
+          return next;
+        });
+      }
+      return prev.filter(o => o.id !== id);
+    });
     cloudUpdate("orders", list => list.filter(o => o.id !== id));
     setRevenues(prev => prev.filter(r => r.orderId !== id));
     cloudUpdate("revenues", list => list.filter(r => r.orderId !== id));
@@ -348,12 +393,19 @@ export default function usePetBusiness() {
       return next;
     };
 
+    const logs = items.map(it => ({
+      id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
+      change: -it.qty, reason: `銷售訂單（${platform}）`,
+    }));
+
     setOrders(prev => [...prev, order]);
     setRevenues(prev => [...prev, revenueItem]);
     setInventory(applyInv);
-    await cloudUpdate("orders",    list => [...list, order]);
-    await cloudUpdate("revenues",  list => [...list, revenueItem]);
-    await cloudUpdate("inventory", applyInv);
+    setInventoryLogs(prev => [...prev, ...logs]);
+    await cloudUpdate("orders",         list => [...list, order]);
+    await cloudUpdate("revenues",       list => [...list, revenueItem]);
+    await cloudUpdate("inventory",      applyInv);
+    await cloudUpdate("inventoryLogs",  list => [...list, ...logs]);
   }, [cloudUpdate]);
 
   // ── 市集活動 CRUD ─────────────────────────────────────────────
@@ -373,6 +425,39 @@ export default function usePetBusiness() {
     cloudUpdate("marketEvents", list => list.filter(e => e.id !== id));
   }, [cloudUpdate]);
 
+  const deleteMarketSale = useCallback((revenueId) => {
+    setRevenues(prev => {
+      const rev = prev.find(r => r.id === revenueId);
+      if (rev?.items) {
+        const date = new Date().toISOString().slice(0, 10);
+        const logs = rev.items.map(it => ({
+          id: uid(), date, itemId: it.itemId, itemName: it.itemName,
+          change: +it.qty, reason: `刪除市集銷售紀錄（${rev.date}）`,
+        }));
+        setInventoryLogs(p => [...p, ...logs]);
+        cloudUpdate("inventoryLogs", list => [...list, ...logs]);
+        setInventory(inv => {
+          const next = [...inv];
+          rev.items.forEach(({ itemId, qty }) => {
+            const idx = next.findIndex(i => i.id === itemId);
+            if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
+          });
+          return next;
+        });
+        cloudUpdate("inventory", list => {
+          const next = [...list];
+          rev.items.forEach(({ itemId, qty }) => {
+            const idx = next.findIndex(i => i.id === itemId);
+            if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
+          });
+          return next;
+        });
+      }
+      return prev.filter(r => r.id !== revenueId);
+    });
+    cloudUpdate("revenues", list => list.filter(r => r.id !== revenueId));
+  }, [cloudUpdate]);
+
   // ── 市集現場收款 ──────────────────────────────────────────────
   const processMarketSale = useCallback(async ({ items, paymentMethod, totalAmount, eventId }) => {
     const today = new Date().toISOString().slice(0, 10);
@@ -384,31 +469,32 @@ export default function usePetBusiness() {
       amount: totalAmount, isReported: false, paymentMethod, eventId,
       items,
     };
-    setRevenues(prev => [...prev, revenueItem]);
-    setInventory(prev => {
-      let next = [...prev];
-      items.forEach(({ itemId, qty }) => {
-        const idx = next.findIndex(i => i.id === itemId);
-        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
-      });
-      return next;
-    });
-    await cloudUpdate("revenues", list => [...list, revenueItem]);
-    await cloudUpdate("inventory", list => {
+    const applyInv = (list) => {
       let next = [...list];
       items.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
         if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
       return next;
-    });
+    };
+    const logs = items.map(it => ({
+      id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
+      change: -it.qty, reason: `市集銷售`,
+      revenueId: revenueItem.id,
+    }));
+    setRevenues(prev => [...prev, revenueItem]);
+    setInventory(applyInv);
+    setInventoryLogs(prev => [...prev, ...logs]);
+    await cloudUpdate("revenues",      list => [...list, revenueItem]);
+    await cloudUpdate("inventory",     applyInv);
+    await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
   }, [cloudUpdate]);
 
   // ── 系統 ──────────────────────────────────────────────────────
   const clearAllData = useCallback(async () => {
     if (!window.confirm("確定要清空所有雲端帳務資料嗎？此動作無法復原。")) return;
-    const empty = { revenues: [], expenses: [], inventory: [], production: [], savedFormulas: [], marketEvents: [], orders: [], isInitialized: true };
-    setRevenues([]); setExpenses([]); setInventory([]); setProduction([]); setSavedFormulas([]); setMarketEvents([]); setOrders([]);
+    const empty = { revenues: [], expenses: [], inventory: [], production: [], savedFormulas: [], marketEvents: [], orders: [], inventoryLogs: [], isInitialized: true };
+    setRevenues([]); setExpenses([]); setInventory([]); setProduction([]); setSavedFormulas([]); setMarketEvents([]); setOrders([]); setInventoryLogs([]);
     await setDoc(ERP_DOC_REF, empty);
     alert("雲端資料已全數清空");
   }, []);
@@ -452,7 +538,7 @@ export default function usePetBusiness() {
   }, []);
 
   return {
-    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, loading,
+    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, inventoryLogs, loading,
     kpi, inventoryAlerts, upcomingEvents,
     addRevenue, deleteRevenue, toggleRevenueReported,
     addExpense, deleteExpense, toggleExpenseReported,
@@ -460,8 +546,8 @@ export default function usePetBusiness() {
     addInventoryItem, updateInventoryItem, deleteInventoryItem, resetInventoryToSeed,
     addProductionBatch, deleteProduction,
     saveFormula, deleteFormula,
-    addMarketEvent, updateMarketEvent, deleteMarketEvent,
-    processMarketSale, processOrder, updateOrder, deleteOrder,
+    addMarketEvent, updateMarketEvent, deleteMarketEvent, deleteMarketSale,
+    processMarketSale, processOrder, updateOrder, deleteOrder, addInventoryLog, adjustInventory,
     clearAllData, exportData, importData,
   };
 }
