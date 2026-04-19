@@ -39,26 +39,6 @@ export default function PnL({ data }) {
   const [rangeMonth, setRangeMonth] = useState(now.getMonth() + 1)
   const [rangeQ, setRangeQ] = useState(Math.ceil((now.getMonth() + 1) / 3))
 
-  // 庫存 cost 對照表
-  const inventoryCostMap = useMemo(() => {
-    const map = {}
-    inventory.forEach(i => { map[i.id] = i.cost || 0 })
-    return map
-  }, [inventory])
-
-  // 從 orders.items 計算實際商品成本（依範圍筛選）
-  const actualCogs = useMemo(() => {
-    const filteredOrders = orders.filter(o => {
-      const d = o.orderDate || ''
-      if (rangeType === 'month') return d.startsWith(rangeYear + '-' + String(rangeMonth).padStart(2, '0'))
-      if (rangeType === 'quarter') return d.startsWith(String(rangeYear)) && Math.ceil(parseInt(d.slice(5,7)) / 3) === rangeQ
-      return d.startsWith(String(rangeYear))
-    })
-    return filteredOrders.reduce((s, o) =>
-      s + (o.items || []).reduce((ss, it) =>
-        ss + it.qty * (inventoryCostMap[it.itemId] || 0), 0), 0)
-  }, [orders, inventoryCostMap, rangeType, rangeYear, rangeMonth, rangeQ])
-
   // 可選年份列表
   const availableYears = useMemo(() => {
     const years = new Set([
@@ -117,15 +97,24 @@ export default function PnL({ data }) {
 
   const pnl = useMemo(() => {
     const totalRev = filteredRevenues.reduce((s, r) => s + r.amount, 0)
-    const ecRev = filteredRevenues.filter(r => r.channel === '電商').reduce((s, r) => s + r.amount, 0)
+    const EC_PLATFORMS = ['萌獸官網', 'PChome', 'Yahoo', '蝦皮']
+    const OTHER_PLATFORMS = ['私訊訂購', 'LINE訂購']
+    const ecRev = filteredRevenues.filter(r => r.channel === '電商' || EC_PLATFORMS.includes(r.channel)).reduce((s, r) => s + r.amount, 0)
     const mktRev = filteredRevenues.filter(r => r.channel === '市集').reduce((s, r) => s + r.amount, 0)
+    const otherRev = filteredRevenues.filter(r => OTHER_PLATFORMS.includes(r.channel)).reduce((s, r) => s + r.amount, 0)
 
-    const byCategory = ['食品', '烘焙', '蛋糕', '用品'].map(cat => ({
-      cat, amount: filteredRevenues.filter(r => r.category === cat).reduce((s, r) => s + r.amount, 0),
+    const byCategory = ['食品', '用品'].map(cat => ({
+      cat, amount: filteredRevenues.filter(r =>
+        cat === '食品'
+          ? ['食品', '烘焙', '蛋糕'].includes(r.category)
+          : r.category === cat
+      ).reduce((s, r) => s + r.amount, 0),
     }))
 
-    const purchaseCogs = filteredExpenses.filter(e => ['進貨'].includes(e.type)).reduce((s, e) => s + e.amount, 0)
-    const cogs = Math.max(actualCogs, purchaseCogs)
+    const rawMaterialCost = filteredExpenses.filter(e => e.type === '進貨' && e.inventoryCategory === 'C食材').reduce((s, e) => s + e.amount, 0)
+    const packagingCost   = filteredExpenses.filter(e => e.type === '進貨' && e.inventoryCategory === 'D包材').reduce((s, e) => s + e.amount, 0)
+    const goodsCost       = filteredExpenses.filter(e => e.type === '進貨' && (e.inventoryCategory === 'A用品' || e.inventoryCategory === 'B食品')).reduce((s, e) => s + e.amount, 0)
+    const cogs = rawMaterialCost + packagingCost + goodsCost
     const grossProfit = totalRev - cogs
 
     const opExpenses = {
@@ -136,27 +125,22 @@ export default function PnL({ data }) {
       marketing: filteredExpenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0),
       material:  filteredExpenses.filter(e => e.type === '耗材').reduce((s, e) => s + e.amount, 0),
       equipment: filteredExpenses.filter(e => e.type === '設備').reduce((s, e) => s + e.amount, 0),
+      shipping:  filteredExpenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0),
       misc:      filteredExpenses.filter(e => e.type === '雜項').reduce((s, e) => s + e.amount, 0),
     }
     const totalOpExp = Object.values(opExpenses).reduce((s, v) => s + v, 0)
     const netProfit = grossProfit - totalOpExp
 
-    return { totalRev, ecRev, mktRev, byCategory, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
-  }, [filteredRevenues, filteredExpenses, actualCogs])
+    return { totalRev, ecRev, mktRev, otherRev, byCategory, rawMaterialCost, packagingCost, goodsCost, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
+  }, [filteredRevenues, filteredExpenses])
 
-  // 財務指標：範圍內毛利 + 營運開销
+  // 財務指標：使用 pnl 的營業收入與營業成本計算毛利率
   const financialMetrics = useMemo(() => {
-    const monthRev  = filteredRevenues.reduce((s, r) => s + r.amount, 0)
-    const monthCogs = filteredExpenses
-      .filter(e => e.type === '進貨' || (e.type === '電費' && e.isProductionCost))
-      .reduce((s, e) => s + e.amount, 0)
-    const grossProfit = monthRev - monthCogs
     const booth    = filteredExpenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
     const shipping = filteredExpenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
     const ads      = filteredExpenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0)
-    const opExp    = booth + shipping + ads
-    return { monthRev, monthCogs, grossProfit, opExp, booth, shipping, ads }
-  }, [filteredRevenues, filteredExpenses])
+    return { booth, shipping, ads }
+  }, [filteredExpenses])
 
   // 庫存深度分析
   const inventoryMetrics = useMemo(() => {
@@ -264,9 +248,12 @@ export default function PnL({ data }) {
       '<tr class="bold"><td>\u258c \u71df\u696d\u6536\u5165</td><td>' + fmt(pnl.totalRev) + '</td></tr>',
       '<tr class="indent1"><td>\u96fb\u5546\u901a\u8def</td><td>' + fmt(pnl.ecRev) + '</td></tr>',
       '<tr class="indent1"><td>\u5e02\u96c6\u901a\u8def</td><td>' + fmt(pnl.mktRev) + '</td></tr>',
+      '<tr class="indent1"><td>\u5176\u4ed6\u901a\u8def</td><td>' + fmt(pnl.otherRev) + '</td></tr>',
       pnl.byCategory.map(function(c) { return '<tr class="indent2"><td>\u2514 ' + c.cat + '</td><td>' + fmt(c.amount) + '</td></tr>' }).join(''),
       '<tr class="bold section-gap"><td>\u258c (-) \u71df\u696d\u6210\u672c</td><td>(' + fmt(pnl.cogs) + ')</td></tr>',
-      '<tr class="indent1"><td>\u9032\u8ca8\u6210\u672c</td><td>(' + fmt(pnl.cogs) + ')</td></tr>',
+      '<tr class="indent1"><td>\u5546\u54c1\u9032\u8ca8\uff08A\u7528\u54c1/B\u98df\u54c1\uff09</td><td>(' + fmt(pnl.goodsCost) + ')</td></tr>',
+      '<tr class="indent1"><td>\u539f\u6599\u6210\u672c\uff08C\u98df\u6750\uff09</td><td>(' + fmt(pnl.rawMaterialCost) + ')</td></tr>',
+      '<tr class="indent1"><td>\u5305\u88dd\u6210\u672c\uff08D\u5305\u6750\uff09</td><td>(' + fmt(pnl.packagingCost) + ')</td></tr>',
       '<tr class="bold section-gap ' + gpClass + '"><td>\u258c \u6bdb\u5229</td><td>' + gpFmt + '</td></tr>',
       '<tr class="bold section-gap"><td>\u258c (-) \u71df\u696d\u8cbb\u7528</td><td>(' + fmt(pnl.totalOpExp) + ')</td></tr>',
       '<tr class="indent1"><td>\u79df\u91d1</td><td>(' + fmt(pnl.opExpenses.rent) + ')</td></tr>',
@@ -276,6 +263,7 @@ export default function PnL({ data }) {
       '<tr class="indent1"><td>\u884c\u92b7\u8cbb</td><td>(' + fmt(pnl.opExpenses.marketing) + ')</td></tr>',
       '<tr class="indent1"><td>\u8017\u6750</td><td>(' + fmt(pnl.opExpenses.material) + ')</td></tr>',
       '<tr class="indent1"><td>\u8a2d\u5099</td><td>(' + fmt(pnl.opExpenses.equipment) + ')</td></tr>',
+      '<tr class="indent1"><td>\u904b\u8cbb</td><td>(' + fmt(pnl.opExpenses.shipping) + ')</td></tr>',
       '<tr class="indent1"><td>\u96dc\u9805</td><td>(' + fmt(pnl.opExpenses.misc) + ')</td></tr>',
       '<tr class="bold section-gap ' + npClass + '"><td>\u258c \u7a05\u524d\u6de8\u5229</td><td>' + npFmt + '</td></tr>',
       '</table>',
@@ -345,13 +333,16 @@ export default function PnL({ data }) {
             <PnLRow label="▌ 營業收入" value={pnl.totalRev} bold />
             <PnLRow label="電商通路" value={pnl.ecRev} indent={1} />
             <PnLRow label="市集通路" value={pnl.mktRev} indent={1} />
+            <PnLRow label="其他通路" value={pnl.otherRev} indent={1} />
             {pnl.byCategory.map(({ cat, amount }) => (
               <PnLRow key={cat} label={`└ ${cat}`} value={amount} indent={2} />
             ))}
 
             {/* 營業成本 */}
             <PnLRow label="▌ (-) 營業成本" value={-pnl.cogs} bold border />
-            <PnLRow label="進貨成本" value={-pnl.cogs} indent={1} />
+            <PnLRow label="商品進貨（A用品/B食品）" value={-pnl.goodsCost} indent={1} />
+            <PnLRow label="原料成本（C食材）" value={-pnl.rawMaterialCost} indent={1} />
+            <PnLRow label="包裝成本（D包材）" value={-pnl.packagingCost} indent={1} />
 
             {/* 毛利 */}
             <PnLRow label="▌ 毛利" value={pnl.grossProfit} bold border
@@ -366,6 +357,7 @@ export default function PnL({ data }) {
             <PnLRow label="行銷費" value={-pnl.opExpenses.marketing} indent={1} />
             <PnLRow label="耗材" value={-pnl.opExpenses.material} indent={1} />
             <PnLRow label="設備" value={-pnl.opExpenses.equipment} indent={1} />
+            <PnLRow label="運費" value={-pnl.opExpenses.shipping} indent={1} />
             <PnLRow label="雜項" value={-pnl.opExpenses.misc} indent={1} />
 
             {/* 稅前淨利 */}
@@ -432,20 +424,20 @@ export default function PnL({ data }) {
             <span className="text-xs font-normal text-gray-400 ml-1">({rangeLabel})</span>
           </h3>
           <div className="flex items-end gap-2">
-            <span className={`text-3xl font-black ${financialMetrics.grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-              {fmt(financialMetrics.grossProfit)}
+            <span className={`text-3xl font-black ${pnl.grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              {fmt(pnl.grossProfit)}
             </span>
             <span className="text-xs text-gray-400 mb-1">毛利</span>
           </div>
           <div className="text-sm text-gray-500">
             毛利率：
             <span className={`font-semibold ml-1 ${
-              financialMetrics.monthRev > 0 && financialMetrics.grossProfit / financialMetrics.monthRev >= 0.3
+              pnl.totalRev > 0 && pnl.grossProfit / pnl.totalRev >= 0.3
                 ? 'text-emerald-600' : 'text-orange-500'
             }`}>
-              {financialMetrics.monthRev > 0 ? (financialMetrics.grossProfit / financialMetrics.monthRev * 100).toFixed(1) : '0.0'}%
+              {pnl.totalRev > 0 ? (pnl.grossProfit / pnl.totalRev * 100).toFixed(1) : '0.0'}%
             </span>
-            <span className="text-xs text-gray-400 ml-1">(營收 - 進貨/電費)</span>
+            <span className="text-xs text-gray-400 ml-1">(營業收入 - 營業成本) / 營業收入</span>
           </div>
           <div className="border-t border-gray-100 pt-3 space-y-1.5">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">營運開销佔比</p>
