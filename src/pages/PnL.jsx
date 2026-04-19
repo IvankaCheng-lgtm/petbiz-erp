@@ -36,13 +36,18 @@ export default function PnL({ data }) {
     return map
   }, [inventory])
 
-  // 從 orders.items 計算實際商品成本
-  const actualCogs = useMemo(() =>
-    orders.reduce((s, o) =>
+  // 從 orders.items 計算實際商品成本（依範圍筛選）
+  const actualCogs = useMemo(() => {
+    const filteredOrders = orders.filter(o => {
+      const d = o.orderDate || ''
+      if (rangeType === 'month') return d.startsWith(rangeYear + '-' + String(rangeMonth).padStart(2, '0'))
+      if (rangeType === 'quarter') return d.startsWith(String(rangeYear)) && Math.ceil(parseInt(d.slice(5,7)) / 3) === rangeQ
+      return d.startsWith(String(rangeYear))
+    })
+    return filteredOrders.reduce((s, o) =>
       s + (o.items || []).reduce((ss, it) =>
-        ss + it.qty * (inventoryCostMap[it.itemId] || 0), 0), 0),
-    [orders, inventoryCostMap]
-  )
+        ss + it.qty * (inventoryCostMap[it.itemId] || 0), 0), 0)
+  }, [orders, inventoryCostMap, rangeType, rangeYear, rangeMonth, rangeQ])
 
   // 本月月份
   const currentMonth = new Date().toISOString().slice(0, 7)
