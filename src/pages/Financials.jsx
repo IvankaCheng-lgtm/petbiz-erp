@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
-import { Plus, Trash2, CheckCircle, Circle, Filter, Sparkles, X } from 'lucide-react'
+import { Plus, Trash2, CheckCircle, Circle, Filter, Sparkles, X, Download } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt, EXPENSE_TYPE_COLOR } from '../utils/format'
 import { askGemini } from '../services/geminiService'
+import { exportToCSV } from '../utils/exportReport'
 
 // 簡易 Markdown 渲染（支援 ## ### ** * - ）
 function MdText({ text }) {
@@ -215,6 +216,57 @@ export default function Financials({ data }) {
   const [showAI,         setShowAI]         = useState(false)
   const PAGE_SIZE = 10
 
+  // 對帳單月份選擇
+  const now = new Date()
+  const [stmtMonth, setStmtMonth] = useState(
+    now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0')
+  )
+
+  // 可選月份列表
+  const availableMonths = useMemo(() => {
+    const s = new Set([
+      ...revenues.map(r => r.date.slice(0, 7)),
+      ...expenses.map(e => e.date.slice(0, 7)),
+    ])
+    return [...s].sort((a, b) => b.localeCompare(a))
+  }, [revenues, expenses])
+
+  function handleExportStatement() {
+    const mRevs = revenues.filter(r => r.date.startsWith(stmtMonth)).sort((a, b) => a.date.localeCompare(b.date))
+    const mExps = expenses.filter(e => e.date.startsWith(stmtMonth)).sort((a, b) => a.date.localeCompare(b.date))
+    const totalRev = mRevs.reduce((s, r) => s + r.amount, 0)
+    const totalExp = mExps.reduce((s, e) => s + e.amount, 0)
+    const netProfit = totalRev - totalExp
+    const [y, m] = stmtMonth.split('-')
+    const label = y + '年' + parseInt(m) + '月'
+
+    const rows = [
+      ['萌獸探險隊 ' + label + ' 收支對帳單'],
+      ['產出日期：' + new Date().toLocaleDateString('zh-TW')],
+      [],
+      // 營收明細
+      ['《營收明細》'],
+      ['日期', '通路', '類別', '金額', '報稅狀態'],
+      ...mRevs.map(r => [r.date, r.channel || '', r.category || '', r.amount, r.isReported ? '已報稅' : '未報稅']),
+      ['營收小計', '', '', totalRev, ''],
+      [],
+      // 支出明細
+      ['《支出明細》'],
+      ['日期', '類型', '備註', '金額', '報稅狀態'],
+      ...mExps.map(e => [e.date, e.type || '', e.note || '', e.amount, e.isReported ? '已報稅' : '未報稅']),
+      ['支出小計', '', '', totalExp, ''],
+      [],
+      // 損益摘要
+      ['《損益摘要》'],
+      ['項目', '金額'],
+      ['總營收', totalRev],
+      ['總支出', totalExp],
+      ['淨利', netProfit],
+      ['利潤率', totalRev > 0 ? (netProfit / totalRev * 100).toFixed(1) + '%' : '0.0%'],
+    ]
+    exportToCSV(rows, '萌獸探險隊_對帳單_' + stmtMonth + '.csv')
+  }
+
   const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '' })
   const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false })
 
@@ -259,7 +311,21 @@ export default function Financials({ data }) {
       {/* 頁首 */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800">收支管理</h1>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* 對帳單月份 + 匯出 */}
+          <select
+            value={stmtMonth}
+            onChange={e => setStmtMonth(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200">
+            {availableMonths.length === 0
+              ? <option value={stmtMonth}>{stmtMonth}</option>
+              : availableMonths.map(m => <option key={m} value={m}>{m}</option>)
+            }
+          </select>
+          <button onClick={handleExportStatement}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            <Download size={15} /> 匯出對帳單
+          </button>
           {/* AI 洞察按鈕 */}
           <button onClick={() => setShowAI(true)}
             className="flex items-center gap-1.5 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
