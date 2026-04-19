@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { Html5QrcodeScanner } from 'html5-qrcode'
+import { Html5Qrcode } from 'html5-qrcode'
 import { ShoppingBag, Camera, X, Plus, Minus, Sparkles, Loader2, TrendingUp } from 'lucide-react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { SectionCard, FormRow, inputCls, btnPrimary, btnSecondary } from '../components/ui'
@@ -160,7 +160,7 @@ ${context}
 }
 
 export default function SalesOrder({ data }) {
-  const { inventory, processOrder, orders = [] } = data
+  const { inventory, processOrder, updateOrder, deleteOrder, orders = [] } = data
 
   const [platform,     setPlatform]     = useState(PLATFORMS[0])
   const [cart,         setCart]         = useState([])
@@ -170,37 +170,41 @@ export default function SalesOrder({ data }) {
   const [scanMsg,      setScanMsg]      = useState('')
   const [barcodeInput, setBarcodeInput] = useState('')
   const [done,         setDone]         = useState(false)
+  const [editOrder,    setEditOrder]    = useState(null)  // 正在編輯的訂單
+  const [editForm,     setEditForm]     = useState({})   // 編輯表單暫存
 
-  const scannerRef = useRef(null)
-  const barcodeRef = useRef(null)
+  const scannerRef  = useRef(null)
+  const barcodeRef  = useRef(null)
+  const saleItemsRef = useRef([])
 
   // 頁面載入後 focus 條碼輸入框
   useEffect(() => { barcodeRef.current?.focus() }, [])
-
-  // 相機掃碼
-  useEffect(() => {
-    if (!isScanning) {
-      scannerRef.current?.clear().catch(() => {})
-      scannerRef.current = null
-      return
-    }
-    const scanner = new Html5QrcodeScanner(
-      'so-reader',
-      { fps: 10, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0, supportedScanTypes: [0] },
-      false
-    )
-    scanner.render(
-      (text) => { handleBarcodeMatch(text); },
-      () => {}
-    )
-    scannerRef.current = scanner
-    return () => { scanner.clear().catch(() => {}); scannerRef.current = null }
-  }, [isScanning]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saleItems = useMemo(
     () => inventory.filter(i => i.category === 'A用品' || i.category === 'B食品'),
     [inventory]
   )
+
+  // 保持 ref 與最新 saleItems 同步，讓 scanner callback 能讀到最新值
+  useEffect(() => { saleItemsRef.current = saleItems }, [saleItems])
+
+  // 相機掃碼
+  useEffect(() => {
+    if (!isScanning) {
+      scannerRef.current?.stop().then(() => scannerRef.current?.clear()).catch(() => {})
+      scannerRef.current = null
+      return
+    }
+    const scanner = new Html5Qrcode('so-reader')
+    scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      (text) => { handleBarcodeMatch(text, saleItemsRef.current) },
+      () => {}
+    ).catch(() => {})
+    scannerRef.current = scanner
+    return () => { scanner.stop().then(() => scanner.clear()).catch(() => {}); scannerRef.current = null }
+  }, [isScanning]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const subtotal = useMemo(
     () => cart.reduce((s, c) => s + c.qty * c.unitPrice, 0),
@@ -218,8 +222,8 @@ export default function SalesOrder({ data }) {
 
   const savedAmt = subtotal - totalAmount
 
-  function handleBarcodeMatch(val) {
-    const matched = saleItems.find(i => i.barcode && i.barcode === val)
+  function handleBarcodeMatch(val, items) {
+    const matched = items.find(i => i.barcode && i.barcode === val)
     if (matched) {
       addToCart(matched)
       beep()
@@ -236,7 +240,7 @@ export default function SalesOrder({ data }) {
     if (e.key !== 'Enter') return
     e.preventDefault()
     const val = barcodeInput.trim()
-    if (val) handleBarcodeMatch(val)
+    if (val) handleBarcodeMatch(val, saleItemsRef.current)
   }
 
   function addToCart(item) {
@@ -271,6 +275,40 @@ export default function SalesOrder({ data }) {
     setDiscountAmt('')
     setTimeout(() => setDone(false), 3000)
   }
+
+  function openEdit(order) {
+    setEditOrder(order)
+    setEditForm({
+      platform:  order.platform,
+      orderDate: order.orderDate,
+      total:     order.total,
+      items:     order.items.map(i => ({ ...i })),
+    })
+  }
+
+  function handleEditItemQty(idx, qty) {
+    const items = editForm.items.map((it, i) => i === idx ? { ...it, qty: Number(qty) } : it)
+    const subtotal = items.reduce((s, it) => s + it.qty * it.unitPrice, 0)
+    setEditForm(p => ({ ...p, items, total: subtotal }))
+  }
+
+  function handleEditSave() {
+    const subtotal = editForm.items.reduce((s, it) => s + it.qty * it.unitPrice, 0)
+    updateOrder(editOrder.id, {
+      platform:  editForm.platform,
+      orderDate: editForm.orderDate,
+      items:     editForm.items,
+      subtotal,
+      total:     editForm.total,
+      discount:  subtotal - editForm.total,
+    })
+    setEditOrder(null)
+  }
+
+  const sortedOrders = useMemo(
+    () => [...orders].sort((a, b) => b.orderDate.localeCompare(a.orderDate)),
+    [orders]
+  )
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -436,8 +474,94 @@ export default function SalesOrder({ data }) {
           </SectionCard>
         </div>
       )}
+      {/* 訂單紀錄 */}
+      <SectionCard title="訂單紀錄">
+        {sortedOrders.length === 0
+          ? <p className="text-sm text-gray-400 text-center py-6">尚無訂單</p>
+          : (
+            <div className="space-y-2">
+              {sortedOrders.map(o => (
+                <div key={o.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-800">{o.platform}</span>
+                      <span className="text-xs text-gray-400">{o.orderDate}</span>
+                      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">{o.status}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {o.items?.map(i => `${i.itemName} x${i.qty}`).join('、')}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-blue-600 shrink-0">{fmt(o.total)}</span>
+                  <button onClick={() => openEdit(o)}
+                    className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">編輯</button>
+                  <button onClick={() => { if (window.confirm('確定刪除此訂單？')) deleteOrder(o.id) }}
+                    className="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1.5 rounded-lg transition-colors shrink-0">刪除</button>
+                </div>
+              ))}
+            </div>
+          )
+        }
+      </SectionCard>
+
       {/* 平台業績分析 */}
       <PlatformAnalysis orders={orders} />
+
+      {/* 編輯訂單 Modal */}
+      {editOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="font-bold text-gray-800">編輯訂單</h3>
+              <button onClick={() => setEditOrder(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">平台</label>
+                  <select className={inputCls} value={editForm.platform}
+                    onChange={e => setEditForm(p => ({ ...p, platform: e.target.value }))}>
+                    {PLATFORMS.map(pl => <option key={pl}>{pl}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">日期</label>
+                  <input type="date" className={inputCls} value={editForm.orderDate}
+                    onChange={e => setEditForm(p => ({ ...p, orderDate: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-2 block">商品明細</label>
+                <div className="space-y-2">
+                  {editForm.items?.map((it, idx) => (
+                    <div key={idx} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2">
+                      <span className="text-sm text-gray-700 flex-1">{it.itemName}</span>
+                      <span className="text-xs text-gray-400">{fmt(it.unitPrice)}</span>
+                      <input type="number" min="1"
+                        className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        value={it.qty}
+                        onChange={e => handleEditItemQty(idx, e.target.value)} />
+                      <span className="text-sm font-semibold text-gray-800 w-16 text-right">{fmt(it.qty * it.unitPrice)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">實收金額</label>
+                <input type="number" min="0" className={inputCls} value={editForm.total}
+                  onChange={e => setEditForm(p => ({ ...p, total: parseFloat(e.target.value) || 0 })) } />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={handleEditSave}
+                  className="flex-1 py-2.5 rounded-xl text-white font-bold text-sm"
+                  style={{ backgroundColor: '#722927' }}>儲存</button>
+                <button onClick={() => setEditOrder(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm hover:bg-gray-50">取消</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

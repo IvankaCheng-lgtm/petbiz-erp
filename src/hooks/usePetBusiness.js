@@ -300,6 +300,28 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   // ── 銷售訂單 ──────────────────────────────────────────────────
+  const updateOrder = useCallback((id, data) => {
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, ...data } : o));
+    cloudUpdate("orders", list => list.map(o => o.id === id ? { ...o, ...data } : o));
+    if (data.total !== undefined || data.platform !== undefined) {
+      setRevenues(prev => prev.map(r => r.orderId === id
+        ? { ...r, ...(data.total !== undefined && { amount: data.total }), ...(data.platform !== undefined && { channel: data.platform }) }
+        : r
+      ));
+      cloudUpdate("revenues", list => list.map(r => r.orderId === id
+        ? { ...r, ...(data.total !== undefined && { amount: data.total }), ...(data.platform !== undefined && { channel: data.platform }) }
+        : r
+      ));
+    }
+  }, [cloudUpdate]);
+
+  const deleteOrder = useCallback((id) => {
+    setOrders(prev => prev.filter(o => o.id !== id));
+    cloudUpdate("orders", list => list.filter(o => o.id !== id));
+    setRevenues(prev => prev.filter(r => r.orderId !== id));
+    cloudUpdate("revenues", list => list.filter(r => r.orderId !== id));
+  }, [cloudUpdate]);
+
   const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount }) => {
     const today = new Date().toISOString().slice(0, 10);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
@@ -439,7 +461,7 @@ export default function usePetBusiness() {
     addProductionBatch, deleteProduction,
     saveFormula, deleteFormula,
     addMarketEvent, updateMarketEvent, deleteMarketEvent,
-    processMarketSale, processOrder,
+    processMarketSale, processOrder, updateOrder, deleteOrder,
     clearAllData, exportData, importData,
   };
 }

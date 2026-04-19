@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { Html5QrcodeScanner } from 'html5-qrcode'
+import { Html5Qrcode } from 'html5-qrcode'
 import { Plus, Trash2, ShoppingCart, X, Calendar, BarChart2, Store, Sparkles, Loader2, TrendingUp, Camera } from 'lucide-react'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
@@ -185,28 +185,28 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   const [barcodeInput, setBarcodeInput] = useState('')
   const scannerRef  = useRef(null)
   const barcodeRef  = useRef(null)
+  const inventoryRef = useRef(inventory)
+
+  // 保持 ref 與最新 inventory 同步
+  useEffect(() => { inventoryRef.current = inventory }, [inventory])
 
   // 頁面載入後自動 focus 條碼輸入框
   useEffect(() => { barcodeRef.current?.focus() }, [])
 
   useEffect(() => {
     if (!isScanning) {
-      // 關閉時清理 scanner
       if (scannerRef.current) {
-        scannerRef.current.clear().catch(() => {})
+        scannerRef.current.stop().then(() => scannerRef.current?.clear()).catch(() => {})
         scannerRef.current = null
       }
       return
     }
-    // 初始化 scanner
-    const scanner = new Html5QrcodeScanner(
-      'reader',
-      { fps: 10, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0, supportedScanTypes: [0] },
-      false
-    )
-    scanner.render(
+    const scanner = new Html5Qrcode('reader')
+    scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
       (decodedText) => {
-        const matched = inventory.find(
+        const matched = inventoryRef.current.find(
           i => i.barcode && i.barcode === decodedText &&
                (i.category === 'A用品' || i.category === 'B食品')
         )
@@ -219,11 +219,11 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
         }
         setTimeout(() => setScanMsg(''), 2500)
       },
-      () => {} // 掃描中的錯誤（非致命）靜默忽略
-    )
+      () => {}
+    ).catch(() => {})
     scannerRef.current = scanner
     return () => {
-      scanner.clear().catch(() => {})
+      scanner.stop().then(() => scanner.clear()).catch(() => {})
       scannerRef.current = null
     }
   }, [isScanning]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -255,7 +255,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
     e.preventDefault()
     const val = barcodeInput.trim()
     if (!val) return
-    const matched = inventory.find(
+    const matched = inventoryRef.current.find(
       i => i.barcode && i.barcode === val &&
            (i.category === 'A用品' || i.category === 'B食品')
     )
