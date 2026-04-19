@@ -29,6 +29,16 @@ export default function PnL({ data }) {
   const [aiLoading, setAiLoading] = useState(false)
   const printRef = useRef()
 
+  // 本月月份
+  const currentMonth = new Date().toISOString().slice(0, 7)
+
+  // 時間範圍選擇
+  const now = new Date()
+  const [rangeType, setRangeType] = useState('month') // 'month' | 'quarter' | 'year'
+  const [rangeYear, setRangeYear] = useState(now.getFullYear())
+  const [rangeMonth, setRangeMonth] = useState(now.getMonth() + 1)
+  const [rangeQ, setRangeQ] = useState(Math.ceil((now.getMonth() + 1) / 3))
+
   // 庫存 cost 對照表
   const inventoryCostMap = useMemo(() => {
     const map = {}
@@ -48,16 +58,6 @@ export default function PnL({ data }) {
       s + (o.items || []).reduce((ss, it) =>
         ss + it.qty * (inventoryCostMap[it.itemId] || 0), 0), 0)
   }, [orders, inventoryCostMap, rangeType, rangeYear, rangeMonth, rangeQ])
-
-  // 本月月份
-  const currentMonth = new Date().toISOString().slice(0, 7)
-
-  // 時間範圍選擇
-  const now = new Date()
-  const [rangeType, setRangeType] = useState('month') // 'month' | 'quarter' | 'year'
-  const [rangeYear, setRangeYear] = useState(now.getFullYear())
-  const [rangeMonth, setRangeMonth] = useState(now.getMonth() + 1)
-  const [rangeQ, setRangeQ] = useState(Math.ceil((now.getMonth() + 1) / 3))
 
   // 可選年份列表
   const availableYears = useMemo(() => {

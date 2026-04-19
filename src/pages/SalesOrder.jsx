@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { ShoppingBag, Camera, CameraOff } from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
 
-const PLATFORMS = ["萌獸官網", "PChome", "Yahoo", "蝦皮", "實體門市", "市集現場"];
+const PLATFORMS_ECOMMERCE = ["萌獸官網", "PChome", "Yahoo", "蝦皮"];
+const PLATFORMS_OFFLINE = ["私訊訂購", "LINE訂購"];
 
 function beep() {
   try {
@@ -31,7 +32,7 @@ function SectionCard({ title, children }) {
 export default function SalesOrder({ data }) {
   const { inventory = [], processOrder, updateOrder, deleteOrder, orders = [] } = data || {};
 
-  const [platform, setPlatform] = useState(PLATFORMS[0]);
+  const [platform, setPlatform] = useState(PLATFORMS_ECOMMERCE[0]);
   const [cart, setCart] = useState([]);
   const [discountPct, setDiscountPct] = useState("");
   const [discountAmt, setDiscountAmt] = useState("");
@@ -181,20 +182,43 @@ export default function SalesOrder({ data }) {
 
       {/* 來源平台 */}
       <SectionCard title="來源平台">
-        <div className="flex flex-wrap gap-2">
-          {PLATFORMS.map((p) => (
-            <button
-              key={p}
-              onClick={() => setPlatform(p)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                platform === p
-                  ? "bg-blue-500 text-white border-blue-500"
-                  : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-gray-400 mb-1.5">電商通路</p>
+            <div className="flex flex-wrap gap-2">
+              {PLATFORMS_ECOMMERCE.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPlatform(p)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                    platform === p
+                      ? "bg-blue-500 text-white border-blue-500"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-1.5">非電商通路</p>
+            <div className="flex flex-wrap gap-2">
+              {PLATFORMS_OFFLINE.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPlatform(p)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                    platform === p
+                      ? "bg-orange-500 text-white border-orange-500"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-orange-300"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </SectionCard>
 
