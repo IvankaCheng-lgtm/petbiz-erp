@@ -348,7 +348,7 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   const deleteOrder = useCallback((id) => {
-    // 找到訂單，補回庫存
+    // 找到訂單，補回庫存並刪除對應手續費支出
     setOrders(prev => {
       const order = prev.find(o => o.id === id);
       if (order?.items) {
@@ -381,6 +381,9 @@ export default function usePetBusiness() {
     cloudUpdate("orders", list => list.filter(o => o.id !== id));
     setRevenues(prev => prev.filter(r => r.orderId !== id));
     cloudUpdate("revenues", list => list.filter(r => r.orderId !== id));
+    // 刪除對應的手續費支出（orderId 相同）
+    setExpenses(prev => prev.filter(e => e.orderId !== id));
+    cloudUpdate("expenses", list => list.filter(e => e.orderId !== id));
   }, [cloudUpdate]);
 
   const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount, platformCost }) => {
