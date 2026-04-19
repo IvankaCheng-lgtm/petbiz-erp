@@ -199,10 +199,14 @@ export default function SalesOrder({ data }) {
       return
     }
     const s = new Html5Qrcode('so-reader')
+    let lastScan = 0
     s.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 }, formatsToSupport: [0, 4] },
+      { fps: 10, qrbox: { width: 320, height: 120 }, formatsToSupport: [0, 4] },
       (text) => {
+        const now = Date.now()
+        if (now - lastScan < 2000) return
+        lastScan = now
         const matched = saleItemsRef.current.find(i => i.barcode && i.barcode === text)
         if (matched) {
           setCart(prev => {

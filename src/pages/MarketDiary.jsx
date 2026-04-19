@@ -203,10 +203,14 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
       return
     }
     const s = new Html5Qrcode('reader')
+    let lastScan = 0
     s.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 }, formatsToSupport: [0, 4] },
+      { fps: 10, qrbox: { width: 320, height: 120 }, formatsToSupport: [0, 4] },
       (decodedText) => {
+        const now = Date.now()
+        if (now - lastScan < 2000) return
+        lastScan = now
         const matched = inventoryRef.current.find(
           i => i.barcode && i.barcode === decodedText &&
                (i.category === 'A用品' || i.category === 'B食品')
