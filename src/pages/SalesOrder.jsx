@@ -170,6 +170,7 @@ export default function SalesOrder({ data }) {
   const [scanMsg,      setScanMsg]      = useState('')
   const [barcodeInput, setBarcodeInput] = useState('')
   const [done,         setDone]         = useState(false)
+  const [platformCost, setPlatformCost] = useState(0)
   const [editOrder,    setEditOrder]    = useState(null)  // 正在編輯的訂單
   const [editForm,     setEditForm]     = useState({})   // 編輯表單暫存
 
@@ -295,11 +296,12 @@ export default function SalesOrder({ data }) {
     if (cart.length === 0) return
     const discountType  = discountPct ? 'pct' : discountAmt ? 'amt' : null
     const discountValue = discountPct ? parseFloat(discountPct) : discountAmt ? parseFloat(discountAmt) : null
-    await processOrder({ platform, items: cart, discountType, discountValue, totalAmount })
+    await processOrder({ platform, items: cart, discountType, discountValue, totalAmount, platformCost: parseFloat(platformCost) || 0 })
     setDone(true)
     setCart([])
     setDiscountPct('')
     setDiscountAmt('')
+    setPlatformCost(0)
     setTimeout(() => setDone(false), 3000)
   }
 
@@ -350,18 +352,30 @@ export default function SalesOrder({ data }) {
         </div>
       </div>
 
-      {/* 平台選擇 */}
+      {/* 來源平台 */}
       <SectionCard title="來源平台">
-        <div className="flex flex-wrap gap-2">
-          {PLATFORMS.map(p => (
-            <button key={p} onClick={() => setPlatform(p)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors
-                ${platform === p
-                  ? 'bg-blue-500 text-white border-blue-500'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>
-              {p}
-            </button>
-          ))}
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {PLATFORMS.map(p => (
+              <button key={p} onClick={() => setPlatform(p)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors
+                  ${platform === p
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>
+                {p}
+              </button>
+            ))}
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">成交手續費 / 廣告費（選填）</label>
+            <input
+              type="number" min="0" step="0.01"
+              placeholder="輸入此訂單相關成本..."
+              value={platformCost}
+              onChange={e => setPlatformCost(e.target.value)}
+              className="w-full sm:w-64 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
         </div>
       </SectionCard>
 

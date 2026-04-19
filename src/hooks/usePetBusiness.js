@@ -383,21 +383,24 @@ export default function usePetBusiness() {
     cloudUpdate("revenues", list => list.filter(r => r.orderId !== id));
   }, [cloudUpdate]);
 
-  const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount }) => {
+  const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount, platformCost }) => {
     const today = new Date().toISOString().slice(0, 10);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const discount = subtotal - totalAmount;
+    const cost = parseFloat(platformCost) || 0;
 
     const order = {
       id: uid(), platform, items, subtotal, discount, total: totalAmount,
       orderDate: today, status: "已完成",
       discountType: discountType ?? null,
       discountValue: discountValue ?? null,
+      platformCost: cost,
     };
 
     const revenueItem = {
       id: uid(), date: today, channel: platform, category: "電商銷售",
       amount: totalAmount, isReported: false, orderId: order.id, items,
+      platformCost: cost,
     };
 
     const applyInv = (list) => {

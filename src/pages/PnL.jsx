@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react'
-import { Sparkles, TrendingUp, TrendingDown } from 'lucide-react'
+import { useState, useMemo, useRef } from 'react'
+import { Sparkles, TrendingUp, TrendingDown, Download } from 'lucide-react'
 import { SectionCard, btnPrimary } from '../components/ui'
 import { fmt } from '../utils/format'
 import { getAIInsight } from '../utils/aiInsight'
+import { exportToCSV, buildMonthlyReport } from '../utils/exportReport'
 
 function PnLRow({ label, value, indent = 0, bold = false, highlight, border }) {
   return (
@@ -23,9 +24,30 @@ function PnLRow({ label, value, indent = 0, bold = false, highlight, border }) {
 }
 
 export default function PnL({ data }) {
-  const { revenues, expenses, kpi, inventoryAlerts } = data
+  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [] } = data
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const printRef = useRef()
+
+  // 本月月份
+  const currentMonth = new Date().toISOString().slice(0, 7)
+
+  // 月度結算資料
+  const monthlySummary = useMemo(() => {
+    const mRevs = revenues.filter(r => r.date.startsWith(currentMonth))
+    const mExps = expenses.filter(e => e.date.startsWith(currentMonth))
+    const totalRev  = mRevs.reduce((s, r) => s + r.amount, 0)
+    const totalExp  = mExps.reduce((s, e) => s + e.amount, 0)
+    const netProfit = totalRev - totalExp
+    const abInv     = inventory.filter(i => i.category === 'A用品' || i.category === 'B食品')
+    const invValue  = abInv.reduce((s, i) => s + (i.salePrice || 0) * i.currentQty, 0)
+    return { month: currentMonth, totalRev, totalExp, netProfit, invValue }
+  }, [revenues, expenses, inventory, currentMonth])
+
+  function handleExportMonthly() {
+    const rows = buildMonthlyReport(currentMonth, revenues, expenses, inventory, orders)
+    exportToCSV(rows, `萌獸探險隊_營運結算_${currentMonth}.csv`)
+  }
 
   const pnl = useMemo(() => {
     const totalRev = revenues.reduce((s, r) => s + r.amount, 0)
@@ -56,6 +78,72 @@ export default function PnL({ data }) {
     return { totalRev, ecRev, mktRev, byCategory, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
   }, [revenues, expenses])
 
+  // 財務指標：Gross Profit + Operating Expenses
+  const financialMetrics = useMemo(() => {
+    const cogs        = expenses.filter(e => e.type === '進貨' && e.isProductionCost).reduce((s, e) => s + e.amount, 0)
+    const totalRev    = revenues.reduce((s, r) => s + r.amount, 0)
+    const grossProfit = totalRev - cogs
+    const booth       = expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
+    const shipping    = expenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
+    const ads         = expenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0)
+    const opExp       = booth + shipping + ads
+    return { grossProfit, cogs, opExp, booth, shipping, ads }
+  }, [revenues, expenses])
+
+  // 庫存深度分析
+  const inventoryMetrics = useMemo(() => {
+    const stockLevel = inventory.reduce((s, i) => s + (i.currentQty || 0), 0)
+    const today = new Date()
+    const expiryWarnings = []
+    inventory.forEach(item => {
+      (item.expiryBatches || []).forEach(batch => {
+        const exp = batch.normalExp || batch.shelfExpiry
+        if (!exp) return
+        const daysLeft = Math.ceil((new Date(exp) - today) / 86400000)
+        if (daysLeft < 30) {
+          expiryWarnings.push({
+            itemName: item.itemName,
+            exp,
+            daysLeft,
+            qty: batch.qty || 0,
+          })
+        }
+      })
+    })
+    expiryWarnings.sort((a, b) => a.daysLeft - b.daysLeft)
+    return { stockLevel, expiryWarnings }
+  }, [inventory])
+
+  // 平台 ROI：(平台營收 - 商品成本) / (手續費 + 相關行銷支出)
+  const platformROI = useMemo(() => {
+    const platforms = [...new Set(orders.map(o => o.platform).filter(Boolean))]
+
+    // 各平台從 expenses 找備註含平台名的行銷支出
+    const adsByPlatform = {}
+    expenses.filter(e => e.type === '行銷' && e.note).forEach(e => {
+      platforms.forEach(p => {
+        if (e.note.includes(p)) adsByPlatform[p] = (adsByPlatform[p] || 0) + e.amount
+      })
+    })
+
+    // 用整體 cogs 佔營收比例估算各平台商品成本
+    const cogsRate = pnl.totalRev > 0 ? pnl.cogs / pnl.totalRev : 0
+
+    const result = platforms.map(p => {
+      const platformOrders = orders.filter(o => o.platform === p)
+      const rev         = platformOrders.reduce((s, o) => s + (o.total || 0), 0)
+      const itemCost    = rev * cogsRate
+      const platformFees = platformOrders.reduce((s, o) => s + (o.platformCost || 0), 0)
+      const adsCost     = adsByPlatform[p] || 0
+      const totalCost   = platformFees + adsCost
+      const netRev      = rev - itemCost
+      const roi         = totalCost > 0 ? netRev / totalCost : null
+      return { platform: p, rev, itemCost, platformFees, adsCost, totalCost, netRev, roi }
+    }).sort((a, b) => (b.roi ?? -1) - (a.roi ?? -1))
+
+    return result
+  }, [orders, expenses, pnl.cogs, pnl.totalRev])
+
   async function handleAI() {
     setAiLoading(true)
     setAiText('')
@@ -67,11 +155,83 @@ export default function PnL({ data }) {
     }
   }
 
+  function handlePrint() {
+    const date = new Date().toLocaleDateString('zh-TW')
+    const printContent = `
+      <html><head><meta charset="utf-8">
+      <title>損益表 ${date}</title>
+      <style>
+        body { font-family: sans-serif; padding: 32px; color: #1f2937; }
+        h1 { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+        .date { font-size: 12px; color: #6b7280; margin-bottom: 24px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        tr { border-bottom: 1px solid #f3f4f6; }
+        td { padding: 8px 12px; }
+        td:last-child { text-align: right; font-weight: 600; }
+        .bold td { font-weight: bold; font-size: 15px; background: #f9fafb; }
+        .green td:last-child { color: #059669; }
+        .red td:last-child { color: #dc2626; }
+        .indent1 td:first-child { padding-left: 28px; }
+        .indent2 td:first-child { padding-left: 48px; }
+        .section-gap { border-top: 2px solid #e5e7eb !important; }
+        .profit-box { margin-top: 24px; padding: 16px; border-radius: 8px; background: ${pnl.netProfit >= 0 ? '#ecfdf5' : '#fef2f2'}; }
+        .profit-box h2 { font-size: 14px; color: #6b7280; margin: 0 0 4px; }
+        .profit-box .amount { font-size: 28px; font-weight: 900; color: ${pnl.netProfit >= 0 ? '#059669' : '#dc2626'}; }
+        .profit-box .rate { font-size: 14px; color: #6b7280; margin-top: 4px; }
+        @media print { body { padding: 16px; } }
+      </style></head><body>
+      <h1>萌獸探險隊 · 損益表</h1>
+      <div class="date">列印日期：${date}</div>
+      <table>
+        <tr class="bold"><td>▌ 營業收入</td><td>${fmt(pnl.totalRev)}</td></tr>
+        <tr class="indent1"><td>電商通路</td><td>${fmt(pnl.ecRev)}</td></tr>
+        <tr class="indent1"><td>市集通路</td><td>${fmt(pnl.mktRev)}</td></tr>
+        ${pnl.byCategory.map(({ cat, amount }) => `<tr class="indent2"><td>└ ${cat}</td><td>${fmt(amount)}</td></tr>`).join('')}
+        <tr class="bold section-gap"><td>▌ (-) 營業成本</td><td>(${fmt(pnl.cogs)})</td></tr>
+        <tr class="indent1"><td>進貨成本</td><td>(${fmt(pnl.cogs)})</td></tr>
+        <tr class="bold section-gap ${pnl.grossProfit >= 0 ? 'green' : 'red'}"><td>▌ 毛利</td><td>${pnl.grossProfit < 0 ? '(' + fmt(Math.abs(pnl.grossProfit)) + ')' : fmt(pnl.grossProfit)}</td></tr>
+        <tr class="bold section-gap"><td>▌ (-) 營業費用</td><td>(${fmt(pnl.totalOpExp)})</td></tr>
+        <tr class="indent1"><td>租金</td><td>(${fmt(pnl.opExpenses.rent)})</td></tr>
+        <tr class="indent1"><td>電費</td><td>(${fmt(pnl.opExpenses.electric)})</td></tr>
+        <tr class="indent1"><td>人事</td><td>(${fmt(pnl.opExpenses.labor)})</td></tr>
+        <tr class="indent1"><td>攤位費</td><td>(${fmt(pnl.opExpenses.booth)})</td></tr>
+        <tr class="indent1"><td>行銷費</td><td>(${fmt(pnl.opExpenses.marketing)})</td></tr>
+        <tr class="indent1"><td>耗材</td><td>(${fmt(pnl.opExpenses.material)})</td></tr>
+        <tr class="indent1"><td>設備</td><td>(${fmt(pnl.opExpenses.equipment)})</td></tr>
+        <tr class="indent1"><td>雜項</td><td>(${fmt(pnl.opExpenses.misc)})</td></tr>
+        <tr class="bold section-gap ${pnl.netProfit >= 0 ? 'green' : 'red'}"><td>▌ 稅前淨利</td><td>${pnl.netProfit < 0 ? '(' + fmt(Math.abs(pnl.netProfit)) + ')' : fmt(pnl.netProfit)}</td></tr>
+      </table>
+      <div class="profit-box">
+        <h2>稅前淨利</h2>
+        <div class="amount">${pnl.netProfit < 0 ? '(' + fmt(Math.abs(pnl.netProfit)) + ')' : fmt(pnl.netProfit)}</div>
+        <div class="rate">利潤率：${profitRate.toFixed(1)}%　｜　總收入：${fmt(pnl.totalRev)}</div>
+      </div>
+      </body></html>
+    `
+    const win = window.open('', '_blank')
+    win.document.write(printContent)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
+  }
+
   const profitRate = pnl.totalRev > 0 ? (pnl.netProfit / pnl.totalRev * 100) : 0
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-800">盈虧損益表</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-800">盈虧損益表</h1>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={handleExportMonthly}
+          className="bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm hover:bg-emerald-700">
+          <Download size={15} /> 匯出本月報表
+        </button>
+        <button onClick={handlePrint}
+          className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
+          <Download size={15} /> 匯出 PDF
+        </button>
+      </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SectionCard title="損益結構">
@@ -156,6 +316,124 @@ export default function PnL({ data }) {
             </div>
           </SectionCard>
         </div>
+      </div>
+
+      {/* 營運深度分析 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* 財務儀表板 */}
+        <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+          <h3 className="font-bold text-gray-800 text-sm">📊 財務儀表板</h3>
+          <div className="flex items-end gap-2">
+            <span className={`text-3xl font-black ${financialMetrics.grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              {fmt(financialMetrics.grossProfit)}
+            </span>
+            <span className="text-xs text-gray-400 mb-1">毛利</span>
+          </div>
+          <div className="text-sm text-gray-500">
+            毛利率：
+            <span className={`font-semibold ml-1 ${
+              pnl.totalRev > 0 && financialMetrics.grossProfit / pnl.totalRev >= 0.3
+                ? 'text-emerald-600' : 'text-orange-500'
+            }`}>
+              {pnl.totalRev > 0 ? (financialMetrics.grossProfit / pnl.totalRev * 100).toFixed(1) : '0.0'}%
+            </span>
+          </div>
+          <div className="border-t border-gray-100 pt-3 space-y-1.5">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">營運開销佔比</p>
+            {[
+              { label: '攤位費', value: financialMetrics.booth },
+              { label: '運費',   value: financialMetrics.shipping },
+              { label: '廣告費', value: financialMetrics.ads },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-14">{label}</span>
+                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-orange-400 rounded-full"
+                    style={{ width: `${pnl.totalRev > 0 ? Math.min(value / pnl.totalRev * 100, 100) : 0}%` }} />
+                </div>
+                <span className="text-xs text-gray-500 w-10 text-right">
+                  {pnl.totalRev > 0 ? (value / pnl.totalRev * 100).toFixed(1) : '0.0'}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 庫存警戒區 */}
+        <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+          <h3 className="font-bold text-gray-800 text-sm">📦 庫存警戒區</h3>
+          <div className="flex items-end gap-2">
+            <span className="text-3xl font-black text-blue-600">{inventoryMetrics.stockLevel}</span>
+            <span className="text-xs text-gray-400 mb-1">總庫存件數</span>
+          </div>
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">即期品警告（30天內）</p>
+            {inventoryMetrics.expiryWarnings.length === 0 ? (
+              <div className="flex items-center gap-1.5 text-emerald-600 text-sm">
+                <span>✅</span>
+                <span>效期狀態良好</span>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                {inventoryMetrics.expiryWarnings.map((w, i) => (
+                  <div key={i} className="flex items-center justify-between bg-red-50 rounded-lg px-2.5 py-1.5">
+                    <div>
+                      <p className="text-xs font-semibold text-red-600">{w.itemName}</p>
+                      <p className="text-xs text-red-400">剩 {w.daysLeft} 天到期（{w.exp}）</p>
+                    </div>
+                    <span className="text-xs font-bold text-red-500">{w.qty} 件</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 通路戰情室 */}
+        <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+          <h3 className="font-bold text-gray-800 text-sm">🎯 通路戰情室</h3>
+          {platformROI.length === 0 ? (
+            <p className="text-sm text-gray-400">尚無訂單資料</p>
+          ) : (
+            <>
+              <div className="bg-emerald-50 rounded-xl px-3 py-2.5">
+                <p className="text-xs text-gray-400">表現最佳平台</p>
+                <p className="text-lg font-black text-emerald-600">{platformROI[0].platform}</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  ROI：{platformROI[0].roi !== null ? `${platformROI[0].roi.toFixed(1)}x` : '無成本資料'}
+                  　實際獲利：{fmt(Math.round(platformROI[0].netRev))}
+                </p>
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                💡 {platformROI[0].platform} ROI 最高，建議增加該平台投放。
+                {platformROI.length > 1 && platformROI[platformROI.length - 1].roi !== null && (
+                  <> {platformROI[platformROI.length - 1].platform} ROI 較低，可考慮減少投放。</>
+                )}
+              </p>
+              <div className="space-y-2">
+                {platformROI.map(p => (
+                  <div key={p.platform} className="text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-700">{p.platform}</span>
+                      <span className={`font-bold ${
+                        p.roi === null ? 'text-gray-400' :
+                        p.roi >= 3 ? 'text-emerald-600' : p.roi >= 1 ? 'text-orange-500' : 'text-red-500'
+                      }`}>
+                        {p.roi !== null ? `ROI ${p.roi.toFixed(1)}x` : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-gray-400 mt-0.5">
+                      <span>營收 {fmt(p.rev)} / 手續費 {fmt(p.platformFees)}</span>
+                      <span>獲利 {fmt(Math.round(p.netRev))}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
       </div>
     </div>
   )
