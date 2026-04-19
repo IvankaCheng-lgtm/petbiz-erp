@@ -173,9 +173,11 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
 // ── POS 現場記帳分頁 ──────────────────────────────────────────
 function POSTab({ marketEvents, inventory, processMarketSale }) {
   const [selectedEventId, setSelectedEventId] = useState('')
-  const [cart, setCart] = useState([])   // [{ itemId, itemName, qty, unitPrice }]
+  const [cart, setCart]               = useState([])
   const [paymentMethod, setPaymentMethod] = useState('現金')
-  const [done, setDone] = useState(false)
+  const [done, setDone]               = useState(false)
+  const [discountPct, setDiscountPct] = useState('')  // 折扣 %，選填
+  const [discountAmt, setDiscountAmt] = useState('')  // 折抄元，選填
 
   const activeEvents = useMemo(
     () => marketEvents.filter(e => e.status === '已報名'),
@@ -185,10 +187,19 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
     () => inventory.filter(i => i.category === 'A用品' || i.category === 'B食品'),
     [inventory]
   )
-  const totalAmount = useMemo(
+  const subtotal = useMemo(
     () => cart.reduce((s, c) => s + c.qty * c.unitPrice, 0),
     [cart]
   )
+  const totalAmount = useMemo(() => {
+    let t = subtotal
+    const pct = parseFloat(discountPct)
+    const amt = parseFloat(discountAmt)
+    if (!isNaN(pct) && pct > 0 && pct < 100) t = t * (1 - pct / 100)
+    if (!isNaN(amt) && amt > 0) t = t - amt
+    return Math.max(0, Math.round(t * 100) / 100)
+  }, [subtotal, discountPct, discountAmt])
+  const savedAmt = subtotal - totalAmount
 
   function addToCart(item) {
     setCart(prev => {
@@ -212,6 +223,8 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
     await processMarketSale({ items: cart, paymentMethod, totalAmount, eventId: selectedEventId })
     setDone(true)
     setCart([])
+    setDiscountPct('')
+    setDiscountAmt('')
     setTimeout(() => setDone(false), 2500)
   }
 
@@ -278,8 +291,39 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 
           {cart.length > 0 && (
             <>
-              <div className="border-t border-gray-100 mt-3 pt-3 flex justify-between items-center">
-                <span className="text-sm text-gray-500">合計</span>
+              {/* 小計 */}
+              <div className="border-t border-gray-100 mt-3 pt-3 flex justify-between text-sm text-gray-500">
+                <span>小計</span>
+                <span>{fmt(subtotal)}</span>
+              </div>
+
+              {/* 折扣輸入（選填） */}
+              <div className="mt-2 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2.5 space-y-2">
+                <p className="text-xs font-medium text-orange-600">折扣（選填）</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">打折 %（例：85 = 八五折）</label>
+                    <input type="number" min="0" max="99" placeholder="不打折請留空"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+                      value={discountPct}
+                      onChange={e => setDiscountPct(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">折抄金額（元）</label>
+                    <input type="number" min="0" placeholder="不折抄請留空"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+                      value={discountAmt}
+                      onChange={e => setDiscountAmt(e.target.value)} />
+                  </div>
+                </div>
+                {savedAmt > 0 && (
+                  <p className="text-xs text-emerald-600 font-medium">共省 {fmt(savedAmt)}</p>
+                )}
+              </div>
+
+              {/* 合計 */}
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-sm font-semibold text-gray-700">合計</span>
                 <span className="text-xl font-black text-gray-800">{fmt(totalAmount)}</span>
               </div>
 
@@ -401,20 +445,57 @@ function StatsTab({ marketEvents, revenues, expenses }) {
               ? <p className="text-sm text-gray-400 text-center py-4">尚無交易紀錄</p>
               : (
                 <div className="space-y-1.5">
-                  {eventRevenues.map(r => (
-                    <div key={r.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-2.5">
-                      <div>
-                        <span className="text-sm font-medium text-gray-700">{r.date}</span>
-                        {r.paymentMethod && (
-                          <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-medium
-                            ${r.paymentMethod === '現金' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                            {r.paymentMethod}
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-bold text-gray-800">{fmt(r.amount)}</span>
-                    </div>
-                  ))}
+                  {eventRevenues.map(r => {
+                    const subtotal = r.items?.reduce((s, i) => s + i.qty * i.unitPrice, 0) ?? r.amount
+                    const hasDiscount = subtotal > r.amount
+                    return (
+                      <details key={r.id} className="group bg-gray-50 rounded-xl overflow-hidden">
+                        <summary className="flex items-center justify-between px-4 py-2.5 cursor-pointer list-none select-none">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400 select-none group-open:rotate-90 transition-transform inline-block">▶</span>
+                            <span className="text-sm font-medium text-gray-700">{r.date}</span>
+                            {r.paymentMethod && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+                                ${r.paymentMethod === '現金' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                {r.paymentMethod}
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-bold text-gray-800">{fmt(r.amount)}</span>
+                        </summary>
+
+                        {/* 展開內容 */}
+                        <div className="px-4 pb-3 pt-1 border-t border-gray-100 space-y-1">
+                          {r.items && r.items.length > 0 ? (
+                            r.items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-xs text-gray-600">
+                                <span>{item.itemName} × {item.qty}</span>
+                                <span>{fmt(item.qty * item.unitPrice)}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-gray-400">無商品明細</p>
+                          )}
+                          {hasDiscount && (
+                            <div className="flex justify-between text-xs pt-1 border-t border-dashed border-gray-200">
+                              <span className="text-gray-400">小計</span>
+                              <span className="text-gray-400">{fmt(subtotal)}</span>
+                            </div>
+                          )}
+                          {hasDiscount && (
+                            <div className="flex justify-between text-xs text-emerald-600 font-medium">
+                              <span>折扣</span>
+                              <span>-{fmt(subtotal - r.amount)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-xs font-bold pt-0.5">
+                            <span className="text-gray-700">實收</span>
+                            <span className="text-gray-800">{fmt(r.amount)}</span>
+                          </div>
+                        </div>
+                      </details>
+                    )
+                  })}
                 </div>
               )
             }

@@ -255,6 +255,7 @@ export default function usePetBusiness() {
     const revenueItem = {
       id: uid(), date: today, channel: "市集", category,
       amount: totalAmount, isReported: false, paymentMethod, eventId,
+      items, // 儲存購買明細供結算統計查看
     };
     setRevenues(prev => [...prev, revenueItem]);
     setInventory(prev => {
