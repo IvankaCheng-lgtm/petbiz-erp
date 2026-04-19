@@ -423,17 +423,17 @@ export default function Procurement({ data }) {
   // 下載範本 Excel
   function downloadTemplate() {
     const headers = [[
-      '分類(A用品/B食品/C食材/D包材)', '品項名稱', '現有數量', '安全水位', '單位',
+      '分類(A用品/B食品/C食材/D包材)', '品項名稱', '貨號', '現有數量', '安全水位', '單位',
       '供應商', '條碼', '定價', '售價', '成本', '單價'
     ]]
     const example = [
-      ['A用品', '範例用品', 100, 20, '個', '供應商A', '4710000000001', 299, 249, 80, ''],
-      ['B食品', '範例食品', 50, 10, '包', '供應商B', '4710000000002', 199, 159, 60, ''],
-      ['C食材', '範例食材', 30, 5, 'kg', '供應商C', '', '', '', '', 280],
-      ['D包材', '範例包材', 500, 100, '個', '供應商D', '', '', '', '', 3.5],
+      ['A用品', '範例用品', 'SKU-001', 100, 20, '個', '供應商A', '4710000000001', 299, 249, 80, ''],
+      ['B食品', '範例食品', 'SKU-002', 50, 10, '包', '供應商B', '4710000000002', 199, 159, 60, ''],
+      ['C食材', '範例食材', '', 30, 5, 'kg', '供應商C', '', '', '', '', 280],
+      ['D包材', '範例包材', '', 500, 100, '個', '供應商D', '', '', '', '', 3.5],
     ]
     const ws = XLSX.utils.aoa_to_sheet([...headers, ...example])
-    ws['!cols'] = [16,16,10,10,6,14,16,8,8,8,8].map(w => ({ wch: w }))
+    ws['!cols'] = [16,16,10,10,10,6,14,16,8,8,8,8].map(w => ({ wch: w }))
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '庫存')
     XLSX.writeFile(wb, '庫存匹入範本.xlsx')
@@ -460,6 +460,7 @@ export default function Procurement({ data }) {
             unit:       String(r['單位'] || '個').trim(),
             supplier:   String(r['供應商'] || '').trim(),
             barcode:    String(r['條碼']   || '').trim(),
+            sku:        String(r['貨號']   || '').trim(),
             listPrice:  parseFloat(r['定價'])    || 0,
             salePrice:  parseFloat(r['售價'])    || 0,
             cost:       parseFloat(r['成本'])    || 0,
