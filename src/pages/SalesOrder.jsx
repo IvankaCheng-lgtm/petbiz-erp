@@ -202,7 +202,25 @@ export default function SalesOrder({ data }) {
     s.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 250, height: 250 } },
-      (text) => { handleBarcodeMatch(text, saleItemsRef.current) },
+      (text) => {
+        const matched = saleItemsRef.current.find(i => i.barcode && i.barcode === text)
+        if (matched) {
+          setCart(prev => {
+            const idx = prev.findIndex(c => c.itemId === matched.id)
+            if (idx !== -1) {
+              const next = [...prev]
+              next[idx] = { ...next[idx], qty: next[idx].qty + 1 }
+              return next
+            }
+            return [...prev, { itemId: matched.id, itemName: matched.itemName, category: matched.category, qty: 1, unitPrice: matched.salePrice || matched.listPrice || 0 }]
+          })
+          beep()
+          setScanMsg(`✅ 已加入：${matched.itemName}`)
+        } else {
+          setScanMsg('⚠️ 查無此商品')
+        }
+        setTimeout(() => setScanMsg(''), 2500)
+      },
       () => {}
     ).then(() => { scannerRef.current = s }).catch(() => {})
     return () => {
