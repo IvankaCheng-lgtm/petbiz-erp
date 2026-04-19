@@ -960,7 +960,7 @@ export default function Procurement({ data }) {
         </Modal>
       )}
 
-      {/* ── 盤點異動 Modal ── */}}
+      {/* ── 盤點異動 Modal ── */}
       {modal === 'adjust' && editTarget && (
         <Modal title={`盤點異動：${editTarget.itemName}`} size="sm" onClose={() => setModal(null)}>
           <form onSubmit={submitAdjust} className="space-y-4">
