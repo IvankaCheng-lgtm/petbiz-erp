@@ -41,6 +41,7 @@ export default function SalesOrder({ data }) {
   const [isScanning, setIsScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
+  const [itemSearch, setItemSearch] = useState("");
   const [done, setDone] = useState(false);
 
   const scannerRef = useRef(null);
@@ -235,8 +236,38 @@ export default function SalesOrder({ data }) {
         )}
       </SectionCard>
 
+      {/* 商品列表 */}
+      <SectionCard title="選擇商品">
+        <input
+          type="text"
+          value={itemSearch}
+          onChange={(e) => setItemSearch(e.target.value)}
+          placeholder="搜尋商品名稱…"
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-300"
+        />
+        <div className="space-y-1 max-h-60 overflow-y-auto">
+          {saleItems
+            .filter((i) => !itemSearch || i.itemName?.includes(itemSearch))
+            .map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => addToCart(item)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-blue-50 transition-colors text-sm text-left"
+              >
+                <span className="text-gray-700 flex-1">{item.itemName}</span>
+                <span className="text-xs text-gray-400 mr-3">{item.category}</span>
+                <span className="text-blue-600 font-medium">${item.salePrice || item.listPrice || 0}</span>
+              </button>
+            ))}
+          {saleItems.filter((i) => !itemSearch || i.itemName?.includes(itemSearch)).length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-4">查無符合商品</p>
+          )}
+        </div>
+      </SectionCard>
+
       {/* 條碼掃描 */}
-      <SectionCard title="商品掃描">
+      <SectionCard title="條碼掃描">
         <div className="space-y-3">
           <input
             ref={barcodeRef}
