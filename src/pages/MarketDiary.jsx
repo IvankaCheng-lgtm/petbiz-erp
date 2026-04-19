@@ -183,9 +183,10 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   const [isScanning,  setIsScanning]  = useState(false)
   const [scanMsg,     setScanMsg]     = useState('')   // 成功/查無訊息
   const [barcodeInput, setBarcodeInput] = useState('')
-  const scannerRef  = useRef(null)
-  const barcodeRef  = useRef(null)
+  const scannerRef   = useRef(null)
+  const barcodeRef   = useRef(null)
   const inventoryRef = useRef(inventory)
+  const readerRef    = useRef(null)
 
   // 保持 ref 與最新 inventory 同步
   useEffect(() => { inventoryRef.current = inventory }, [inventory])
@@ -196,35 +197,45 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   useEffect(() => {
     if (!isScanning) {
       if (scannerRef.current) {
-        scannerRef.current.stop().then(() => scannerRef.current?.clear()).catch(() => {})
-        scannerRef.current = null
+        scannerRef.current.stop().catch(() => {}).finally(() => {
+          scannerRef.current?.clear()
+          scannerRef.current = null
+        })
       }
       return
     }
-    const scanner = new Html5Qrcode('reader')
-    scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      (decodedText) => {
-        const matched = inventoryRef.current.find(
-          i => i.barcode && i.barcode === decodedText &&
-               (i.category === 'A用品' || i.category === 'B食品')
-        )
-        if (matched) {
-          beep()
-          addToCart(matched)
-          setScanMsg(`✅ 已加入：${matched.itemName}`)
-        } else {
-          setScanMsg('⚠️ 查無此商品')
-        }
-        setTimeout(() => setScanMsg(''), 2500)
-      },
-      () => {}
-    ).catch(() => {})
-    scannerRef.current = scanner
+    const timer = setTimeout(() => {
+      if (!readerRef.current) return
+      const scanner = new Html5Qrcode(readerRef.current.id)
+      scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          const matched = inventoryRef.current.find(
+            i => i.barcode && i.barcode === decodedText &&
+                 (i.category === 'A用品' || i.category === 'B食品')
+          )
+          if (matched) {
+            beep()
+            addToCart(matched)
+            setScanMsg(`✅ 已加入：${matched.itemName}`)
+          } else {
+            setScanMsg('⚠️ 查無此商品')
+          }
+          setTimeout(() => setScanMsg(''), 2500)
+        },
+        () => {}
+      ).catch(() => {})
+      scannerRef.current = scanner
+    }, 100)
     return () => {
-      scanner.stop().then(() => scanner.clear()).catch(() => {})
-      scannerRef.current = null
+      clearTimeout(timer)
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {}).finally(() => {
+          scannerRef.current?.clear()
+          scannerRef.current = null
+        })
+      }
     }
   }, [isScanning]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -331,6 +342,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
           {isScanning && (
             <div
               id="reader"
+              ref={readerRef}
               className="w-full rounded-2xl overflow-hidden"
               style={{ maxWidth: '100%' }}
             />
