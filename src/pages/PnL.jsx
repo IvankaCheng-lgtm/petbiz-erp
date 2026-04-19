@@ -157,57 +157,62 @@ export default function PnL({ data }) {
 
   function handlePrint() {
     const date = new Date().toLocaleDateString('zh-TW')
-    const printContent = `
-      <html><head><meta charset="utf-8">
-      <title>損益表 ${date}</title>
-      <style>
-        body { font-family: sans-serif; padding: 32px; color: #1f2937; }
-        h1 { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
-        .date { font-size: 12px; color: #6b7280; margin-bottom: 24px; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        tr { border-bottom: 1px solid #f3f4f6; }
-        td { padding: 8px 12px; }
-        td:last-child { text-align: right; font-weight: 600; }
-        .bold td { font-weight: bold; font-size: 15px; background: #f9fafb; }
-        .green td:last-child { color: #059669; }
-        .red td:last-child { color: #dc2626; }
-        .indent1 td:first-child { padding-left: 28px; }
-        .indent2 td:first-child { padding-left: 48px; }
-        .section-gap { border-top: 2px solid #e5e7eb !important; }
-        .profit-box { margin-top: 24px; padding: 16px; border-radius: 8px; background: ${pnl.netProfit >= 0 ? '#ecfdf5' : '#fef2f2'}; }
-        .profit-box h2 { font-size: 14px; color: #6b7280; margin: 0 0 4px; }
-        .profit-box .amount { font-size: 28px; font-weight: 900; color: ${pnl.netProfit >= 0 ? '#059669' : '#dc2626'}; }
-        .profit-box .rate { font-size: 14px; color: #6b7280; margin-top: 4px; }
-        @media print { body { padding: 16px; } }
-      </style></head><body>
-      <h1>萌獸探險隊 · 損益表</h1>
-      <div class="date">列印日期：${date}</div>
-      <table>
-        <tr class="bold"><td>▌ 營業收入</td><td>${fmt(pnl.totalRev)}</td></tr>
-        <tr class="indent1"><td>電商通路</td><td>${fmt(pnl.ecRev)}</td></tr>
-        <tr class="indent1"><td>市集通路</td><td>${fmt(pnl.mktRev)}</td></tr>
-        ${pnl.byCategory.map(({ cat, amount }) => `<tr class="indent2"><td>└ ${cat}</td><td>${fmt(amount)}</td></tr>`).join('')}
-        <tr class="bold section-gap"><td>▌ (-) 營業成本</td><td>(${fmt(pnl.cogs)})</td></tr>
-        <tr class="indent1"><td>進貨成本</td><td>(${fmt(pnl.cogs)})</td></tr>
-        <tr class="bold section-gap ${pnl.grossProfit >= 0 ? 'green' : 'red'}"><td>▌ 毛利</td><td>${pnl.grossProfit < 0 ? '(' + fmt(Math.abs(pnl.grossProfit)) + ')' : fmt(pnl.grossProfit)}</td></tr>
-        <tr class="bold section-gap"><td>▌ (-) 營業費用</td><td>(${fmt(pnl.totalOpExp)})</td></tr>
-        <tr class="indent1"><td>租金</td><td>(${fmt(pnl.opExpenses.rent)})</td></tr>
-        <tr class="indent1"><td>電費</td><td>(${fmt(pnl.opExpenses.electric)})</td></tr>
-        <tr class="indent1"><td>人事</td><td>(${fmt(pnl.opExpenses.labor)})</td></tr>
-        <tr class="indent1"><td>攤位費</td><td>(${fmt(pnl.opExpenses.booth)})</td></tr>
-        <tr class="indent1"><td>行銷費</td><td>(${fmt(pnl.opExpenses.marketing)})</td></tr>
-        <tr class="indent1"><td>耗材</td><td>(${fmt(pnl.opExpenses.material)})</td></tr>
-        <tr class="indent1"><td>設備</td><td>(${fmt(pnl.opExpenses.equipment)})</td></tr>
-        <tr class="indent1"><td>雜項</td><td>(${fmt(pnl.opExpenses.misc)})</td></tr>
-        <tr class="bold section-gap ${pnl.netProfit >= 0 ? 'green' : 'red'}"><td>▌ 稅前淨利</td><td>${pnl.netProfit < 0 ? '(' + fmt(Math.abs(pnl.netProfit)) + ')' : fmt(pnl.netProfit)}</td></tr>
-      </table>
-      <div class="profit-box">
-        <h2>稅前淨利</h2>
-        <div class="amount">${pnl.netProfit < 0 ? '(' + fmt(Math.abs(pnl.netProfit)) + ')' : fmt(pnl.netProfit)}</div>
-        <div class="rate">利潤率：${profitRate.toFixed(1)}%　｜　總收入：${fmt(pnl.totalRev)}</div>
-      </div>
-      </body></html>
-    `
+    const bgColor     = pnl.netProfit >= 0 ? '#ecfdf5' : '#fef2f2'
+    const amountColor = pnl.netProfit >= 0 ? '#059669' : '#dc2626'
+    const gpClass     = pnl.grossProfit >= 0 ? 'green' : 'red'
+    const npClass     = pnl.netProfit   >= 0 ? 'green' : 'red'
+    const gpFmt = pnl.grossProfit < 0 ? '(' + fmt(Math.abs(pnl.grossProfit)) + ')' : fmt(pnl.grossProfit)
+    const npFmt = pnl.netProfit   < 0 ? '(' + fmt(Math.abs(pnl.netProfit))   + ')' : fmt(pnl.netProfit)
+    const printContent = [
+      '<html><head><meta charset="utf-8">',
+      '<title>\u640d\u76ca\u8868 ' + date + '</title>',
+      '<style>',
+      'body { font-family: sans-serif; padding: 32px; color: #1f2937; }',
+      'h1 { font-size: 22px; font-weight: bold; margin-bottom: 4px; }',
+      '.date { font-size: 12px; color: #6b7280; margin-bottom: 24px; }',
+      'table { width: 100%; border-collapse: collapse; font-size: 14px; }',
+      'tr { border-bottom: 1px solid #f3f4f6; }',
+      'td { padding: 8px 12px; }',
+      'td:last-child { text-align: right; font-weight: 600; }',
+      '.bold td { font-weight: bold; font-size: 15px; background: #f9fafb; }',
+      '.green td:last-child { color: #059669; }',
+      '.red td:last-child { color: #dc2626; }',
+      '.indent1 td:first-child { padding-left: 28px; }',
+      '.indent2 td:first-child { padding-left: 48px; }',
+      '.section-gap { border-top: 2px solid #e5e7eb !important; }',
+      '.profit-box { margin-top: 24px; padding: 16px; border-radius: 8px; background: ' + bgColor + '; }',
+      '.profit-box h2 { font-size: 14px; color: #6b7280; margin: 0 0 4px; }',
+      '.profit-box .amount { font-size: 28px; font-weight: 900; color: ' + amountColor + '; }',
+      '.profit-box .rate { font-size: 14px; color: #6b7280; margin-top: 4px; }',
+      '@media print { body { padding: 16px; } }',
+      '</style></head><body>',
+      '<h1>\u840c\u7378\u63a2\u96aa\u968a \u00b7 \u640d\u76ca\u8868</h1>',
+      '<div class="date">\u5217\u5370\u65e5\u671f\uff1a' + date + '</div>',
+      '<table>',
+      '<tr class="bold"><td>\u258c \u71df\u696d\u6536\u5165</td><td>' + fmt(pnl.totalRev) + '</td></tr>',
+      '<tr class="indent1"><td>\u96fb\u5546\u901a\u8def</td><td>' + fmt(pnl.ecRev) + '</td></tr>',
+      '<tr class="indent1"><td>\u5e02\u96c6\u901a\u8def</td><td>' + fmt(pnl.mktRev) + '</td></tr>',
+      pnl.byCategory.map(function(c) { return '<tr class="indent2"><td>\u2514 ' + c.cat + '</td><td>' + fmt(c.amount) + '</td></tr>' }).join(''),
+      '<tr class="bold section-gap"><td>\u258c (-) \u71df\u696d\u6210\u672c</td><td>(' + fmt(pnl.cogs) + ')</td></tr>',
+      '<tr class="indent1"><td>\u9032\u8ca8\u6210\u672c</td><td>(' + fmt(pnl.cogs) + ')</td></tr>',
+      '<tr class="bold section-gap ' + gpClass + '"><td>\u258c \u6bdb\u5229</td><td>' + gpFmt + '</td></tr>',
+      '<tr class="bold section-gap"><td>\u258c (-) \u71df\u696d\u8cbb\u7528</td><td>(' + fmt(pnl.totalOpExp) + ')</td></tr>',
+      '<tr class="indent1"><td>\u79df\u91d1</td><td>(' + fmt(pnl.opExpenses.rent) + ')</td></tr>',
+      '<tr class="indent1"><td>\u96fb\u8cbb</td><td>(' + fmt(pnl.opExpenses.electric) + ')</td></tr>',
+      '<tr class="indent1"><td>\u4eba\u4e8b</td><td>(' + fmt(pnl.opExpenses.labor) + ')</td></tr>',
+      '<tr class="indent1"><td>\u6524\u4f4d\u8cbb</td><td>(' + fmt(pnl.opExpenses.booth) + ')</td></tr>',
+      '<tr class="indent1"><td>\u884c\u92b7\u8cbb</td><td>(' + fmt(pnl.opExpenses.marketing) + ')</td></tr>',
+      '<tr class="indent1"><td>\u8017\u6750</td><td>(' + fmt(pnl.opExpenses.material) + ')</td></tr>',
+      '<tr class="indent1"><td>\u8a2d\u5099</td><td>(' + fmt(pnl.opExpenses.equipment) + ')</td></tr>',
+      '<tr class="indent1"><td>\u96dc\u9805</td><td>(' + fmt(pnl.opExpenses.misc) + ')</td></tr>',
+      '<tr class="bold section-gap ' + npClass + '"><td>\u258c \u7a05\u524d\u6de8\u5229</td><td>' + npFmt + '</td></tr>',
+      '</table>',
+      '<div class="profit-box">',
+      '<h2>\u7a05\u524d\u6de8\u5229</h2>',
+      '<div class="amount">' + npFmt + '</div>',
+      '<div class="rate">\u5229\u6f64\u7387\uff1a' + profitRate.toFixed(1) + '%\u3000\uff5c\u3000\u7e3d\u6536\u5165\uff1a' + fmt(pnl.totalRev) + '</div>',
+      '</div></body></html>',
+    ].join('')
     const win = window.open('', '_blank')
     win.document.write(printContent)
     win.document.close()
