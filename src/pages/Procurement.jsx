@@ -300,6 +300,9 @@ export default function Procurement({ data }) {
   const [rows, setRows] = useState([emptyRow()])
   const [editForm, setEditForm] = useState({})
   const [adjustForm, setAdjustForm] = useState({ change: '', reason: '' })
+  const [logPage, setLogPage] = useState(1)
+  const [logItem, setLogItem] = useState(null) // 點選查看異動紀錄的品項
+  const LOG_PAGE_SIZE = 15
   const xlsxRef = useRef()
   // A/B：定價/售價/成本；C/D：單價/總價
   const isAB = activeTab === 'A用品' || activeTab === 'B食品'
@@ -578,7 +581,8 @@ export default function Procurement({ data }) {
                 const mg = margin(item)
                 return (
                   <tr key={item.id}
-                    className={`hover:bg-gray-50 transition-colors ${item.currentQty < item.safetyQty ? 'bg-red-50/40' : ''}`}>
+                    onClick={() => setLogItem(item)}
+                    className={`hover:bg-gray-50 transition-colors cursor-pointer ${item.currentQty < item.safetyQty ? 'bg-red-50/40' : ''}`}>
                     <td className="py-3 text-xs text-gray-500">{item.sku || '—'}</td>
                     <td className="py-3 font-medium text-gray-800">
                       <div className="flex items-center gap-2">
@@ -867,38 +871,96 @@ export default function Procurement({ data }) {
             const logs = inventoryLogs
               .filter(l => abIds.has(l.itemId))
               .sort((a, b) => b.date.localeCompare(a.date))
-              .slice(0, 50)
             if (logs.length === 0) return <p className="text-sm text-gray-400 text-center py-6">尚無異動紀錄</p>
+            const totalPages = Math.ceil(logs.length / LOG_PAGE_SIZE)
+            const pageLogs = logs.slice((logPage - 1) * LOG_PAGE_SIZE, logPage * LOG_PAGE_SIZE)
             return (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[480px]">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
-                      {['日期', '品項', '異動數量', '原因'].map(h => (
-                        <th key={h} className="pb-3 text-left">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {logs.map(l => (
-                      <tr key={l.id} className="hover:bg-gray-50">
-                        <td className="py-2.5 text-gray-400 text-xs">{l.date}</td>
-                        <td className="py-2.5 font-medium text-gray-800">{l.itemName}</td>
-                        <td className={`py-2.5 font-bold ${l.change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {l.change > 0 ? `+${l.change}` : l.change}
-                        </td>
-                        <td className="py-2.5 text-gray-500 text-xs">{l.reason}</td>
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[480px]">
+                    <thead>
+                      <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
+                        {['日期', '品項', '異動數量', '原因'].map(h => (
+                          <th key={h} className="pb-3 text-left">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {pageLogs.map(l => (
+                        <tr key={l.id} className="hover:bg-gray-50">
+                          <td className="py-2.5 text-gray-400 text-xs">{l.date}</td>
+                          <td className="py-2.5 font-medium text-gray-800">{l.itemName}</td>
+                          <td className={`py-2.5 font-bold ${l.change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {l.change > 0 ? `+${l.change}` : l.change}
+                          </td>
+                          <td className="py-2.5 text-gray-500 text-xs">{l.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                    <span className="text-xs text-gray-400">共 {logs.length} 筆，第 {logPage} / {totalPages} 頁</span>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setLogPage(p => Math.max(1, p - 1))}
+                        disabled={logPage === 1}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                        上一頁
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                        <button key={p} onClick={() => setLogPage(p)}
+                          className={`w-8 h-8 text-xs rounded-lg border transition-colors ${
+                            p === logPage ? 'bg-blue-500 text-white border-blue-500' : 'border-gray-200 hover:bg-gray-50'
+                          }`}>
+                          {p}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setLogPage(p => Math.min(totalPages, p + 1))}
+                        disabled={logPage === totalPages}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                        下一頁
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )
           })()}
         </SectionCard>
       )}
 
-      {/* ── 盤點異動 Modal ── */}
+      {/* ── 品項異動紀錄 Modal ── */}
+      {logItem && (
+        <Modal title={`${logItem.itemName} — 異動紀錄`} size="md" onClose={() => setLogItem(null)}>
+          {(() => {
+            const logs = inventoryLogs
+              .filter(l => l.itemId === logItem.id)
+              .sort((a, b) => b.date.localeCompare(a.date))
+            if (logs.length === 0) return <p className="text-sm text-gray-400 text-center py-8">尚無異動紀錄</p>
+            return (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {logs.map(l => (
+                  <div key={l.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-gray-50 text-sm">
+                    <div>
+                      <span className="text-gray-400 text-xs">{l.date}</span>
+                      <p className="text-gray-500 text-xs mt-0.5">{l.reason}</p>
+                    </div>
+                    <span className={`font-bold text-base ${l.change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {l.change > 0 ? `+${l.change}` : l.change}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+          <button onClick={() => setLogItem(null)} className={btnSecondary + ' w-full mt-4'}>關閉</button>
+        </Modal>
+      )}
+
+      {/* ── 盤點異動 Modal ── */}}
       {modal === 'adjust' && editTarget && (
         <Modal title={`盤點異動：${editTarget.itemName}`} size="sm" onClose={() => setModal(null)}>
           <form onSubmit={submitAdjust} className="space-y-4">
