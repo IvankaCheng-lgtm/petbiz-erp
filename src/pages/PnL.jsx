@@ -47,6 +47,54 @@ export default function PnL({ data }) {
   // 本月月份
   const currentMonth = new Date().toISOString().slice(0, 7)
 
+  // 時間範圍選擇
+  const now = new Date()
+  const [rangeType, setRangeType] = useState('month') // 'month' | 'quarter' | 'year'
+  const [rangeYear, setRangeYear] = useState(now.getFullYear())
+  const [rangeMonth, setRangeMonth] = useState(now.getMonth() + 1)
+  const [rangeQ, setRangeQ] = useState(Math.ceil((now.getMonth() + 1) / 3))
+
+  // 可選年份列表
+  const availableYears = useMemo(() => {
+    const years = new Set([
+      ...revenues.map(r => r.date.slice(0, 4)),
+      ...expenses.map(e => e.date.slice(0, 4)),
+    ])
+    return [...years].sort((a, b) => b - a)
+  }, [revenues, expenses])
+
+  // 依範圍筛選資料
+  const filteredRevenues = useMemo(() => {
+    return revenues.filter(r => {
+      const d = r.date
+      if (rangeType === 'month') return d.startsWith(rangeYear + '-' + String(rangeMonth).padStart(2, '0'))
+      if (rangeType === 'quarter') {
+        const m = parseInt(d.slice(5, 7))
+        return d.startsWith(String(rangeYear)) && Math.ceil(m / 3) === rangeQ
+      }
+      return d.startsWith(String(rangeYear))
+    })
+  }, [revenues, rangeType, rangeYear, rangeMonth, rangeQ])
+
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter(e => {
+      const d = e.date
+      if (rangeType === 'month') return d.startsWith(rangeYear + '-' + String(rangeMonth).padStart(2, '0'))
+      if (rangeType === 'quarter') {
+        const m = parseInt(d.slice(5, 7))
+        return d.startsWith(String(rangeYear)) && Math.ceil(m / 3) === rangeQ
+      }
+      return d.startsWith(String(rangeYear))
+    })
+  }, [expenses, rangeType, rangeYear, rangeMonth, rangeQ])
+
+  // 範圍標籤
+  const rangeLabel = useMemo(() => {
+    if (rangeType === 'month') return rangeYear + ' 年 ' + rangeMonth + ' 月'
+    if (rangeType === 'quarter') return rangeYear + ' 年 Q' + rangeQ
+    return rangeYear + ' 年'
+  }, [rangeType, rangeYear, rangeMonth, rangeQ])
+
   // 月度結算資料
   const monthlySummary = useMemo(() => {
     const mRevs = revenues.filter(r => r.date.startsWith(currentMonth))
@@ -65,44 +113,53 @@ export default function PnL({ data }) {
   }
 
   const pnl = useMemo(() => {
-    const totalRev = revenues.reduce((s, r) => s + r.amount, 0)
-    const ecRev = revenues.filter(r => r.channel === '電商').reduce((s, r) => s + r.amount, 0)
-    const mktRev = revenues.filter(r => r.channel === '市集').reduce((s, r) => s + r.amount, 0)
+    const totalRev = filteredRevenues.reduce((s, r) => s + r.amount, 0)
+    const ecRev = filteredRevenues.filter(r => r.channel === '電商').reduce((s, r) => s + r.amount, 0)
+    const mktRev = filteredRevenues.filter(r => r.channel === '市集').reduce((s, r) => s + r.amount, 0)
 
     const byCategory = ['食品', '烘焙', '蛋糕', '用品'].map(cat => ({
-      cat, amount: revenues.filter(r => r.category === cat).reduce((s, r) => s + r.amount, 0),
+      cat, amount: filteredRevenues.filter(r => r.category === cat).reduce((s, r) => s + r.amount, 0),
     }))
 
-    const purchaseCogs = expenses.filter(e => ['進貨'].includes(e.type)).reduce((s, e) => s + e.amount, 0)
+    const purchaseCogs = filteredExpenses.filter(e => ['進貨'].includes(e.type)).reduce((s, e) => s + e.amount, 0)
     const cogs = Math.max(actualCogs, purchaseCogs)
     const grossProfit = totalRev - cogs
 
     const opExpenses = {
-      rent:      expenses.filter(e => e.type === '租金').reduce((s, e) => s + e.amount, 0),
-      electric:  expenses.filter(e => e.type === '電費').reduce((s, e) => s + e.amount, 0),
-      labor:     expenses.filter(e => e.type === '人事').reduce((s, e) => s + e.amount, 0),
-      booth:     expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0),
-      marketing: expenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0),
-      material:  expenses.filter(e => e.type === '耗材').reduce((s, e) => s + e.amount, 0),
-      equipment: expenses.filter(e => e.type === '設備').reduce((s, e) => s + e.amount, 0),
-      misc:      expenses.filter(e => e.type === '雜項').reduce((s, e) => s + e.amount, 0),
+      rent:      filteredExpenses.filter(e => e.type === '租金').reduce((s, e) => s + e.amount, 0),
+      electric:  filteredExpenses.filter(e => e.type === '電費').reduce((s, e) => s + e.amount, 0),
+      labor:     filteredExpenses.filter(e => e.type === '人事').reduce((s, e) => s + e.amount, 0),
+      booth:     filteredExpenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0),
+      marketing: filteredExpenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0),
+      material:  filteredExpenses.filter(e => e.type === '耗材').reduce((s, e) => s + e.amount, 0),
+      equipment: filteredExpenses.filter(e => e.type === '設備').reduce((s, e) => s + e.amount, 0),
+      misc:      filteredExpenses.filter(e => e.type === '雜項').reduce((s, e) => s + e.amount, 0),
     }
     const totalOpExp = Object.values(opExpenses).reduce((s, v) => s + v, 0)
     const netProfit = grossProfit - totalOpExp
 
     return { totalRev, ecRev, mktRev, byCategory, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
-  }, [revenues, expenses, actualCogs])
+  }, [filteredRevenues, filteredExpenses, actualCogs])
 
-  // 財務指標：Gross Profit + Operating Expenses
+  // 財務指標：當月毛利 + 營運開销
   const financialMetrics = useMemo(() => {
-    // 毛利與 pnl 保持一致：用所有進貨成本計算
-    const grossProfit = pnl.grossProfit
-    const booth    = expenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
-    const shipping = expenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
-    const ads      = expenses.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0)
+    const mRevs = revenues.filter(r => r.date.startsWith(currentMonth))
+    const mExps = expenses.filter(e => e.date.startsWith(currentMonth))
+
+    const monthRev  = mRevs.reduce((s, r) => s + r.amount, 0)
+    // 當月銷貨成本：進貨 + 生產電費（直接生產製造成本）
+    const monthCogs = mExps
+      .filter(e => e.type === '進貨' || (e.type === '電費' && e.isProductionCost))
+      .reduce((s, e) => s + e.amount, 0)
+    const grossProfit = monthRev - monthCogs
+
+    const booth    = mExps.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
+    const shipping = mExps.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
+    const ads      = mExps.filter(e => e.type === '行銷').reduce((s, e) => s + e.amount, 0)
     const opExp    = booth + shipping + ads
-    return { grossProfit, opExp, booth, shipping, ads }
-  }, [pnl.grossProfit, expenses])
+
+    return { monthRev, monthCogs, grossProfit, opExp, booth, shipping, ads }
+  }, [revenues, expenses, currentMonth])
 
   // 庫存深度分析
   const inventoryMetrics = useMemo(() => {
@@ -242,18 +299,46 @@ export default function PnL({ data }) {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">盈虧損益表</h1>
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={handleExportMonthly}
-          className="bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm hover:bg-emerald-700">
-          <Download size={15} /> 匯出本月報表
-        </button>
-        <button onClick={handlePrint}
-          className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
-          <Download size={15} /> 匯出 PDF
-        </button>
-      </div>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">盈虧損益表</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{rangeLabel}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 時間範圍選擇器 */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {[{k:'month',l:'月'},{k:'quarter',l:'季'},{k:'year',l:'年'}].map(({k,l}) => (
+              <button key={k} onClick={() => setRangeType(k)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  rangeType === k ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>{l}</button>
+            ))}
+          </div>
+          <select value={rangeYear} onChange={e => setRangeYear(Number(e.target.value))}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
+            {availableYears.map(y => <option key={y} value={y}>{y} 年</option>)}
+          </select>
+          {rangeType === 'month' && (
+            <select value={rangeMonth} onChange={e => setRangeMonth(Number(e.target.value))}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
+              {Array.from({length:12},(_,i)=>i+1).map(m => <option key={m} value={m}>{m} 月</option>)}
+            </select>
+          )}
+          {rangeType === 'quarter' && (
+            <select value={rangeQ} onChange={e => setRangeQ(Number(e.target.value))}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
+              {[1,2,3,4].map(q => <option key={q} value={q}>Q{q}</option>)}
+            </select>
+          )}
+          <button onClick={handleExportMonthly}
+            className="bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm hover:bg-emerald-700">
+            <Download size={15} /> 匯出報表
+          </button>
+          <button onClick={handlePrint}
+            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
+            <Download size={15} /> 匯出 PDF
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -346,7 +431,9 @@ export default function PnL({ data }) {
 
         {/* 財務儀表板 */}
         <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
-          <h3 className="font-bold text-gray-800 text-sm">📊 財務儀表板</h3>
+          <h3 className="font-bold text-gray-800 text-sm">📊 財務儀表板
+            <span className="text-xs font-normal text-gray-400 ml-1">(本月)</span>
+          </h3>
           <div className="flex items-end gap-2">
             <span className={`text-3xl font-black ${financialMetrics.grossProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
               {fmt(financialMetrics.grossProfit)}
@@ -356,12 +443,12 @@ export default function PnL({ data }) {
           <div className="text-sm text-gray-500">
             毛利率：
             <span className={`font-semibold ml-1 ${
-              pnl.totalRev > 0 && financialMetrics.grossProfit / pnl.totalRev >= 0.3
+              financialMetrics.monthRev > 0 && financialMetrics.grossProfit / financialMetrics.monthRev >= 0.3
                 ? 'text-emerald-600' : 'text-orange-500'
             }`}>
-              {pnl.totalRev > 0 ? (financialMetrics.grossProfit / pnl.totalRev * 100).toFixed(1) : '0.0'}%
+              {financialMetrics.monthRev > 0 ? (financialMetrics.grossProfit / financialMetrics.monthRev * 100).toFixed(1) : '0.0'}%
             </span>
-            <span className="text-xs text-gray-400 ml-1">(營收 - 進貨成本)</span>
+            <span className="text-xs text-gray-400 ml-1">(營收 - 進貨/電費)</span>
           </div>
           <div className="border-t border-gray-100 pt-3 space-y-1.5">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">營運開销佔比</p>
