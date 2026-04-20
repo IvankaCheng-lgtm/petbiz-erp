@@ -294,7 +294,7 @@ export default function Procurement({ data }) {
   const [editTarget,   setEditTarget]   = useState(null)
   const [importMsg,    setImportMsg]    = useState('')
   const [purchaseForm, setPurchaseForm] = useState({
-    date: today(), itemId: '', itemName: '', category: 'C食材', qty: '', unitPrice: '', note: '',
+    date: today(), itemId: '', itemName: '', category: 'C食材', qty: '', unitPrice: '', note: '', supplierId: '', supplierName: '',
   })
   const [addCategory,      setAddCategory]      = useState('A用品')
   const [addRecordExpense, setAddRecordExpense] = useState(false)

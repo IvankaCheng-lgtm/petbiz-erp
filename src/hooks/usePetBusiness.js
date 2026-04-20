@@ -211,7 +211,7 @@ export default function usePetBusiness() {
       amount, isProductionCost: true, isReported: false,
       inventoryCategory: category,
       supplierId: resolvedSupplierId,
-      supplierName: resolvedSupplierId ? supplierName : '',
+      supplierName: supplierName || '',
     };
     setExpenses(prev => [...prev, newExp]);
     setInventory(prev => {
