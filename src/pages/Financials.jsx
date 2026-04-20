@@ -348,9 +348,7 @@ export default function Financials({ data }) {
   }
 
   const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '', supplierId: null, customSupplierName: '' })
-  const [revSupplierName, setRevSupplierName] = useState('')
   const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
-  const [expSupplierName, setExpSupplierName] = useState('')
 
   const sortedRevenues = useMemo(() => [...revenues].sort((a, b) => b.date.localeCompare(a.date)), [revenues])
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.date.localeCompare(a.date)), [expenses])
@@ -371,19 +369,23 @@ export default function Financials({ data }) {
   function submitRevenue(e) {
     e.preventDefault()
     if (!revForm.amount) return
-    addRevenue({ ...revForm, amount: parseFloat(revForm.amount), supplierName: revSupplierName.trim() })
+    const supplierName = revForm.supplierId
+      ? suppliers.find(s => s.id === revForm.supplierId)?.name || ''
+      : revForm.customSupplierName.trim()
+    addRevenue({ ...revForm, amount: parseFloat(revForm.amount), supplierName })
     setModal(null)
     setRevForm({ date: today(), channel: '電商', category: '食品', amount: '', supplierId: null, customSupplierName: '' })
-    setRevSupplierName('')
   }
 
   function submitExpense(e) {
     e.preventDefault()
     if (!expForm.amount) return
-    addExpense({ ...expForm, amount: parseFloat(expForm.amount), supplierName: expSupplierName.trim() })
+    const supplierName = expForm.supplierId
+      ? suppliers.find(s => s.id === expForm.supplierId)?.name || ''
+      : expForm.customSupplierName.trim()
+    addExpense({ ...expForm, amount: parseFloat(expForm.amount), supplierName })
     setModal(null)
     setExpForm({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
-    setExpSupplierName('')
   }
 
   const channelColor = { '電商': 'orange', '市集': 'green' }
@@ -564,18 +566,6 @@ export default function Financials({ data }) {
                 onChange={e => setRevForm(p => ({ ...p, amount: e.target.value }))} required />
             </FormRow>
             <FormRow label="供應商/合作對象（選填）">
-              <input
-                list="supplier-options"
-                className={inputCls}
-                placeholder="選擇或輸入名稱"
-                value={revSupplierName}
-                onChange={e => setRevSupplierName(e.target.value)}
-              />
-              <datalist id="supplier-options">
-                {suppliers.map(s => <option key={s.id} value={s.name} />)}
-              </datalist>
-            </FormRow>
-            <FormRow label="關聯供應商/合作對象（選填）">
               <SupplierCombobox
                 suppliers={suppliers}
                 supplierId={revForm.supplierId}
@@ -634,15 +624,6 @@ export default function Financials({ data }) {
                 onChange={e => setExpForm(p => ({ ...p, amount: e.target.value }))} required />
             </FormRow>
             <FormRow label="供應商/合作對象（選填）">
-              <input
-                list="supplier-options"
-                className={inputCls}
-                placeholder="選擇或輸入名稱"
-                value={expSupplierName}
-                onChange={e => setExpSupplierName(e.target.value)}
-              />
-            </FormRow>
-            <FormRow label="關聯供應商/合作對象（選填）">
               <SupplierCombobox
                 suppliers={suppliers}
                 supplierId={expForm.supplierId}
