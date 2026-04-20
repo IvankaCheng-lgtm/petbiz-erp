@@ -95,7 +95,7 @@ export default function Suppliers({ data }) {
     if (!detailTarget || detailTarget.category === '寄賣點') return []
     return expenses
       .filter(e =>
-        (e.supplierId && e.supplierId === detailTarget.id) ||
+        (e.supplierId === detailTarget.id) ||
         (!e.supplierId && e.supplierName && e.supplierName === detailTarget.name)
       )
       .sort((a, b) => b.date?.localeCompare(a.date))

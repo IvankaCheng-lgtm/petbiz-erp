@@ -204,13 +204,14 @@ export default function usePetBusiness() {
 
   const addPurchase = useCallback(async ({ date, itemId, itemName, category, qty, unitPrice, note, supplierId = null, supplierName = '' }) => {
     const amount = qty * unitPrice;
+    const resolvedSupplierId = supplierId || null;
     const newExp = {
       id: uid(), date, type: "進貨",
       note: note || `進貨：${itemName}`,
       amount, isProductionCost: true, isReported: false,
       inventoryCategory: category,
-      supplierId,
-      supplierName,
+      supplierId: resolvedSupplierId,
+      supplierName: resolvedSupplierId ? supplierName : '',
     };
     setExpenses(prev => [...prev, newExp]);
     setInventory(prev => {
