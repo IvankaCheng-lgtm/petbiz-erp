@@ -129,6 +129,7 @@ export default function SalesOrder({ data }) {
   const netAfterConsignment = totalAmount - consignmentFee;
 
   function addToCart(item) {
+    setCart((prev) => {
       const idx = prev.findIndex((c) => c.itemId === item.id);
       if (idx !== -1) {
         const next = [...prev];
@@ -207,15 +208,10 @@ export default function SalesOrder({ data }) {
             <p className="text-xs text-gray-400 mb-1.5">電商通路</p>
             <div className="flex flex-wrap gap-2">
               {PLATFORMS_ECOMMERCE.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPlatform(p)}
+                <button key={p} onClick={() => setPlatform(p)}
                   className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                    platform === p
-                      ? "bg-blue-500 text-white border-blue-500"
-                      : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
-                  }`}
-                >
+                    platform === p ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                  }`}>
                   {p}
                 </button>
               ))}
@@ -225,15 +221,10 @@ export default function SalesOrder({ data }) {
             <p className="text-xs text-gray-400 mb-1.5">非電商通路</p>
             <div className="flex flex-wrap gap-2">
               {PLATFORMS_OFFLINE.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPlatform(p)}
+                <button key={p} onClick={() => setPlatform(p)}
                   className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                    platform === p
-                      ? "bg-orange-500 text-white border-orange-500"
-                      : "bg-white text-gray-600 border-gray-200 hover:border-orange-300"
-                  }`}
-                >
+                    platform === p ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-600 border-gray-200 hover:border-orange-300"
+                  }`}>
                   {p}
                 </button>
               ))}
@@ -244,15 +235,10 @@ export default function SalesOrder({ data }) {
               <p className="text-xs text-gray-400 mb-1.5">寄賣點</p>
               <div className="flex flex-wrap gap-2">
                 {consignmentPlatforms.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setPlatform(s.name)}
+                  <button key={s.id} onClick={() => setPlatform(s.name)}
                     className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                      platform === s.name
-                        ? "bg-purple-500 text-white border-purple-500"
-                        : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
-                    }`}
-                  >
+                      platform === s.name ? "bg-purple-500 text-white border-purple-500" : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
+                    }`}>
                     {s.name}
                     {s.commissionPct != null && (
                       <span className="ml-1.5 text-xs opacity-75">({s.commissionPct}%)</span>
@@ -271,7 +257,7 @@ export default function SalesOrder({ data }) {
           <div className="space-y-2">
             <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm space-y-1">
               <div className="flex justify-between">
-                <span className="text-gray-500">寄賣點抗成（{selectedConsignee.commissionPct ?? 0}%）</span>
+                <span className="text-gray-500">寄賣點抽成（{selectedConsignee.commissionPct ?? 0}%）</span>
                 <span className="font-semibold text-red-500">-${consignmentFee}</span>
               </div>
               <div className="flex justify-between">
@@ -309,28 +295,18 @@ export default function SalesOrder({ data }) {
 
       {/* 商品列表 */}
       <SectionCard title="選擇商品">
-        <input
-          type="text"
-          value={itemSearch}
-          onChange={(e) => setItemSearch(e.target.value)}
+        <input type="text" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)}
           placeholder="搜尋商品名稱…"
-          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-300"
-        />
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-300" />
         <div className="space-y-1 max-h-60 overflow-y-auto">
-          {saleItems
-            .filter((i) => !itemSearch || i.itemName?.includes(itemSearch))
-            .map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => addToCart(item)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-blue-50 transition-colors text-sm text-left"
-              >
-                <span className="text-gray-700 flex-1">{item.itemName}</span>
-                <span className="text-xs text-gray-400 mr-3">{item.category}</span>
-                <span className="text-blue-600 font-medium">${item.salePrice || item.listPrice || 0}</span>
-              </button>
-            ))}
+          {saleItems.filter((i) => !itemSearch || i.itemName?.includes(itemSearch)).map((item) => (
+            <button key={item.id} type="button" onClick={() => addToCart(item)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-blue-50 transition-colors text-sm text-left">
+              <span className="text-gray-700 flex-1">{item.itemName}</span>
+              <span className="text-xs text-gray-400 mr-3">{item.category}</span>
+              <span className="text-blue-600 font-medium">${item.salePrice || item.listPrice || 0}</span>
+            </button>
+          ))}
           {saleItems.filter((i) => !itemSearch || i.itemName?.includes(itemSearch)).length === 0 && (
             <p className="text-sm text-gray-400 text-center py-4">查無符合商品</p>
           )}
@@ -340,32 +316,19 @@ export default function SalesOrder({ data }) {
       {/* 條碼掃描 */}
       <SectionCard title="條碼掃描">
         <div className="space-y-3">
-          <input
-            ref={barcodeRef}
-            type="text"
-            value={barcodeInput}
-            onChange={(e) => setBarcodeInput(e.target.value)}
-            onKeyDown={handleBarcodeEnter}
+          <input ref={barcodeRef} type="text" value={barcodeInput}
+            onChange={(e) => setBarcodeInput(e.target.value)} onKeyDown={handleBarcodeEnter}
             placeholder="掃描條碼或手動輸入後按 Enter"
-            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-          />
-          <button
-            type="button"
-            onClick={() => setIsScanning((v) => !v)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+          <button type="button" onClick={() => setIsScanning((v) => !v)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-              isScanning
-                ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                : "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
-            }`}
-          >
+              isScanning ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100" : "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
+            }`}>
             {isScanning ? <CameraOff size={16} /> : <Camera size={16} />}
             {isScanning ? "關閉相機" : "開啟相機掃碼"}
           </button>
-          <div
-            id="so-reader"
-            className={`rounded-xl overflow-hidden ${isScanning ? "block" : "hidden"}`}
-            style={{ width: "100%", maxWidth: 480 }}
-          />
+          <div id="so-reader" className={`rounded-xl overflow-hidden ${isScanning ? "block" : "hidden"}`}
+            style={{ width: "100%", maxWidth: 480 }} />
           {scanMsg && (
             <p className={`text-sm font-medium ${scanMsg.startsWith("✅") ? "text-green-600" : "text-orange-500"}`}>
               {scanMsg}
@@ -393,23 +356,14 @@ export default function SalesOrder({ data }) {
           </div>
           <div className="border-t border-gray-100 mt-3 pt-3 space-y-2">
             <div className="flex gap-2">
-              <input
-                type="number"
-                min="0"
-                max="99"
-                value={discountPct}
+              <input type="number" min="0" max="99" value={discountPct}
                 onChange={(e) => { setDiscountPct(e.target.value); setDiscountAmt(""); }}
                 placeholder="折扣 %"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              />
-              <input
-                type="number"
-                min="0"
-                value={discountAmt}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              <input type="number" min="0" value={discountAmt}
                 onChange={(e) => { setDiscountAmt(e.target.value); setDiscountPct(""); }}
                 placeholder="折扣金額 $"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              />
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
             </div>
             <div className="flex justify-between text-sm text-gray-500">
               <span>小計</span><span>${subtotal}</span>
@@ -428,21 +382,14 @@ export default function SalesOrder({ data }) {
 
       {/* 訂單備註 */}
       <SectionCard title="訂單備註">
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="輸入備註（買家要求、特殊包裝、發票資訊…）"
-          rows={3}
-          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
-        />
+        <textarea value={note} onChange={(e) => setNote(e.target.value)}
+          placeholder="輸入備註（買家要求、特殊包裝、發票資訊…）" rows={3}
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
       </SectionCard>
 
       {/* 送出 */}
-      <button
-        onClick={handleSubmit}
-        disabled={cart.length === 0}
-        className="w-full py-3 rounded-2xl text-white font-semibold text-sm transition-colors disabled:opacity-40 bg-blue-500 hover:bg-blue-600"
-      >
+      <button onClick={handleSubmit} disabled={cart.length === 0}
+        className="w-full py-3 rounded-2xl text-white font-semibold text-sm transition-colors disabled:opacity-40 bg-blue-500 hover:bg-blue-600">
         {done ? "✅ 訂單已建立" : "建立訂單"}
       </button>
 
