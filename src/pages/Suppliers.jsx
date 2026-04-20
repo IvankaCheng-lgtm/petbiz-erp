@@ -32,7 +32,7 @@ const EMPTY_FORM = {
 }
 
 export default function Suppliers({ data }) {
-  const { suppliers = [], addSupplier, updateSupplier, deleteSupplier, expenses = [], orders = [] } = data
+  const { suppliers = [], addSupplier, updateSupplier, deleteSupplier, expenses = [], orders = [], inventory = [] } = data
 
   const [activeTab,  setActiveTab]  = useState('全部')
   const [search,     setSearch]     = useState('')
@@ -90,16 +90,27 @@ export default function Suppliers({ data }) {
     deleteSupplier(id)
   }
 
-  // 一般廠商：從 expenses 查詢進貨紀錄（支援 supplierId 或 supplierName 比對）
+  // 一般廠商：從 expenses 查詢進貨紀錄（支援 supplierId 、supplierName 、庫存品項 supplier 文字比對）
   const supplierExpenses = useMemo(() => {
     if (!detailTarget || detailTarget.category === '寄賣點') return []
+    const sid  = detailTarget.id
+    const name = detailTarget.name
+    // 庫存中該廠商的品項名稱集合（用於比對舊資料）
+    const itemNames = new Set(
+      inventory.filter(i => i.supplier === name).map(i => i.itemName)
+    )
     return expenses
-      .filter(e =>
-        (e.supplierId && e.supplierId === detailTarget.id) ||
-        (e.supplierName === detailTarget.name)
-      )
+      .filter(e => {
+        if (e.supplierId && e.supplierId === sid) return true
+        if (e.supplierName && e.supplierName === name) return true
+        // 舊資料 fallback： note 內容包含該廠商的品項名稱
+        if (itemNames.size > 0 && e.type === '進貨') {
+          return [...itemNames].some(n => e.note?.includes(n))
+        }
+        return false
+      })
       .sort((a, b) => b.date?.localeCompare(a.date))
-  }, [detailTarget, expenses])
+  }, [detailTarget, expenses, inventory])
 
   // 寄賣點：從 orders 查詢出貨訂單
   const consignOrders = useMemo(() => {
