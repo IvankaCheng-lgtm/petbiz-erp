@@ -287,7 +287,7 @@ const emptyRow = () => ({
 })
 
 export default function Procurement({ data }) {
-  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory, importInventoryItems } = data
+  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory, importInventoryItems, suppliers = [] } = data
 
   const [activeTab,    setActiveTab]    = useState('A用品')
   const [modal,        setModal]        = useState(null)
@@ -378,7 +378,7 @@ export default function Procurement({ data }) {
   }
 
   function openPurchase(item) {
-    setPurchaseForm({ date: today(), itemId: item.id, itemName: item.itemName, category: item.category, qty: '', unitPrice: '', note: '' })
+    setPurchaseForm({ date: today(), itemId: item.id, itemName: item.itemName, category: item.category, qty: '', unitPrice: '', note: '', supplierId: '', supplierName: '' })
     setModal('purchase')
   }
 
@@ -483,6 +483,11 @@ export default function Procurement({ data }) {
     reader.readAsArrayBuffer(file)
     e.target.value = ''
   }
+
+  const purchaseSuppliers = useMemo(
+    () => suppliers.filter(s => ['生鮮食材', '包材廠商', '藥劑/添加物'].includes(s.category)),
+    [suppliers]
+  )
 
   const filtered = useMemo(() => inventory.filter(i => i.category === activeTab), [inventory, activeTab])
 
@@ -1029,6 +1034,21 @@ export default function Procurement({ data }) {
                 </span>
               </div>
             )}
+            <FormRow label="來源廠商">
+              <select
+                className={inputCls}
+                value={purchaseForm.supplierId}
+                onChange={e => {
+                  const s = purchaseSuppliers.find(x => x.id === e.target.value)
+                  setPurchaseForm(p => ({ ...p, supplierId: e.target.value, supplierName: s?.name || '' }))
+                }}
+              >
+                <option value="">— 不指定 —</option>
+                {purchaseSuppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}（{s.category}）</option>
+                ))}
+              </select>
+            </FormRow>
             <FormRow label="備註">
               <input type="text" className={inputCls} placeholder="選填" value={purchaseForm.note}
                 onChange={e => setPurchaseForm(p => ({ ...p, note: e.target.value }))} />

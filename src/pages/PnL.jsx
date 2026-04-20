@@ -24,7 +24,7 @@ function PnLRow({ label, value, indent = 0, bold = false, highlight, border }) {
 }
 
 export default function PnL({ data }) {
-  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [] } = data
+  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [], suppliers = [] } = data
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const printRef = useRef()
@@ -134,7 +134,22 @@ export default function PnL({ data }) {
     return { totalRev, ecRev, mktRev, otherRev, byCategory, rawMaterialCost, packagingCost, goodsCost, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
   }, [filteredRevenues, filteredExpenses])
 
-  // 財務指標：使用 pnl 的營業收入與營業成本計算毛利率
+  // 市集主辦收益與支出分析
+  const organizerAnalysis = useMemo(() => {
+    const organizers = suppliers.filter(s => s.category === '市集主辦')
+    if (organizers.length === 0) return []
+    return organizers.map(org => {
+      const rev = filteredRevenues
+        .filter(r => r.organizerId === org.id || r.channel === '市集')
+        .reduce((s, r) => s + r.amount, 0)
+      const boothCost = filteredExpenses
+        .filter(e => e.organizerId === org.id && (e.type === '攤位' || e.type === '場地費'))
+        .reduce((s, e) => s + e.amount, 0)
+      const netProfit = rev - boothCost
+      return { name: org.name, rev, boothCost, netProfit }
+    }).filter(o => o.rev > 0 || o.boothCost > 0)
+      .sort((a, b) => b.netProfit - a.netProfit)
+  }, [suppliers, filteredRevenues, filteredExpenses])
   const financialMetrics = useMemo(() => {
     const booth    = filteredExpenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
     const shipping = filteredExpenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
@@ -534,6 +549,37 @@ export default function PnL({ data }) {
         </div>
 
       </div>
+
+      {/* 市集主辦收益分析 */}
+      {organizerAnalysis.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+          <h3 className="font-bold text-gray-800 text-sm">🏪 市集主辦收益分析
+            <span className="text-xs font-normal text-gray-400 ml-1">({rangeLabel})</span>
+          </h3>
+          <div className="space-y-2">
+            {organizerAnalysis.map(o => (
+              <div key={o.name} className="border border-gray-100 rounded-xl px-3 py-2.5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-sm font-semibold text-gray-700">{o.name}</span>
+                  <span className={`text-sm font-bold ${o.netProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {o.netProfit >= 0 ? '+' : ''}{fmt(Math.round(o.netProfit))}
+                  </span>
+                </div>
+                <div className="flex gap-4 text-xs text-gray-400">
+                  <span>市集營收 <span className="text-gray-600 font-medium">{fmt(o.rev)}</span></span>
+                  <span>攤位/場地費 <span className="text-red-400 font-medium">({fmt(o.boothCost)})</span></span>
+                </div>
+                <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${o.netProfit >= 0 ? 'bg-emerald-400' : 'bg-red-400'}`}
+                    style={{ width: `${o.rev > 0 ? Math.min(Math.abs(o.netProfit) / o.rev * 100, 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

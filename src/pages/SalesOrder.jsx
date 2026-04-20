@@ -30,7 +30,7 @@ function SectionCard({ title, children }) {
 }
 
 export default function SalesOrder({ data }) {
-  const { inventory = [], processOrder, updateOrder, deleteOrder, orders = [] } = data || {};
+  const { inventory = [], processOrder, updateOrder, deleteOrder, orders = [], suppliers = [] } = data || {};
 
   const [platform, setPlatform] = useState(PLATFORMS_ECOMMERCE[0]);
   const [cart, setCart] = useState([]);
@@ -44,6 +44,18 @@ export default function SalesOrder({ data }) {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [done, setDone] = useState(false);
+
+  // 寄賣點通路（動態從 suppliers 取得，suppliers 由 Firebase onSnapshot 即時同步）
+  const consignmentPlatforms = useMemo(
+    () => suppliers.filter(s => s.category === '寄賣點'),
+    [suppliers]
+  );
+
+  // 目前選擇的寄賣點供應商（若有）
+  const selectedConsignee = useMemo(
+    () => consignmentPlatforms.find(s => s.name === platform) ?? null,
+    [consignmentPlatforms, platform]
+  );
 
   const scannerRef = useRef(null);
   const barcodeRef = useRef(null);
@@ -108,8 +120,15 @@ export default function SalesOrder({ data }) {
     return Math.max(0, Math.round(t * 100) / 100);
   }, [subtotal, discountPct, discountAmt]);
 
+  // 寄賣點拆帳金額計算
+  const consignmentFee = useMemo(() => {
+    if (!selectedConsignee || selectedConsignee.commissionPct == null) return 0;
+    return Math.round(totalAmount * selectedConsignee.commissionPct / 100);
+  }, [selectedConsignee, totalAmount]);
+
+  const netAfterConsignment = totalAmount - consignmentFee;
+
   function addToCart(item) {
-    setCart((prev) => {
       const idx = prev.findIndex((c) => c.itemId === item.id);
       if (idx !== -1) {
         const next = [...prev];
@@ -150,7 +169,8 @@ export default function SalesOrder({ data }) {
       discountType: discountPct ? "pct" : discountAmt ? "amt" : null,
       discountValue: discountPct ? parseFloat(discountPct) : discountAmt ? parseFloat(discountAmt) : null,
       totalAmount,
-      platformCost: computedCost,
+      platformCost: selectedConsignee ? consignmentFee : computedCost,
+      supplierId: selectedConsignee?.id ?? null,
       note,
     });
     setDone(true);
@@ -219,44 +239,71 @@ export default function SalesOrder({ data }) {
               ))}
             </div>
           </div>
+          {consignmentPlatforms.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-400 mb-1.5">寄賣點</p>
+              <div className="flex flex-wrap gap-2">
+                {consignmentPlatforms.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setPlatform(s.name)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                      platform === s.name
+                        ? "bg-purple-500 text-white border-purple-500"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
+                    }`}
+                  >
+                    {s.name}
+                    {s.commissionPct != null && (
+                      <span className="ml-1.5 text-xs opacity-75">({s.commissionPct}%)</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </SectionCard>
 
       {/* 成交手續費 */}
       <SectionCard title="成交手續費 / 廣告費（選填）">
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
-            <button
-              type="button"
-              onClick={() => setCostMode("pct")}
-              className={`px-3 py-2 transition-colors ${costMode === "pct" ? "bg-blue-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-            >
-              %
-            </button>
-            <button
-              type="button"
-              onClick={() => setCostMode("amt")}
-              className={`px-3 py-2 transition-colors ${costMode === "amt" ? "bg-blue-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-            >
-              $
-            </button>
+        {selectedConsignee ? (
+          <div className="space-y-2">
+            <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-500">寄賣點抗成（{selectedConsignee.commissionPct ?? 0}%）</span>
+                <span className="font-semibold text-red-500">-${consignmentFee}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">實得金額</span>
+                <span className="font-bold text-emerald-600">${netAfterConsignment}</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">寄賣點拆帳比例已自動帶入，建立訂單後將自動記入支出</p>
           </div>
-          <input
-            type="number"
-            min="0"
-            value={platformCost}
-            onChange={(e) => setPlatformCost(e.target.value)}
-            placeholder={costMode === "pct" ? "例：5（%）" : "例：50（元）"}
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-          />
-        </div>
-        {platformCost && (
-          <p className="text-xs text-gray-400 mt-1">
-            預估手續費：
-            {costMode === "pct"
-              ? `${Math.round((totalAmount * (parseFloat(platformCost) || 0)) / 100)} 元`
-              : `${parseFloat(platformCost) || 0} 元`}
-          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+                <button type="button" onClick={() => setCostMode("pct")}
+                  className={`px-3 py-2 transition-colors ${costMode === "pct" ? "bg-blue-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>%</button>
+                <button type="button" onClick={() => setCostMode("amt")}
+                  className={`px-3 py-2 transition-colors ${costMode === "amt" ? "bg-blue-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>$</button>
+              </div>
+              <input type="number" min="0" value={platformCost}
+                onChange={(e) => setPlatformCost(e.target.value)}
+                placeholder={costMode === "pct" ? "例：5（%）" : "例：50（元）"}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+            </div>
+            {platformCost && (
+              <p className="text-xs text-gray-400 mt-1">
+                預估手續費：
+                {costMode === "pct"
+                  ? `${Math.round((totalAmount * (parseFloat(platformCost) || 0)) / 100)} 元`
+                  : `${parseFloat(platformCost) || 0} 元`}
+              </p>
+            )}
+          </>
         )}
       </SectionCard>
 

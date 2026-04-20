@@ -13,6 +13,7 @@ import Settings    from './pages/Settings'
 import Nutrition   from './pages/Nutrition'
 import MarketDiary from './pages/MarketDiary'
 import SalesOrder  from './pages/SalesOrder'
+import Suppliers   from './pages/Suppliers'
 import { getAccountingReminders } from './utils/accounting'
 import logoImg from './assets/LOGO.png'
 
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { key: 'nutrition',    label: '營養計算室', icon: '🧪' },
   { key: 'salesorder',  label: '銷售訂單',   icon: <ClipboardList size={18} /> },
   { key: 'marketdiary',  label: '市集日記',   icon: '🏪' },
+  { key: 'suppliers',    label: '供應商管理', icon: '🚚' },
   { key: 'settings',    label: '系統設置',   icon: '⚙️' },
 ]
 
@@ -55,6 +57,7 @@ export default function App() {
     nutrition:    <Nutrition    data={bizData} />,
     salesorder:   <SalesOrder   data={bizData} />,
     marketdiary:  <MarketDiary  data={bizData} />,
+    suppliers:     <Suppliers    data={bizData} />,
     settings:     <Settings     data={{ ...bizData, auth }} />,
   }
 

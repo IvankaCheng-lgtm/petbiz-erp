@@ -30,7 +30,7 @@ function MdText({ text }) {
 
 const CHANNELS      = ['電商', '市集']
 const CATEGORIES    = ['食品', '烘焙', '蛋糕', '用品']
-const EXPENSE_TYPES = ['進貨', '人事', '電費', '租金', '耗材', '行銷', '攤位', '設備', '雜項']
+const EXPENSE_TYPES = ['進貨', '人事', '電費', '租金', '耗材', '行銷', '攤位', '場地費', '設備', '運費', '雜項']
 const TABS          = ['營收', '支出']
 const today         = () => new Date().toISOString().slice(0, 10)
 
@@ -207,7 +207,12 @@ function AiInsightModal({ onClose, revenues, expenses }) {
 // ── 主組件 ────────────────────────────────────────────────────
 export default function Financials({ data }) {
   const { revenues, expenses, addRevenue, deleteRevenue, toggleRevenueReported,
-          addExpense, deleteExpense, toggleExpenseReported } = data
+          addExpense, deleteExpense, toggleExpenseReported, suppliers = [] } = data
+
+  const marketOrganizers = useMemo(
+    () => suppliers.filter(s => s.category === '市集主辦'),
+    [suppliers]
+  )
 
   const [tab,            setTab]            = useState('營收')
   const [modal,          setModal]          = useState(null)
@@ -268,7 +273,7 @@ export default function Financials({ data }) {
   }
 
   const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '' })
-  const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false })
+  const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '' })
 
   const sortedRevenues = useMemo(() => [...revenues].sort((a, b) => b.date.localeCompare(a.date)), [revenues])
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.date.localeCompare(a.date)), [expenses])
@@ -299,7 +304,7 @@ export default function Financials({ data }) {
     if (!expForm.amount) return
     addExpense({ ...expForm, amount: parseFloat(expForm.amount) })
     setModal(null)
-    setExpForm({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false })
+    setExpForm({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '' })
   }
 
   const channelColor = { '電商': 'orange', '市集': 'green' }
@@ -497,10 +502,30 @@ export default function Financials({ data }) {
             </FormRow>
             <FormRow label="費用類型">
               <select className={inputCls} value={expForm.type}
-                onChange={e => setExpForm(p => ({ ...p, type: e.target.value }))}>
+                onChange={e => setExpForm(p => ({ ...p, type: e.target.value, organizerId: '', organizerName: '' }))}>
                 {EXPENSE_TYPES.map(t => <option key={t}>{t}</option>)}
               </select>
             </FormRow>
+            {(expForm.type === '攤位' || expForm.type === '場地費') && (
+              <FormRow label="市集主辦（選填）">
+                <select
+                  className={inputCls}
+                  value={expForm.organizerId}
+                  onChange={e => {
+                    const s = marketOrganizers.find(x => x.id === e.target.value)
+                    setExpForm(p => ({ ...p, organizerId: e.target.value, organizerName: s?.name || '' }))
+                  }}
+                >
+                  <option value="">— 不指定 —</option>
+                  {marketOrganizers.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                {marketOrganizers.length === 0 && (
+                  <p className="text-xs text-gray-400 mt-1">請先在「供應商管理」新增類別為「市集主辦」的供應商</p>
+                )}
+              </FormRow>
+            )}
             <FormRow label="備註">
               <input type="text" className={inputCls} placeholder="費用說明" value={expForm.note}
                 onChange={e => setExpForm(p => ({ ...p, note: e.target.value }))} />

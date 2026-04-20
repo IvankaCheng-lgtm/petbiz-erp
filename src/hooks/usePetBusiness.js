@@ -84,6 +84,9 @@ export default function usePetBusiness() {
   const [marketEvents,  setMarketEvents]  = useState([]);
   const [orders,        setOrders]        = useState([]);
   const [inventoryLogs, setInventoryLogs] = useState([]);
+  const [suppliers,     setSuppliers]     = useState(() => {
+    try { return JSON.parse(localStorage.getItem('petbiz_suppliers') || '[]'); } catch { return []; }
+  });
   const [loading,       setLoading]       = useState(true);
 
   const cloudUpdate = useCallback(async (field, updater) => {
@@ -111,6 +114,9 @@ export default function usePetBusiness() {
           setMarketEvents(d.marketEvents   ?? []);
           setOrders(d.orders               ?? []);
           setInventoryLogs(d.inventoryLogs ?? []);
+          const cloudSuppliers = d.suppliers ?? [];
+          setSuppliers(cloudSuppliers);
+          try { localStorage.setItem('petbiz_suppliers', JSON.stringify(cloudSuppliers)); } catch {}
         } else {
           setDoc(ERP_DOC_REF, {
             revenues: SEED_REVENUES, expenses: SEED_EXPENSES,
@@ -184,9 +190,16 @@ export default function usePetBusiness() {
     cloudUpdate("expenses", list => list.map(e => e.id === id ? { ...e, isReported: !e.isReported } : e));
   }, [cloudUpdate]);
 
-  const addPurchase = useCallback(async ({ date, itemId, itemName, category, qty, unitPrice, note }) => {
+  const addPurchase = useCallback(async ({ date, itemId, itemName, category, qty, unitPrice, note, supplierId = null, supplierName = '' }) => {
     const amount = qty * unitPrice;
-    const newExp = { id: uid(), date, type: "進貨", note: note || `進貨：${itemName}`, amount, isProductionCost: true, isReported: false };
+    const newExp = {
+      id: uid(), date, type: "進貨",
+      note: note || `進貨：${itemName}`,
+      amount, isProductionCost: true, isReported: false,
+      inventoryCategory: category,
+      supplierId,
+      supplierName,
+    };
     setExpenses(prev => [...prev, newExp]);
     setInventory(prev => {
       const idx = prev.findIndex(i => i.id === itemId);
@@ -439,6 +452,35 @@ export default function usePetBusiness() {
     if (costExp) await cloudUpdate("expenses", list => [...list, costExp]);
   }, [cloudUpdate]);
 
+  // ── 供應商 CRUD ──────────────────────────────────────────────
+  const addSupplier = useCallback((data) => {
+    const item = { id: uid(), ...data };
+    setSuppliers(prev => {
+      const next = [...prev, item];
+      try { localStorage.setItem('petbiz_suppliers', JSON.stringify(next)); } catch {}
+      return next;
+    });
+    cloudUpdate('suppliers', list => [...list, item]);
+  }, [cloudUpdate]);
+
+  const updateSupplier = useCallback((id, data) => {
+    setSuppliers(prev => {
+      const next = prev.map(s => s.id === id ? { ...s, ...data } : s);
+      try { localStorage.setItem('petbiz_suppliers', JSON.stringify(next)); } catch {}
+      return next;
+    });
+    cloudUpdate('suppliers', list => list.map(s => s.id === id ? { ...s, ...data } : s));
+  }, [cloudUpdate]);
+
+  const deleteSupplier = useCallback((id) => {
+    setSuppliers(prev => {
+      const next = prev.filter(s => s.id !== id);
+      try { localStorage.setItem('petbiz_suppliers', JSON.stringify(next)); } catch {}
+      return next;
+    });
+    cloudUpdate('suppliers', list => list.filter(s => s.id !== id));
+  }, [cloudUpdate]);
+
   // ── 市集活動 CRUD ─────────────────────────────────────────────
   const addMarketEvent = useCallback((data) => {
     const item = { id: uid(), ...data };
@@ -569,7 +611,7 @@ export default function usePetBusiness() {
   }, []);
 
   return {
-    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, inventoryLogs, loading,
+    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, inventoryLogs, suppliers, loading,
     kpi, inventoryAlerts, upcomingEvents,
     addRevenue, deleteRevenue, toggleRevenueReported,
     addExpense, deleteExpense, toggleExpenseReported,
@@ -577,6 +619,7 @@ export default function usePetBusiness() {
     addInventoryItem, updateInventoryItem, deleteInventoryItem, resetInventoryToSeed, importInventoryItems,
     addProductionBatch, deleteProduction,
     saveFormula, deleteFormula,
+    addSupplier, updateSupplier, deleteSupplier,
     addMarketEvent, updateMarketEvent, deleteMarketEvent, deleteMarketSale,
     processMarketSale, processOrder, updateOrder, deleteOrder, addInventoryLog, adjustInventory,
     clearAllData, exportData, importData,
