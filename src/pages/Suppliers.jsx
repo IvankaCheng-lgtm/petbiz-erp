@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import {
   Plus, Search, Edit2, Trash2, Truck, Printer, Store,
-  MapPin, FlaskConical, Factory, Users, Phone, CreditCard, FileText, Percent,
+  MapPin, FlaskConical, Factory, Users, Phone, CreditCard, FileText, Percent, ChevronRight,
 } from 'lucide-react'
 import { Modal, Badge, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 
@@ -32,12 +32,13 @@ const EMPTY_FORM = {
 }
 
 export default function Suppliers({ data }) {
-  const { suppliers = [], addSupplier, updateSupplier, deleteSupplier } = data
+  const { suppliers = [], addSupplier, updateSupplier, deleteSupplier, expenses = [], orders = [] } = data
 
   const [activeTab,  setActiveTab]  = useState('全部')
   const [search,     setSearch]     = useState('')
-  const [modal,      setModal]      = useState(null)
+  const [modal,      setModal]      = useState(null)  // 'add' | 'edit' | 'detail'
   const [editTarget, setEditTarget] = useState(null)
+  const [detailTarget, setDetailTarget] = useState(null)
   const [form,       setForm]       = useState(EMPTY_FORM)
 
   const tabs = ['全部', ...CATEGORIES]
@@ -49,6 +50,11 @@ export default function Suppliers({ data }) {
       .filter(s => !kw || s.name?.toLowerCase().includes(kw) || s.contact?.toLowerCase().includes(kw))
       .sort((a, b) => a.name?.localeCompare(b.name, 'zh-TW'))
   }, [suppliers, activeTab, search])
+
+  function openDetail(s) {
+    setDetailTarget(s)
+    setModal('detail')
+  }
 
   function openAdd() {
     setForm(EMPTY_FORM)
@@ -83,6 +89,22 @@ export default function Suppliers({ data }) {
     if (!window.confirm('確定刪除此供應商？')) return
     deleteSupplier(id)
   }
+
+  // 一般廠商：從 expenses 查詢進貨紀錄
+  const supplierExpenses = useMemo(() => {
+    if (!detailTarget || detailTarget.category === '寄賣點') return []
+    return expenses
+      .filter(e => e.supplierId === detailTarget.id)
+      .sort((a, b) => b.date?.localeCompare(a.date))
+  }, [detailTarget, expenses])
+
+  // 寄賣點：從 orders 查詢出貨訂單
+  const consignOrders = useMemo(() => {
+    if (!detailTarget || detailTarget.category !== '寄賣點') return []
+    return orders
+      .filter(o => o.supplierId === detailTarget.id)
+      .sort((a, b) => b.orderDate?.localeCompare(a.orderDate))
+  }, [detailTarget, orders])
 
   const meta = (cat) => CAT_META[cat] ?? CAT_META['代工廠']
 
@@ -129,7 +151,9 @@ export default function Suppliers({ data }) {
             const { icon: Icon, badge } = meta(s.category)
             const iconBg = ICON_BG[meta(s.category).color]
             return (
-              <div key={s.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3 hover:shadow-md transition-shadow">
+              <div key={s.id}
+                onClick={() => openDetail(s)}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3 hover:shadow-md transition-shadow cursor-pointer">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={`p-2 rounded-xl shrink-0 ${iconBg}`}><Icon size={18} /></div>
@@ -139,10 +163,10 @@ export default function Suppliers({ data }) {
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors">
+                    <button onClick={e => { e.stopPropagation(); openEdit(s) }} className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors">
                       <Edit2 size={13} />
                     </button>
-                    <button onClick={() => handleDelete(s.id)} className={btnDanger + ' p-1.5'}>
+                    <button onClick={e => { e.stopPropagation(); handleDelete(s.id) }} className={btnDanger + ' p-1.5'}>
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -159,13 +183,84 @@ export default function Suppliers({ data }) {
                   )}
                   {s.note && <div className="flex items-start gap-2"><FileText size={12} className="shrink-0 text-gray-400 mt-0.5" /><span className="line-clamp-2 text-gray-400 italic">{s.note}</span></div>}
                 </div>
+                <div className="flex items-center justify-end text-xs text-gray-300 gap-1">
+                  <span>點擊查看交易紀錄</span><ChevronRight size={12} />
+                </div>
               </div>
             )
           })}
         </div>
       )}
 
-      {modal && (
+      {modal === 'detail' && detailTarget && (
+        <Modal title={detailTarget.name} size="md" onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            {/* 基本資訊 */}
+            <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-xs text-gray-500">
+              <Badge color={meta(detailTarget.category).badge}>{detailTarget.category}</Badge>
+              {detailTarget.contact && <span>👤 {detailTarget.contact}</span>}
+              {detailTarget.phone   && <span>📞 {detailTarget.phone}</span>}
+              {detailTarget.category === '寄賣點' && detailTarget.commissionPct != null && (
+                <span className="text-orange-600 font-medium">拆帳 {detailTarget.commissionPct}%（實得 {(100 - detailTarget.commissionPct).toFixed(1)}%）</span>
+              )}
+            </div>
+
+            {detailTarget.category === '寄賣點' ? (
+              /* 寄賣點：出貨訂單 */
+              consignOrders.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">尚無出貨紀錄</p>
+              ) : (
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                  {consignOrders.map(o => (
+                    <div key={o.id} className="border border-gray-100 rounded-xl p-3 space-y-2">
+                      <div className="flex justify-between items-center text-xs text-gray-400">
+                        <span>{o.orderDate}</span>
+                        <span className="font-semibold text-gray-700">合計 ${o.total ?? o.totalAmount}</span>
+                      </div>
+                      <div className="space-y-1">
+                        {(o.items ?? []).map((it, i) => (
+                          <div key={i} className="flex justify-between text-sm">
+                            <span className="text-gray-700">{it.itemName}</span>
+                            <span className="text-gray-500 text-xs">×{it.qty} &nbsp; ${it.qty * it.unitPrice}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {o.skipRevenue && (
+                        <span className="text-xs text-purple-500">僅扣庫存，未計入收入</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              /* 一般廠商：進貨紀錄 */
+              supplierExpenses.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">尚無進貨紀錄</p>
+              ) : (
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                  {supplierExpenses.map(e => (
+                    <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-2.5 text-sm">
+                      <div>
+                        <p className="text-gray-700 font-medium">{e.note}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{e.date} &nbsp;·&nbsp; {e.type}</p>
+                      </div>
+                      <span className="font-semibold text-orange-600 shrink-0 ml-4">${e.amount}</span>
+                    </div>
+                  ))}
+                  <div className="pt-2 border-t border-gray-100 flex justify-between text-sm font-semibold">
+                    <span className="text-gray-500">累計支出</span>
+                    <span className="text-orange-600">${supplierExpenses.reduce((s, e) => s + (e.amount || 0), 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              )
+            )}
+
+            <button onClick={() => setModal(null)} className={btnSecondary + ' w-full'}>關閉</button>
+          </div>
+        </Modal>
+      )}
+
+      {modal && modal !== 'detail' && (
         <Modal title={modal === 'add' ? '新增供應商' : `編輯：${editTarget?.name}`} size="sm" onClose={() => setModal(null)}>
           <form onSubmit={handleSubmit} className="space-y-4">
             <FormRow label="供應商名稱 *">

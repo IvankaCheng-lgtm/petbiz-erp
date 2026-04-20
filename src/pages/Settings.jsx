@@ -1,6 +1,46 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { Download, Trash2, Upload, Save, RefreshCw, UserPlus, Key } from 'lucide-react'
 import { SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
+
+function UserRow({ u, editPwdId, editPwdVal, setEditPwdVal, onTogglePwd, onChangePwd, onDelete }) {
+  const handleToggle = useCallback(() => onTogglePwd(u.id), [u.id, onTogglePwd])
+  const handleDelete = useCallback(() => onDelete(u.id),    [u.id, onDelete])
+  const handleSave   = useCallback(() => onChangePwd(u.id), [u.id, onChangePwd])
+  return (
+    <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
+            style={{ backgroundColor: '#722927' }}>
+            {u.username[0].toUpperCase()}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">{u.username}</p>
+            <p className="text-xs text-gray-400">{u.role === 'admin' ? '管理員' : '一般使用者'} · 建立 {u.createdAt}</p>
+          </div>
+        </div>
+        <div className="flex gap-1">
+          <button onClick={handleToggle}
+            className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors">
+            <Key size={14} />
+          </button>
+          {u.role !== 'admin' && (
+            <button onClick={handleDelete} className={btnDanger}>
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+      {editPwdId === u.id && (
+        <div className="flex gap-2 pt-1">
+          <input type="password" className={inputCls + ' text-sm'} placeholder="輸入新密碼"
+            value={editPwdVal} onChange={e => setEditPwdVal(e.target.value)} />
+          <button onClick={handleSave} className={btnPrimary + ' shrink-0 text-sm'}>儲存</button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Settings({ data }) {
   const { inventory, updateInventoryItem, clearAllData, exportData, importData, resetInventoryToSeed, auth } = data
@@ -191,43 +231,16 @@ export default function Settings({ data }) {
         {/* 使用者列表 */}
         <div className="space-y-2">
           {users.map(u => (
-            <div key={u.id} className="bg-gray-50 rounded-xl px-4 py-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                    style={{ backgroundColor: '#722927' }}>
-                    {u.username[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{u.username}</p>
-                    <p className="text-xs text-gray-400">{u.role === 'admin' ? '管理員' : '一般使用者'} · 建立 {u.createdAt}</p>
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => { setEditPwdId(editPwdId === u.id ? null : u.id); setEditPwdVal('') }}
-                    className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors">
-                    <Key size={14} />
-                  </button>
-                  {u.role !== 'admin' && (
-                    <button onClick={() => deleteUser(u.id)} className={btnDanger}>
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* 修改密碼內嵌區塊 */}
-              {editPwdId === u.id && (
-                <div className="flex gap-2 pt-1">
-                  <input type="password" className={inputCls + ' text-sm'} placeholder="輸入新密碼"
-                    value={editPwdVal} onChange={e => setEditPwdVal(e.target.value)} />
-                  <button onClick={() => handleChangePwd(u.id)}
-                    className={btnPrimary + ' shrink-0 text-sm'}>儲存</button>
-                  <button onClick={() => setEditPwdId(null)}
-                    className={btnSecondary + ' shrink-0 text-sm'}>取消</button>
-                </div>
-              )}
-            </div>
+            <UserRow
+              key={u.id}
+              u={u}
+              editPwdId={editPwdId}
+              editPwdVal={editPwdVal}
+              setEditPwdVal={setEditPwdVal}
+              onTogglePwd={id => { setEditPwdId(prev => prev === id ? null : id); setEditPwdVal('') }}
+              onChangePwd={handleChangePwd}
+              onDelete={deleteUser}
+            />
           ))}
         </div>
       </SectionCard>

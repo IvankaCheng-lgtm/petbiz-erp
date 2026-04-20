@@ -411,7 +411,7 @@ export default function usePetBusiness() {
     cloudUpdate("expenses", list => list.filter(e => e.orderId !== id));
   }, [cloudUpdate]);
 
-  const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount, platformCost }) => {
+  const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, note = '' }) => {
     const today = new Date().toISOString().slice(0, 10);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const discount = subtotal - totalAmount;
@@ -423,12 +423,9 @@ export default function usePetBusiness() {
       discountType: discountType ?? null,
       discountValue: discountValue ?? null,
       platformCost: cost,
-    };
-
-    const revenueItem = {
-      id: uid(), date: today, channel: platform, category: "電商銷售",
-      amount: totalAmount, isReported: false, orderId: order.id, items,
-      platformCost: cost,
+      supplierId: supplierId || null,
+      skipRevenue,
+      note: note || '',
     };
 
     const applyInv = (list) => {
@@ -445,23 +442,36 @@ export default function usePetBusiness() {
       change: -it.qty, reason: `銷售訂單（${platform}）`,
     }));
 
-    // 手續費自動記入支出
+    // 寄賣點抽成 or 一般平台手續費 → 記入支出
     const costExp = cost > 0 ? {
-      id: uid(), date: today, type: '行銷',
-      note: `平台手續費：${platform}（訂單 ${order.id.slice(-4)}）`,
-      amount: cost, isProductionCost: false, isReported: false, orderId: order.id,
+      id: uid(), date: today,
+      type: supplierId ? '寄賣抽成' : '行銷',
+      note: supplierId
+        ? `寄賣點抽成：${platform}（訂單 ${order.id.slice(-4)}）`
+        : `平台手續費：${platform}（訂單 ${order.id.slice(-4)}）`,
+      amount: cost, isProductionCost: false, isReported: false,
+      orderId: order.id, supplierId: supplierId || null,
     } : null;
 
     setOrders(prev => [...prev, order]);
-    setRevenues(prev => [...prev, revenueItem]);
     setInventory(applyInv);
     setInventoryLogs(prev => [...prev, ...logs]);
     if (costExp) setExpenses(prev => [...prev, costExp]);
-    await cloudUpdate("orders",         list => [...list, order]);
-    await cloudUpdate("revenues",       list => [...list, revenueItem]);
-    await cloudUpdate("inventory",      applyInv);
-    await cloudUpdate("inventoryLogs",  list => [...list, ...logs]);
+    await cloudUpdate("orders",        list => [...list, order]);
+    await cloudUpdate("inventory",     applyInv);
+    await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
     if (costExp) await cloudUpdate("expenses", list => [...list, costExp]);
+
+    // skipRevenue = true 時只扣庫存，不寫入收入
+    if (!skipRevenue) {
+      const revenueItem = {
+        id: uid(), date: today, channel: platform, category: "電商銷售",
+        amount: totalAmount, isReported: false, orderId: order.id, items,
+        platformCost: cost, supplierId: supplierId || null,
+      };
+      setRevenues(prev => [...prev, revenueItem]);
+      await cloudUpdate("revenues", list => [...list, revenueItem]);
+    }
   }, [cloudUpdate]);
 
   // ── 供應商 CRUD ──────────────────────────────────────────────

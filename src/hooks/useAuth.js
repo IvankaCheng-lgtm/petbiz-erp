@@ -27,6 +27,17 @@ function saveUsers(users) {
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
 
+// 防止 Timing Attack 的字串比較
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false
+  const len = Math.max(a.length, b.length)
+  let diff = a.length !== b.length ? 1 : 0
+  for (let i = 0; i < len; i++) {
+    diff |= (a.charCodeAt(i) ?? 0) ^ (b.charCodeAt(i) ?? 0)
+  }
+  return diff === 0
+}
+
 export default function useAuth() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -40,7 +51,7 @@ export default function useAuth() {
   // 登入
   const login = useCallback((username, password) => {
     const users = loadUsers()
-    const user  = users.find(u => u.username === username && u.password === password)
+    const user  = users.find(u => timingSafeEqual(u.username, username) && timingSafeEqual(u.password, password))
     if (!user) return false
     const session = { id: user.id, username: user.username, role: user.role }
     sessionStorage.setItem('petbiz_session', JSON.stringify(session))

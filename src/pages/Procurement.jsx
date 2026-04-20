@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
-import * as XLSX from 'xlsx'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import ExcelJS from 'exceljs'
 import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Calendar, Upload, Download } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt } from '../utils/format'
@@ -425,86 +425,118 @@ export default function Procurement({ data }) {
   }
 
   // 匯出盤點表格
-  function exportStockCheck() {
-    const abItems = inventory.filter(i => i.category === 'A用品' || i.category === 'B食品')
-    const rows = abItems.map(i => ({
-      '分類':     i.category,
-      '品項名稱': i.itemName,
-      '條碼':     i.barcode || '',
-      '系統庫存': i.currentQty,
-      '單位':     i.unit,
-      '實盤數量': '',
-      '差異':     '',
-      '備註':     '',
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    ws['!cols'] = [10, 18, 16, 10, 6, 10, 8, 16].map(w => ({ wch: w }))
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '盤點表')
+  async function exportStockCheck() {
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('盤點表')
+    ws.columns = [
+      { header: '分類',     key: 'cat',      width: 10 },
+      { header: '品項名稱', key: 'itemName', width: 18 },
+      { header: '條碼',     key: 'barcode',  width: 16 },
+      { header: '系統庫存', key: 'qty',      width: 10 },
+      { header: '單位',     key: 'unit',     width: 6  },
+      { header: '實盤數量', key: 'actual',   width: 10 },
+      { header: '差異',     key: 'diff',     width: 8  },
+      { header: '備註',     key: 'note',     width: 16 },
+    ]
+    inventory
+      .filter(i => i.category === 'A用品' || i.category === 'B食品')
+      .forEach(i => ws.addRow({ cat: i.category, itemName: i.itemName, barcode: i.barcode || '', qty: i.currentQty, unit: i.unit, actual: '', diff: '', note: '' }))
+    const buf = await wb.xlsx.writeBuffer()
     const date = new Date().toISOString().slice(0, 10)
-    XLSX.writeFile(wb, `庫存盤點表_${date}.xlsx`)
+    triggerDownload(buf, `庫存盤點表_${date}.xlsx`)
   }
 
   // 下載範本 Excel
-  function downloadTemplate() {
-    const headers = [[
-      '分類(A用品/B食品/C食材/D包材)', '品項名稱', '貨號', '現有數量', '安全水位', '單位',
-      '供應商', '條碼', '定價', '售價', '成本', '單價'
-    ]]
-    const example = [
-      ['A用品', '範例用品', 'SKU-001', 100, 20, '個', '供應商A', '4710000000001', 299, 249, 80, ''],
-      ['B食品', '範例食品', 'SKU-002', 50, 10, '包', '供應商B', '4710000000002', 199, 159, 60, ''],
-      ['C食材', '範例食材', '', 30, 5, 'kg', '供應商C', '', '', '', '', 280],
-      ['D包材', '範例包材', '', 500, 100, '個', '供應商D', '', '', '', '', 3.5],
+  async function downloadTemplate() {
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('庫存')
+    ws.columns = [
+      { header: '分類(A用品/B食品/C食材/D包材)', key: 'cat',       width: 16 },
+      { header: '品項名稱',                      key: 'itemName',  width: 16 },
+      { header: '貨號',                          key: 'sku',       width: 10 },
+      { header: '現有數量',                      key: 'qty',       width: 10 },
+      { header: '安全水位',                      key: 'safety',    width: 10 },
+      { header: '單位',                          key: 'unit',      width: 6  },
+      { header: '供應商',                        key: 'supplier',  width: 14 },
+      { header: '條碼',                          key: 'barcode',   width: 16 },
+      { header: '定價',                          key: 'listPrice', width: 8  },
+      { header: '售價',                          key: 'salePrice', width: 8  },
+      { header: '成本',                          key: 'cost',      width: 8  },
+      { header: '單價',                          key: 'unitPrice', width: 8  },
     ]
-    const ws = XLSX.utils.aoa_to_sheet([...headers, ...example])
-    ws['!cols'] = [16,16,10,10,10,6,14,16,8,8,8,8].map(w => ({ wch: w }))
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '庫存')
-    XLSX.writeFile(wb, '庫存匹入範本.xlsx')
+    ws.addRow({ cat: 'A用品', itemName: '範例用品', sku: 'SKU-001', qty: 100, safety: 20, unit: '個', supplier: '供應商A', barcode: '4710000000001', listPrice: 299, salePrice: 249, cost: 80, unitPrice: '' })
+    ws.addRow({ cat: 'B食品', itemName: '範例食品', sku: 'SKU-002', qty: 50,  safety: 10, unit: '包', supplier: '供應商B', barcode: '4710000000002', listPrice: 199, salePrice: 159, cost: 60, unitPrice: '' })
+    ws.addRow({ cat: 'C食材', itemName: '範例食材', sku: '',        qty: 30,  safety: 5,  unit: 'kg', supplier: '供應商C', barcode: '',             listPrice: '',  salePrice: '',  cost: '',  unitPrice: 280 })
+    ws.addRow({ cat: 'D包材', itemName: '範例包材', sku: '',        qty: 500, safety: 100,unit: '個', supplier: '供應商D', barcode: '',             listPrice: '',  salePrice: '',  cost: '',  unitPrice: 3.5 })
+    const buf = await wb.xlsx.writeBuffer()
+    triggerDownload(buf, '庫存匹入範本.xlsx')
+  }
+
+  // 觸發瀏覽器下載
+  function triggerDownload(buffer, filename) {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
   }
 
   // 匹入 Excel
-  function handleImportExcel(e) {
+  async function handleImportExcel(e) {
     const file = e.target.files[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const wb = XLSX.read(ev.target.result, { type: 'array' })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
-        const VALID_CATS = ['A用品', 'B食品', 'C食材', 'D包材']
-        const items = rows
-          .filter(r => VALID_CATS.includes(r['分類(A用品/B食品/C食材/D包材)']) && r['品項名稱'])
-          .map(r => ({
-            category:   r['分類(A用品/B食品/C食材/D包材)'],
-            itemName:   String(r['品項名稱']).trim(),
-            currentQty: parseFloat(r['現有數量'])  || 0,
-            safetyQty:  parseFloat(r['安全水位'])  || 0,
-            unit:       String(r['單位'] || '個').trim(),
-            supplier:   String(r['供應商'] || '').trim(),
-            barcode:    String(r['條碼']   || '').trim(),
-            sku:        String(r['貨號']   || '').trim(),
-            listPrice:  parseFloat(r['定價'])    || 0,
-            salePrice:  parseFloat(r['售價'])    || 0,
-            cost:       parseFloat(r['成本'])    || 0,
-            unitPrice:  parseFloat(r['單價'])    || 0,
-          }))
-        if (items.length === 0) {
-          setImportMsg('⚠️ 未讀到有效資料，請確認欄位名稱符合範本格式')
-        } else {
-          importInventoryItems(items)
-          setImportMsg(`✅ 已匹入 ${items.length} 筆庫存（同名品項自動更新，新品項自動新增）`)
-        }
-      } catch {
-        setImportMsg('❌ 檔案解析失敗，請確認為正確的 Excel 檔案')
-      }
+    const ALLOWED_TYPES = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ]
+    if (!ALLOWED_TYPES.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+      setImportMsg('❌ 僅支援 .xlsx 或 .xls 格式的 Excel 檔案')
       setTimeout(() => setImportMsg(''), 5000)
+      e.target.value = ''
+      return
     }
-    reader.readAsArrayBuffer(file)
+    try {
+      const buf = await file.arrayBuffer()
+      const wb  = new ExcelJS.Workbook()
+      await wb.xlsx.load(buf)
+      const ws  = wb.worksheets[0]
+      const headers = ws.getRow(1).values.slice(1) // index 0 是空的
+      const VALID_CATS = ['A用品', 'B食品', 'C食材', 'D包材']
+      const items = []
+      ws.eachRow((row, rowNum) => {
+        if (rowNum === 1) return
+        const r = {}
+        headers.forEach((h, i) => { r[h] = row.getCell(i + 1).value ?? '' })
+        if (!VALID_CATS.includes(r['分類(A用品/B食品/C食材/D包材)']) || !r['品項名稱']) return
+        items.push({
+          category:   r['分類(A用品/B食品/C食材/D包材)'],
+          itemName:   String(r['品項名稱']).trim(),
+          currentQty: parseFloat(r['現有數量'])  || 0,
+          safetyQty:  parseFloat(r['安全水位'])  || 0,
+          unit:       String(r['單位'] || '個').trim(),
+          supplier:   String(r['供應商'] || '').trim(),
+          barcode:    String(r['條碼']   || '').trim(),
+          sku:        String(r['貨號']   || '').trim(),
+          listPrice:  parseFloat(r['定價'])    || 0,
+          salePrice:  parseFloat(r['售價'])    || 0,
+          cost:       parseFloat(r['成本'])    || 0,
+          unitPrice:  parseFloat(r['單價'])    || 0,
+        })
+      })
+      if (items.length === 0) {
+        setImportMsg('⚠️ 未讀到有效資料，請確認欄位名稱符合範本格式')
+      } else {
+        importInventoryItems(items)
+        setImportMsg(`✅ 已匹入 ${items.length} 筆庫存（同名品項自動更新，新品項自動新增）`)
+      }
+    } catch {
+      setImportMsg('❌ 檔案解析失敗，請確認為正確的 Excel 檔案')
+    }
+    setTimeout(() => setImportMsg(''), 5000)
     e.target.value = ''
   }
+
+  const handleFileClick = useCallback(() => xlsxRef.current.click(), [])
 
   const purchaseSuppliers = useMemo(
     () => suppliers.filter(s => ['生鮮食材', '包材廠商', '藥劑/添加物'].includes(s.category)),
@@ -543,7 +575,7 @@ export default function Procurement({ data }) {
             className="flex items-center gap-1.5 text-sm bg-orange-50 hover:bg-orange-100 text-orange-700 font-medium px-3 py-2 rounded-xl transition-colors">
             <Download size={15} /> 匯出盤點表
           </button>
-          <button onClick={() => xlsxRef.current.click()}
+          <button onClick={handleFileClick}
             className="flex items-center gap-1.5 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium px-3 py-2 rounded-xl transition-colors">
             <Upload size={15} /> Excel 匹入庫存
           </button>
@@ -645,27 +677,27 @@ export default function Procurement({ data }) {
                     <td className="py-3 text-center"><Badge color={status.color}>{status.label}</Badge></td>
                     <td className="py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => openPurchase(item)}
+                        <button onClick={e => { e.stopPropagation(); openPurchase(item) }}
                           className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
                           <Package size={12} /> 進貨
                         </button>
                         {(item.category === 'A用品' || item.category === 'B食品') && (
-                          <button onClick={() => openAdjust(item)}
+                          <button onClick={e => { e.stopPropagation(); openAdjust(item) }}
                             className="bg-orange-50 hover:bg-orange-100 text-orange-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
                             盤點
                           </button>
                         )}
                         {item.category === 'B食品' && (
-                          <button onClick={() => { setEditTarget(item); setModal('expiry') }}
+                          <button onClick={e => { e.stopPropagation(); setEditTarget(item); setModal('expiry') }}
                             className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
                             <Calendar size={12} /> 效期
                           </button>
                         )}
-                        <button onClick={() => openEdit(item)}
+                        <button onClick={e => { e.stopPropagation(); openEdit(item) }}
                           className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors">
                           <Edit2 size={13} />
                         </button>
-                        <button onClick={() => deleteInventoryItem(item.id)} className={btnDanger}>
+                        <button onClick={e => { e.stopPropagation(); deleteInventoryItem(item.id) }} className={btnDanger}>
                           <Trash2 size={13} />
                         </button>
                       </div>

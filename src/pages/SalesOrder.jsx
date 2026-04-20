@@ -39,6 +39,7 @@ export default function SalesOrder({ data }) {
   const [platformCost, setPlatformCost] = useState("");
   const [costMode, setCostMode] = useState("pct");
   const [note, setNote] = useState("");
+  const [consignSkipRevenue, setConsignSkipRevenue] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -128,6 +129,11 @@ export default function SalesOrder({ data }) {
 
   const netAfterConsignment = totalAmount - consignmentFee;
 
+  // 寄賣點模式下手動修改品項金額
+  function updateUnitPrice(itemId, price) {
+    setCart(prev => prev.map(c => c.itemId === itemId ? { ...c, unitPrice: parseFloat(price) || 0 } : c))
+  }
+
   function addToCart(item) {
     setCart((prev) => {
       const idx = prev.findIndex((c) => c.itemId === item.id);
@@ -172,6 +178,7 @@ export default function SalesOrder({ data }) {
       totalAmount,
       platformCost: selectedConsignee ? consignmentFee : computedCost,
       supplierId: selectedConsignee?.id ?? null,
+      skipRevenue: selectedConsignee ? consignSkipRevenue : false,
       note,
     });
     setDone(true);
@@ -180,6 +187,7 @@ export default function SalesOrder({ data }) {
     setDiscountAmt("");
     setPlatformCost("");
     setNote("");
+    setConsignSkipRevenue(false);
     setTimeout(() => setDone(false), 3000);
   }
 
@@ -228,26 +236,19 @@ export default function SalesOrder({ data }) {
                   {p}
                 </button>
               ))}
+              {consignmentPlatforms.map((s) => (
+                <button key={s.id} onClick={() => setPlatform(s.name)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                    platform === s.name ? "bg-purple-500 text-white border-purple-500" : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
+                  }`}>
+                  {s.name}
+                  {s.commissionPct != null && (
+                    <span className="ml-1.5 text-xs opacity-75">(寄賣 {s.commissionPct}%)</span>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
-          {consignmentPlatforms.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-400 mb-1.5">寄賣點</p>
-              <div className="flex flex-wrap gap-2">
-                {consignmentPlatforms.map((s) => (
-                  <button key={s.id} onClick={() => setPlatform(s.name)}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                      platform === s.name ? "bg-purple-500 text-white border-purple-500" : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
-                    }`}>
-                    {s.name}
-                    {s.commissionPct != null && (
-                      <span className="ml-1.5 text-xs opacity-75">({s.commissionPct}%)</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </SectionCard>
 
@@ -344,7 +345,15 @@ export default function SalesOrder({ data }) {
             {cart.map((c) => (
               <div key={c.itemId} className="flex items-center gap-3 text-sm">
                 <span className="flex-1 text-gray-700">{c.itemName}</span>
-                <span className="text-gray-400 w-16 text-right">${c.unitPrice}</span>
+                {selectedConsignee ? (
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={c.unitPrice}
+                    onChange={e => updateUnitPrice(c.itemId, e.target.value)}
+                    className="w-20 text-right border border-purple-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                ) : (
+                  <span className="text-gray-400 w-16 text-right">${c.unitPrice}</span>
+                )}
                 <div className="flex items-center gap-1">
                   <button onClick={() => updateQty(c.itemId, c.qty - 1)} className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold">−</button>
                   <span className="w-8 text-center">{c.qty}</span>
@@ -376,6 +385,26 @@ export default function SalesOrder({ data }) {
             <div className="flex justify-between text-base font-bold text-gray-800">
               <span>合計</span><span>${totalAmount}</span>
             </div>
+            {selectedConsignee && (
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">寄賣點抽成（{selectedConsignee.commissionPct ?? 0}%）</span>
+                    <span className="font-semibold text-red-500">-${consignmentFee}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">實得金額</span>
+                    <span className="font-bold text-emerald-600">${netAfterConsignment}</span>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input type="checkbox" checked={consignSkipRevenue}
+                    onChange={e => setConsignSkipRevenue(e.target.checked)}
+                    className="accent-purple-500" />
+                  只扣庫存，不計入收入
+                </label>
+              </div>
+            )}
           </div>
         </SectionCard>
       )}

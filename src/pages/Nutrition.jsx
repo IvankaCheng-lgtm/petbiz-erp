@@ -3,6 +3,10 @@ import { Plus, Trash2, Save, BookOpen, ChevronDown, ChevronUp, Calculator } from
 import { SectionCard, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 
 const BRAND_DARK = '#722927'
+const DRY_LABELS = {
+  before: '烘乾前重量 (g)',
+  after:  '烘乾後重量 (g)',
+}
 const uid = () => Math.random().toString(36).slice(2, 8)
 
 // 空白食材列
@@ -480,13 +484,13 @@ export default function Nutrition({ data }) {
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">烘乾前重量 (g)</label>
+              <label className="text-xs font-medium text-gray-600">{DRY_LABELS.before}</label>
               <input type="number" min="0" step="0.1" className={inputCls + ' text-sm'}
                 placeholder="例：1000"
                 value={dryBefore} onChange={e => setDryBefore(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">烘乾後重量 (g)</label>
+              <label className="text-xs font-medium text-gray-600">{DRY_LABELS.after}</label>
               <input type="number" min="0" step="0.1" className={inputCls + ' text-sm'}
                 placeholder="例：250"
                 value={dryAfter} onChange={e => setDryAfter(e.target.value)} />
