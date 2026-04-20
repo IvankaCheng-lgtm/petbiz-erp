@@ -287,7 +287,7 @@ const emptyRow = () => ({
 })
 
 export default function Procurement({ data }) {
-  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory, importInventoryItems, suppliers = [] } = data
+  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory, importInventoryItems, suppliers = [], addExpense } = data
 
   const [activeTab,    setActiveTab]    = useState('A用品')
   const [modal,        setModal]        = useState(null)
@@ -296,7 +296,8 @@ export default function Procurement({ data }) {
   const [purchaseForm, setPurchaseForm] = useState({
     date: today(), itemId: '', itemName: '', category: 'C食材', qty: '', unitPrice: '', note: '',
   })
-  const [addCategory, setAddCategory] = useState('A用品')
+  const [addCategory,      setAddCategory]      = useState('A用品')
+  const [addRecordExpense, setAddRecordExpense] = useState(false)
   const [rows, setRows] = useState([emptyRow()])
   const [editForm, setEditForm] = useState({})
   const [adjustForm, setAdjustForm] = useState({ change: '', reason: '' })
@@ -312,12 +313,12 @@ export default function Procurement({ data }) {
   function removeRow(key) { setRows(r => r.length > 1 ? r.filter(x => x._key !== key) : r) }
   function updateRow(key, field, val) { setRows(r => r.map(x => x._key === key ? { ...x, [field]: val } : x)) }
 
-  function openAdd() { setAddCategory(activeTab); setRows([emptyRow()]); setModal('add') }
+  function openAdd() { setAddCategory(activeTab); setRows([emptyRow()]); setAddRecordExpense(false); setModal('add') }
 
   function submitAdd(e) {
     e.preventDefault()
-    rows.forEach(row => {
-      if (!row.itemName.trim()) return
+    const validRows = rows.filter(row => row.itemName.trim())
+    validRows.forEach(row => {
       addInventoryItem({
         category:   addCategory,
         itemName:   row.itemName.trim(),
@@ -332,6 +333,27 @@ export default function Procurement({ data }) {
         unitPrice:  parseFloat(row.unitPrice)  || 0,
       })
     })
+    if (addRecordExpense && addExpense) {
+      const isABCat = addCategory === 'A用品' || addCategory === 'B食品'
+      const total = validRows.reduce((s, row) => {
+        const qty   = parseFloat(row.currentQty) || 0
+        const price = isABCat ? (parseFloat(row.cost) || 0) : (parseFloat(row.unitPrice) || 0)
+        return s + qty * price
+      }, 0)
+      if (total > 0) {
+        const names = validRows.map(r => r.itemName.trim()).join('、')
+        addExpense({
+          date:             today(),
+          type:             '進貨',
+          note:             names,
+          amount:           total,
+          isProductionCost: addCategory === 'C食材',
+          supplierId:       null,
+          customSupplierName: '',
+          supplierName:     '',
+        })
+      }
+    }
     setModal(null)
   }
 
@@ -735,7 +757,7 @@ export default function Procurement({ data }) {
                         onChange={e => updateRow(row._key, 'safetyQty', e.target.value)} />
                       <input type="text" placeholder="個" className={inputCls + ' text-xs text-center'} value={row.unit}
                         onChange={e => updateRow(row._key, 'unit', e.target.value)} />
-                      <input type="text" placeholder="選填" className={inputCls + ' text-xs'} value={row.supplier}
+                      <input list="add-supplier-options" placeholder="選填" className={inputCls + ' text-xs'} value={row.supplier}
                         onChange={e => updateRow(row._key, 'supplier', e.target.value)} />
                       <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.listPrice}
                         onChange={e => updateRow(row._key, 'listPrice', e.target.value)} />
@@ -758,7 +780,7 @@ export default function Procurement({ data }) {
                         onChange={e => updateRow(row._key, 'safetyQty', e.target.value)} />
                       <input type="text" placeholder="個" className={inputCls + ' text-xs text-center'} value={row.unit}
                         onChange={e => updateRow(row._key, 'unit', e.target.value)} />
-                      <input type="text" placeholder="選填" className={inputCls + ' text-xs'} value={row.supplier}
+                      <input list="add-supplier-options" placeholder="選填" className={inputCls + ' text-xs'} value={row.supplier}
                         onChange={e => updateRow(row._key, 'supplier', e.target.value)} />
                       <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.unitPrice}
                         onChange={e => updateRow(row._key, 'unitPrice', e.target.value)} />
@@ -791,6 +813,35 @@ export default function Procurement({ data }) {
                 </div>
               ))}
             </div>
+
+            <datalist id="add-supplier-options">
+              {suppliers.map(s => <option key={s.id} value={s.name} />)}
+            </datalist>
+
+            {/* 記入支出 */}
+            {(() => {
+              const isABCat = addCategory === 'A用品' || addCategory === 'B食品'
+              const total = rows.filter(r => r.itemName.trim()).reduce((s, row) => {
+                const qty   = parseFloat(row.currentQty) || 0
+                const price = isABCat ? (parseFloat(row.cost) || 0) : (parseFloat(row.unitPrice) || 0)
+                return s + qty * price
+              }, 0)
+              return (
+                <label className="flex items-center justify-between gap-2 text-sm text-gray-600 bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={addRecordExpense}
+                      onChange={e => setAddRecordExpense(e.target.checked)}
+                      className="accent-orange-400" />
+                    記入支出（類型：進貨）
+                  </div>
+                  {total > 0 && (
+                    <span className="text-xs font-semibold text-orange-600">
+                      總計 {fmt(total)}
+                    </span>
+                  )}
+                </label>
+              )
+            })()}
 
             <button type="button" onClick={addRow}
               className="w-full border-2 border-dashed border-gray-200 hover:border-orange-300 hover:text-orange-500 text-gray-400 rounded-xl py-2 text-sm font-medium transition-colors flex items-center justify-center gap-1">
