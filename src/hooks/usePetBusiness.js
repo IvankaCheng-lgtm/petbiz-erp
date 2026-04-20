@@ -157,8 +157,14 @@ export default function usePetBusiness() {
   }, [marketEvents]);
 
   // ── 營收 ──────────────────────────────────────────────────────
-  const addRevenue = useCallback((data) => {
-    const item = { id: uid(), isReported: false, ...data };
+  const addRevenue = useCallback(({ supplierId = null, customSupplierName = '', ...rest }) => {
+    const item = {
+      id: uid(),
+      isReported: false,
+      supplierId: supplierId || null,
+      customSupplierName: supplierId ? '' : (customSupplierName || ''),
+      ...rest,
+    };
     setRevenues(prev => [...prev, item]);
     cloudUpdate("revenues", list => [...list, item]);
   }, [cloudUpdate]);
@@ -174,8 +180,14 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   // ── 支出 ──────────────────────────────────────────────────────
-  const addExpense = useCallback((data) => {
-    const item = { id: uid(), isReported: false, ...data };
+  const addExpense = useCallback(({ supplierId = null, customSupplierName = '', ...rest }) => {
+    const item = {
+      id: uid(),
+      isReported: false,
+      supplierId: supplierId || null,
+      customSupplierName: supplierId ? '' : (customSupplierName || ''),
+      ...rest,
+    };
     setExpenses(prev => [...prev, item]);
     cloudUpdate("expenses", list => [...list, item]);
   }, [cloudUpdate]);

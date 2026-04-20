@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Plus, Trash2, CheckCircle, Circle, Filter, Sparkles, X, Download } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt, EXPENSE_TYPE_COLOR } from '../utils/format'
@@ -204,6 +204,81 @@ function AiInsightModal({ onClose, revenues, expenses }) {
   )
 }
 
+// ── 供應商 Combobox（支援下拉選單 + 自行輸入）────────────────────
+function SupplierCombobox({ suppliers, supplierId, customSupplierName, onChange }) {
+  const [inputVal, setInputVal] = useState(() => {
+    if (supplierId) return suppliers.find(s => s.id === supplierId)?.name || ''
+    return customSupplierName || ''
+  })
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+
+  const filtered = useMemo(() => {
+    const kw = inputVal.trim().toLowerCase()
+    return kw ? suppliers.filter(s => s.name.toLowerCase().includes(kw)) : suppliers
+  }, [suppliers, inputVal])
+
+  function select(s) {
+    setInputVal(s.name)
+    setOpen(false)
+    onChange({ supplierId: s.id, customSupplierName: '' })
+  }
+
+  function handleInput(val) {
+    setInputVal(val)
+    setOpen(true)
+    const exact = suppliers.find(s => s.name === val)
+    if (exact) onChange({ supplierId: exact.id, customSupplierName: '' })
+    else onChange({ supplierId: null, customSupplierName: val })
+  }
+
+  function clear() {
+    setInputVal('')
+    setOpen(false)
+    onChange({ supplierId: null, customSupplierName: '' })
+  }
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <div className="flex items-center gap-1">
+        <input
+          type="text"
+          className={inputCls + ' flex-1'}
+          placeholder="選擇清單或直接輸入名稱"
+          value={inputVal}
+          onChange={e => handleInput(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+        />
+        {inputVal && (
+          <button type="button" onClick={clear}
+            className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors shrink-0">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-44 overflow-y-auto text-sm">
+          {filtered.map(s => (
+            <li key={s.id}
+              onMouseDown={() => select(s)}
+              className="px-3 py-2 hover:bg-orange-50 cursor-pointer flex items-center justify-between">
+              <span className="text-gray-700">{s.name}</span>
+              <span className="text-xs text-gray-400">{s.category}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {supplierId && (
+        <p className="text-xs text-emerald-600 mt-1">✓ 已連結供應商清單</p>
+      )}
+      {!supplierId && inputVal.trim() && (
+        <p className="text-xs text-gray-400 mt-1">自行輸入，將記錄為自訂名稱</p>
+      )}
+    </div>
+  )
+}
+
 // ── 主組件 ────────────────────────────────────────────────────
 export default function Financials({ data }) {
   const { revenues, expenses, addRevenue, deleteRevenue, toggleRevenueReported,
@@ -272,8 +347,10 @@ export default function Financials({ data }) {
     exportToCSV(rows, '萌獸探險隊_對帳單_' + stmtMonth + '.csv')
   }
 
-  const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '' })
-  const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '' })
+  const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '', supplierId: null, customSupplierName: '' })
+  const [revSupplierName, setRevSupplierName] = useState('')
+  const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
+  const [expSupplierName, setExpSupplierName] = useState('')
 
   const sortedRevenues = useMemo(() => [...revenues].sort((a, b) => b.date.localeCompare(a.date)), [revenues])
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.date.localeCompare(a.date)), [expenses])
@@ -294,17 +371,19 @@ export default function Financials({ data }) {
   function submitRevenue(e) {
     e.preventDefault()
     if (!revForm.amount) return
-    addRevenue({ ...revForm, amount: parseFloat(revForm.amount) })
+    addRevenue({ ...revForm, amount: parseFloat(revForm.amount), supplierName: revSupplierName.trim() })
     setModal(null)
-    setRevForm({ date: today(), channel: '電商', category: '食品', amount: '' })
+    setRevForm({ date: today(), channel: '電商', category: '食品', amount: '', supplierId: null, customSupplierName: '' })
+    setRevSupplierName('')
   }
 
   function submitExpense(e) {
     e.preventDefault()
     if (!expForm.amount) return
-    addExpense({ ...expForm, amount: parseFloat(expForm.amount) })
+    addExpense({ ...expForm, amount: parseFloat(expForm.amount), supplierName: expSupplierName.trim() })
     setModal(null)
-    setExpForm({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '' })
+    setExpForm({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
+    setExpSupplierName('')
   }
 
   const channelColor = { '電商': 'orange', '市集': 'green' }
@@ -484,6 +563,26 @@ export default function Financials({ data }) {
               <input type="number" min="0" className={inputCls} placeholder="0" value={revForm.amount}
                 onChange={e => setRevForm(p => ({ ...p, amount: e.target.value }))} required />
             </FormRow>
+            <FormRow label="供應商/合作對象（選填）">
+              <input
+                list="supplier-options"
+                className={inputCls}
+                placeholder="選擇或輸入名稱"
+                value={revSupplierName}
+                onChange={e => setRevSupplierName(e.target.value)}
+              />
+              <datalist id="supplier-options">
+                {suppliers.map(s => <option key={s.id} value={s.name} />)}
+              </datalist>
+            </FormRow>
+            <FormRow label="關聯供應商/合作對象（選填）">
+              <SupplierCombobox
+                suppliers={suppliers}
+                supplierId={revForm.supplierId}
+                customSupplierName={revForm.customSupplierName}
+                onChange={v => setRevForm(p => ({ ...p, ...v }))}
+              />
+            </FormRow>
             <div className="flex gap-2 pt-2">
               <button type="submit" className={btnPrimary + ' flex-1'}>確認新增</button>
               <button type="button" onClick={() => setModal(null)} className={btnSecondary}>取消</button>
@@ -534,7 +633,24 @@ export default function Financials({ data }) {
               <input type="number" min="0" className={inputCls} placeholder="0" value={expForm.amount}
                 onChange={e => setExpForm(p => ({ ...p, amount: e.target.value }))} required />
             </FormRow>
-            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <FormRow label="供應商/合作對象（選填）">
+              <input
+                list="supplier-options"
+                className={inputCls}
+                placeholder="選擇或輸入名稱"
+                value={expSupplierName}
+                onChange={e => setExpSupplierName(e.target.value)}
+              />
+            </FormRow>
+            <FormRow label="關聯供應商/合作對象（選填）">
+              <SupplierCombobox
+                suppliers={suppliers}
+                supplierId={expForm.supplierId}
+                customSupplierName={expForm.customSupplierName}
+                onChange={v => setExpForm(p => ({ ...p, ...v }))}
+              />
+            </FormRow>
+            <label className="flex items-center gap-2 text-sm text-gray-600">
               <input type="checkbox" checked={expForm.isProductionCost}
                 onChange={e => setExpForm(p => ({ ...p, isProductionCost: e.target.checked }))}
                 className="accent-orange-400" />
