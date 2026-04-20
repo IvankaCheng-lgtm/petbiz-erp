@@ -33,6 +33,7 @@ export default function SalesOrder({ data }) {
   const { inventory = [], processOrder, updateOrder, deleteOrder, orders = [], suppliers = [] } = data || {};
 
   const [platform, setPlatform] = useState(PLATFORMS_ECOMMERCE[0]);
+  const [consigneeId, setConsigneeId] = useState('');  // 選擇的寄賣點廠商 id
   const [cart, setCart] = useState([]);
   const [discountPct, setDiscountPct] = useState("");
   const [discountAmt, setDiscountAmt] = useState("");
@@ -46,16 +47,19 @@ export default function SalesOrder({ data }) {
   const [itemSearch, setItemSearch] = useState("");
   const [done, setDone] = useState(false);
 
-  // 寄賣點通路（動態從 suppliers 取得，suppliers 由 Firebase onSnapshot 即時同步）
-  const consignmentPlatforms = useMemo(
+  // 寄賣點廠商清單
+  const consignmentSuppliers = useMemo(
     () => suppliers.filter(s => s.category === '寄賣點'),
     [suppliers]
   );
 
-  // 目前選擇的寄賣點供應商（若有）
+  // 目前是否選擇「寄賣點」通路
+  const isConsignment = platform === '寄賣點';
+
+  // 目前選擇的寄賣點供應商
   const selectedConsignee = useMemo(
-    () => consignmentPlatforms.find(s => s.name === platform) ?? null,
-    [consignmentPlatforms, platform]
+    () => consignmentSuppliers.find(s => s.id === consigneeId) ?? null,
+    [consignmentSuppliers, consigneeId]
   );
 
   const scannerRef = useRef(null);
@@ -170,15 +174,18 @@ export default function SalesOrder({ data }) {
       costMode === "pct"
         ? Math.round((totalAmount * (parseFloat(platformCost) || 0)) / 100)
         : parseFloat(platformCost) || 0;
+    const effectivePlatform = isConsignment
+      ? (selectedConsignee?.name ?? '寄賣點')
+      : platform;
     await processOrder?.({
-      platform,
+      platform: effectivePlatform,
       items: cart,
       discountType: discountPct ? "pct" : discountAmt ? "amt" : null,
       discountValue: discountPct ? parseFloat(discountPct) : discountAmt ? parseFloat(discountAmt) : null,
       totalAmount,
-      platformCost: selectedConsignee ? consignmentFee : computedCost,
+      platformCost: isConsignment ? consignmentFee : computedCost,
       supplierId: selectedConsignee?.id ?? null,
-      skipRevenue: selectedConsignee ? consignSkipRevenue : false,
+      skipRevenue: isConsignment ? consignSkipRevenue : false,
       note,
     });
     setDone(true);
@@ -188,6 +195,7 @@ export default function SalesOrder({ data }) {
     setPlatformCost("");
     setNote("");
     setConsignSkipRevenue(false);
+    setConsigneeId('');
     setTimeout(() => setDone(false), 3000);
   }
 
@@ -236,37 +244,56 @@ export default function SalesOrder({ data }) {
                   {p}
                 </button>
               ))}
-              {consignmentPlatforms.map((s) => (
-                <button key={s.id} onClick={() => setPlatform(s.name)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                    platform === s.name ? "bg-purple-500 text-white border-purple-500" : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
-                  }`}>
-                  {s.name}
-                  {s.commissionPct != null && (
-                    <span className="ml-1.5 text-xs opacity-75">(寄賣 {s.commissionPct}%)</span>
-                  )}
-                </button>
-              ))}
+              <button onClick={() => { setPlatform('寄賣點'); setConsigneeId(''); }}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                  isConsignment ? "bg-purple-500 text-white border-purple-500" : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
+                }`}>
+                🏠 寄賣點
+              </button>
             </div>
+            {/* 寄賣點廠商選擇器 */}
+            {isConsignment && (
+              <div className="mt-2">
+                {consignmentSuppliers.length === 0 ? (
+                  <p className="text-xs text-orange-500">尚無寄賣點廠商，請先到「供應商管理」新增分類為「寄賣點」的廠商</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {consignmentSuppliers.map(s => (
+                      <button key={s.id} onClick={() => setConsigneeId(s.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          consigneeId === s.id ? "bg-purple-100 text-purple-700 border-purple-400" : "bg-white text-gray-600 border-gray-200 hover:border-purple-300"
+                        }`}>
+                        {s.name}
+                        {s.commissionPct != null && <span className="ml-1 opacity-60">({s.commissionPct}%)</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </SectionCard>
 
       {/* 成交手續費 */}
       <SectionCard title="成交手續費 / 廣告費（選填）">
-        {selectedConsignee ? (
+        {isConsignment ? (
           <div className="space-y-2">
-            <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm space-y-1">
-              <div className="flex justify-between">
-                <span className="text-gray-500">寄賣點抽成（{selectedConsignee.commissionPct ?? 0}%）</span>
-                <span className="font-semibold text-red-500">-${consignmentFee}</span>
+            {selectedConsignee ? (
+              <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">寄賣點抽成（{selectedConsignee.commissionPct ?? 0}%）</span>
+                  <span className="font-semibold text-red-500">-${consignmentFee}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">實得金額</span>
+                  <span className="font-bold text-emerald-600">${netAfterConsignment}</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">實得金額</span>
-                <span className="font-bold text-emerald-600">${netAfterConsignment}</span>
-              </div>
-            </div>
-            <p className="text-xs text-gray-400">寄賣點拆帳比例已自動帶入，建立訂單後將自動記入支出</p>
+            ) : (
+              <p className="text-xs text-gray-400">請先選擇寄賣點廠商</p>
+            )}
+            {selectedConsignee && <p className="text-xs text-gray-400">寄賣點拆帳比例已自動帶入，建立訂單後將自動記入支出</p>}
           </div>
         ) : (
           <>
@@ -385,7 +412,7 @@ export default function SalesOrder({ data }) {
             <div className="flex justify-between text-base font-bold text-gray-800">
               <span>合計</span><span>${totalAmount}</span>
             </div>
-            {selectedConsignee && (
+            {isConsignment && selectedConsignee && (
               <div className="pt-2 border-t border-gray-100 space-y-2">
                 <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm space-y-1">
                   <div className="flex justify-between">

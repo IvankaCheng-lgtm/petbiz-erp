@@ -90,11 +90,14 @@ export default function Suppliers({ data }) {
     deleteSupplier(id)
   }
 
-  // 一般廠商：從 expenses 查詢進貨紀錄
+  // 一般廠商：從 expenses 查詢進貨紀錄（支援 supplierId 或 supplierName 比對）
   const supplierExpenses = useMemo(() => {
     if (!detailTarget || detailTarget.category === '寄賣點') return []
     return expenses
-      .filter(e => e.supplierId === detailTarget.id)
+      .filter(e =>
+        (e.supplierId && e.supplierId === detailTarget.id) ||
+        (!e.supplierId && e.supplierName && e.supplierName === detailTarget.name)
+      )
       .sort((a, b) => b.date?.localeCompare(a.date))
   }, [detailTarget, expenses])
 

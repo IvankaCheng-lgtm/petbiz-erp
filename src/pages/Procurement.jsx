@@ -539,7 +539,7 @@ export default function Procurement({ data }) {
   const handleFileClick = useCallback(() => xlsxRef.current.click(), [])
 
   const purchaseSuppliers = useMemo(
-    () => suppliers.filter(s => ['生鮮食材', '包材廠商', '藥劑/添加物'].includes(s.category)),
+    () => suppliers.filter(s => s.category !== '寄賣點'),
     [suppliers]
   )
 
