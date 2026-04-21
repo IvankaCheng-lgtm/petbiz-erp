@@ -32,11 +32,11 @@ const ERP_DOC_REF = doc(db, "moe_beast_erp", "main_record");
 /**
  * FIFO 批次扣除：依 normalExp 升冪排序，從最快過期的批次開始扣。
  * 回傳更新後的 item（currentQty 和 expiryBatches 均已更新）。
+ * 批次格式：{ batchId, normalExp, fridgeExp, freezerExp, qty }
  */
 function deductFIFO(item, qtyToDeduct) {
   const batches = item.expiryBatches;
 
-  // 無批次資料：直接扣總數
   if (!batches || batches.length === 0) {
     return { ...item, currentQty: Math.max(0, item.currentQty - qtyToDeduct) };
   }
@@ -49,29 +49,40 @@ function deductFIFO(item, qtyToDeduct) {
     return a.normalExp.localeCompare(b.normalExp);
   });
 
-  // 用 for 迴圈確保跨批次扣除正確累減
   let remaining = qtyToDeduct;
   const updatedBatches = [];
 
   for (const batch of sorted) {
-    if (remaining <= 0) {
-      // 已扣足，剩餘批次保持不變
-      updatedBatches.push(batch);
-      continue;
-    }
+    if (remaining <= 0) { updatedBatches.push(batch); continue; }
     const deduct = Math.min(batch.qty, remaining);
     remaining -= deduct;
     const newQty = batch.qty - deduct;
-    // 數量 > 0 才保留，= 0 則清除此批次
-    if (newQty > 0) {
-      updatedBatches.push({ ...batch, qty: newQty });
-    }
+    if (newQty > 0) updatedBatches.push({ ...batch, qty: newQty });
   }
 
   return {
     ...item,
     currentQty:    Math.max(0, item.currentQty - qtyToDeduct),
     expiryBatches: updatedBatches,
+  };
+}
+
+/**
+ * 將進貨/生產的效期資料標準化為統一批次格式
+ * 輸入可能來自不同來源（進貨/生產），統一輸出 { batchId, normalExp, fridgeExp, freezerExp, qty }
+ */
+function normalizeBatch({ batchId, qty,
+  normalExp, fridgeExp, freezerExp,       // 生產來源欄位
+  shelfExpiry, fridgeExpiry, frozenExpiry, // 進貨來源欄位
+  productionDate, prodDate,
+}) {
+  return {
+    batchId:    batchId || uid(),
+    normalExp:  normalExp  || shelfExpiry  || null,
+    fridgeExp:  fridgeExp  || fridgeExpiry || null,
+    freezerExp: freezerExp || frozenExpiry || null,
+    productionDate: productionDate || prodDate || null,
+    qty,
   };
 }
 
@@ -202,7 +213,7 @@ export default function usePetBusiness() {
     cloudUpdate("expenses", list => list.map(e => e.id === id ? { ...e, isReported: !e.isReported } : e));
   }, [cloudUpdate]);
 
-  const addPurchase = useCallback(async ({ date, itemId, itemName, category, qty, unitPrice, note, supplierId = null, supplierName = '' }) => {
+  const addPurchase = useCallback(async ({ date, itemId, itemName, category, qty, unitPrice, note, supplierId = null, supplierName = '', expiryBatch = null }) => {
     const amount = qty * unitPrice;
     const resolvedSupplierId = supplierId || null;
     const newExp = {
@@ -213,18 +224,24 @@ export default function usePetBusiness() {
       supplierId: resolvedSupplierId,
       supplierName: supplierName || '',
     };
-    setExpenses(prev => [...prev, newExp]);
-    setInventory(prev => {
-      const idx = prev.findIndex(i => i.id === itemId);
-      if (idx !== -1) { const n = [...prev]; n[idx] = { ...n[idx], currentQty: n[idx].currentQty + qty }; return n; }
-      return [...prev, { id: uid(), category, itemName, currentQty: qty, safetyQty: 0, unit: "個" }];
-    });
-    await cloudUpdate("expenses", list => [...list, newExp]);
-    await cloudUpdate("inventory", list => {
+    const applyInv = (list) => {
       const idx = list.findIndex(i => i.id === itemId);
-      if (idx !== -1) { const n = [...list]; n[idx] = { ...n[idx], currentQty: n[idx].currentQty + qty }; return n; }
-      return [...list, { id: uid(), category, itemName, currentQty: qty, safetyQty: 0, unit: "個" }];
-    });
+      if (idx !== -1) {
+        const item = list[idx];
+        const prevBatches = item.expiryBatches ?? [];
+        const newBatches = expiryBatch
+          ? [...prevBatches, normalizeBatch({ ...expiryBatch, qty })]
+          : prevBatches;
+        const n = [...list];
+        n[idx] = { ...item, currentQty: item.currentQty + qty, expiryBatches: newBatches };
+        return n;
+      }
+      return [...list, { id: uid(), category, itemName, currentQty: qty, safetyQty: 0, unit: '個' }];
+    };
+    setExpenses(prev => [...prev, newExp]);
+    setInventory(applyInv);
+    await cloudUpdate("expenses", list => [...list, newExp]);
+    await cloudUpdate("inventory", applyInv);
   }, [cloudUpdate]);
 
   // ── 庫存 ──────────────────────────────────────────────────────
@@ -276,7 +293,10 @@ export default function usePetBusiness() {
   // ── 生產 ──────────────────────────────────────────────────────
   // expiryData: { normalExp, fridgeExp, freezerExp } — 選填，有值才寫入 expiryBatches
   const addProductionBatch = useCallback(async (params) => {
-    const { date, note, hours, usedIngredients, usedPackaging, resultQty, targetItemId, electricCost, expiryData } = params;
+    const { date, note, hours, usedIngredients, usedPackaging, resultQty, targetItemId, electricCost,
+      expiryData, expiryBatch } = params;
+    // 支援兩種命名，統一處理
+    const batchExpiry = expiryBatch || expiryData || null;
     const newBatch = { id: uid(), ...params };
     const newExp = {
       id: uid(), date, type: "電費",
@@ -300,14 +320,14 @@ export default function usePetBusiness() {
         if (idx !== -1) {
           const prevBatches = next[idx].expiryBatches ?? [];
           // expiryBatches 格式：[{ batchId, normalExp, fridgeExp, freezerExp, qty }]
-          const newBatches = expiryData
-            ? [...prevBatches, {
-                batchId:    uid(),
-                normalExp:  expiryData.normalExp  || null,
-                fridgeExp:  expiryData.fridgeExp  || null,
-                freezerExp: expiryData.freezerExp || null,
-                qty:        resultQty,
-              }]
+          const newBatches = batchExpiry
+            ? [...prevBatches, normalizeBatch({
+                normalExp:  batchExpiry.normalExp  || batchExpiry.shelfExpiry  || null,
+                fridgeExp:  batchExpiry.fridgeExp  || batchExpiry.fridgeExpiry || null,
+                freezerExp: batchExpiry.freezerExp || batchExpiry.frozenExpiry || null,
+                productionDate: batchExpiry.productionDate || date,
+                qty: resultQty,
+              })]
             : prevBatches;
           next[idx] = {
             ...next[idx],

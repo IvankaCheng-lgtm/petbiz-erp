@@ -17,10 +17,12 @@ function addDays(dateStr, days) {
 
 // ── 編輯品項 Modal ──────────────────────────────────────────────
 function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onClose }) {
-  const barcodeRef  = useRef(null)
-  const itemNameRef = useRef(null)
+  const barcodeRef    = useRef(null)
+  const itemNameRef   = useRef(null)
+  const currentQtyRef = useRef(null)
   const isAB = editTarget?.category === 'A用品' || editTarget?.category === 'B食品'
 
+  // Modal 開啟時自動 focus：A/B 類先跳到條碼，其他跳到品項名稱
   useEffect(() => {
     const timer = setTimeout(() => {
       if (isAB && barcodeRef.current) barcodeRef.current.focus()
@@ -29,10 +31,17 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
     return () => clearTimeout(timer)
   }, [])
 
+  // 條碼 Enter → 跳到品項名稱
   function handleBarcodeEnter(e) {
     if (e.key === 'Enter') { e.preventDefault(); itemNameRef.current?.focus() }
   }
 
+  // 品項名稱 Enter → 跳到現有數量
+  function handleItemNameEnter(e) {
+    if (e.key === 'Enter') { e.preventDefault(); currentQtyRef.current?.focus() }
+  }
+
+  // 生產日期變更：自動計算到期日
   function handleProdDateChange(val) {
     setEditForm(p => ({
       ...p,
@@ -41,6 +50,19 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
       fridgeExpiry: addDays(val, p.fridgeDays),
       frozenExpiry: addDays(val, p.frozenDays),
     }))
+  }
+
+  // 保存天數變更：若已有生產日期，即時重新計算到期日
+  function handleDaysChange(field, val) {
+    setEditForm(p => {
+      const next = { ...p, [field]: val }
+      if (p.prodDate) {
+        next.shelfExpiry  = addDays(p.prodDate, field === 'shelfDays'  ? val : p.shelfDays)
+        next.fridgeExpiry = addDays(p.prodDate, field === 'fridgeDays' ? val : p.fridgeDays)
+        next.frozenExpiry = addDays(p.prodDate, field === 'frozenDays' ? val : p.frozenDays)
+      }
+      return next
+    })
   }
 
   return (
@@ -66,7 +88,8 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
         <FormRow label="品項名稱">
           <input ref={itemNameRef} type="text" className={inputCls}
             value={editForm.itemName}
-            onChange={e => setEditForm(p => ({ ...p, itemName: e.target.value }))} required />
+            onChange={e => setEditForm(p => ({ ...p, itemName: e.target.value }))}
+            onKeyDown={handleItemNameEnter} required />
         </FormRow>
         <FormRow label="供應商">
           <input type="text" className={inputCls} placeholder="選填" value={editForm.supplier}
@@ -74,7 +97,7 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
         </FormRow>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="現有數量">
-            <input type="number" min="0" className={inputCls} value={editForm.currentQty}
+            <input ref={currentQtyRef} type="number" min="0" className={inputCls} value={editForm.currentQty}
               onChange={e => setEditForm(p => ({ ...p, currentQty: e.target.value }))} required />
           </FormRow>
           <FormRow label="安全水位">
@@ -94,17 +117,17 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
               <FormRow label="常溫（天）">
                 <input type="number" min="0" className={inputCls} placeholder="例：30"
                   value={editForm.shelfDays ?? ''}
-                  onChange={e => setEditForm(p => ({ ...p, shelfDays: e.target.value }))} />
+                  onChange={e => handleDaysChange('shelfDays', e.target.value)} />
               </FormRow>
               <FormRow label="冷藏（天）">
                 <input type="number" min="0" className={inputCls} placeholder="例：180"
                   value={editForm.fridgeDays ?? ''}
-                  onChange={e => setEditForm(p => ({ ...p, fridgeDays: e.target.value }))} />
+                  onChange={e => handleDaysChange('fridgeDays', e.target.value)} />
               </FormRow>
               <FormRow label="冷凍（天）">
                 <input type="number" min="0" className={inputCls} placeholder="例：365"
                   value={editForm.frozenDays ?? ''}
-                  onChange={e => setEditForm(p => ({ ...p, frozenDays: e.target.value }))} />
+                  onChange={e => handleDaysChange('frozenDays', e.target.value)} />
               </FormRow>
             </div>
             <div className="border-t border-blue-100 pt-3 space-y-2">
@@ -400,7 +423,14 @@ export default function Procurement({ data }) {
   }
 
   function openPurchase(item) {
-    setPurchaseForm({ date: today(), itemId: item.id, itemName: item.itemName, category: item.category, qty: '', unitPrice: '', note: '', supplierId: '', supplierName: '' })
+    setPurchaseForm({
+      date: today(), itemId: item.id, itemName: item.itemName, category: item.category,
+      qty: '', unitPrice: '', note: '', supplierId: '', supplierName: '',
+      // 效期欄位（僅 B食品使用）
+      prodDate: '', shelfExpiry: '', fridgeExpiry: '', frozenExpiry: '',
+      // 帶入品項已設定的標準保存天數
+      shelfDays: item.shelfDays ?? '', fridgeDays: item.fridgeDays ?? '', frozenDays: item.frozenDays ?? '',
+    })
     setModal('purchase')
   }
 
@@ -420,7 +450,18 @@ export default function Procurement({ data }) {
 
   function submitPurchase(e) {
     e.preventDefault()
-    addPurchase({ ...purchaseForm, qty: parseFloat(purchaseForm.qty), unitPrice: parseFloat(purchaseForm.unitPrice) })
+    const hasExpiry = purchaseForm.category === 'B食品' && purchaseForm.prodDate
+    addPurchase({
+      ...purchaseForm,
+      qty:       parseFloat(purchaseForm.qty),
+      unitPrice: parseFloat(purchaseForm.unitPrice),
+      expiryBatch: hasExpiry ? {
+        prodDate:     purchaseForm.prodDate,
+        shelfExpiry:  purchaseForm.shelfExpiry  || null,
+        fridgeExpiry: purchaseForm.fridgeExpiry || null,
+        frozenExpiry: purchaseForm.frozenExpiry || null,
+      } : null,
+    })
     setModal(null)
   }
 
@@ -921,9 +962,12 @@ export default function Procurement({ data }) {
                 <div className="space-y-2">
                   {editTarget.expiryBatches.map((b, i) => {
                     const now = new Date()
-                    const shelfExp  = b.shelfExpiry  ? new Date(b.shelfExpiry)  : null
-                    const fridgeExp = b.fridgeExpiry ? new Date(b.fridgeExpiry) : null
-                    const frozenExp = b.frozenExpiry ? new Date(b.frozenExpiry) : null
+                    const shelfExp  = (b.normalExp  || b.shelfExpiry)  ? new Date(b.normalExp  || b.shelfExpiry)  : null
+                    const fridgeExp = (b.fridgeExp  || b.fridgeExpiry) ? new Date(b.fridgeExp  || b.fridgeExpiry) : null
+                    const frozenExp = (b.freezerExp || b.frozenExpiry) ? new Date(b.freezerExp || b.frozenExpiry) : null
+                    const shelfStr  = b.normalExp  || b.shelfExpiry  || null
+                    const fridgeStr = b.fridgeExp  || b.fridgeExpiry || null
+                    const frozenStr = b.freezerExp || b.frozenExpiry || null
                     const isExpired = shelfExp && shelfExp < now
                     return (
                       <div key={i} className={`rounded-xl px-4 py-3 border text-sm ${isExpired ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-100'}`}>
@@ -933,9 +977,9 @@ export default function Procurement({ data }) {
                         </div>
                         <div className="flex flex-wrap gap-3 text-xs">
                           {b.qty && <span className="text-gray-600">數量：{b.qty} 包</span>}
-                          {shelfExp  && <span className={shelfExp  < now ? 'text-red-500 font-bold' : 'text-gray-500'}>常溫到期：{b.shelfExpiry}</span>}
-                          {fridgeExp && <span className={fridgeExp < now ? 'text-red-500 font-bold' : 'text-blue-500'}>冷藏到期：{b.fridgeExpiry}</span>}
-                          {frozenExp && <span className={frozenExp < now ? 'text-red-500 font-bold' : 'text-indigo-500'}>冷凍到期：{b.frozenExpiry}</span>}
+                          {shelfExp  && <span className={shelfExp  < now ? 'text-red-500 font-bold' : 'text-gray-500'}>常溫到期：{shelfStr}</span>}
+                          {fridgeExp && <span className={fridgeExp < now ? 'text-red-500 font-bold' : 'text-blue-500'}>冷藏到期：{fridgeStr}</span>}
+                          {frozenExp && <span className={frozenExp < now ? 'text-red-500 font-bold' : 'text-indigo-500'}>冷凍到期：{frozenStr}</span>}
                         </div>
                       </div>
                     )
@@ -1136,6 +1180,46 @@ export default function Procurement({ data }) {
               <input type="text" className={inputCls} placeholder="選填" value={purchaseForm.note}
                 onChange={e => setPurchaseForm(p => ({ ...p, note: e.target.value }))} />
             </FormRow>
+
+            {/* 效期欄位：僅 B食品顯示 */}
+            {purchaseForm.category === 'B食品' && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-3">
+                <p className="text-xs font-semibold text-blue-700">📅 此批次效期（選填）</p>
+                <FormRow label="生產日期">
+                  <input type="date" className={inputCls}
+                    value={purchaseForm.prodDate}
+                    onChange={e => {
+                      const val = e.target.value
+                      setPurchaseForm(p => ({
+                        ...p,
+                        prodDate:     val,
+                        shelfExpiry:  addDays(val, p.shelfDays),
+                        fridgeExpiry: addDays(val, p.fridgeDays),
+                        frozenExpiry: addDays(val, p.frozenDays),
+                      }))
+                    }} />
+                </FormRow>
+                {purchaseForm.prodDate && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <FormRow label="常溫到期">
+                      <input type="date" className={inputCls}
+                        value={purchaseForm.shelfExpiry}
+                        onChange={e => setPurchaseForm(p => ({ ...p, shelfExpiry: e.target.value }))} />
+                    </FormRow>
+                    <FormRow label="冷藏到期">
+                      <input type="date" className={inputCls}
+                        value={purchaseForm.fridgeExpiry}
+                        onChange={e => setPurchaseForm(p => ({ ...p, fridgeExpiry: e.target.value }))} />
+                    </FormRow>
+                    <FormRow label="冷凍到期">
+                      <input type="date" className={inputCls}
+                        value={purchaseForm.frozenExpiry}
+                        onChange={e => setPurchaseForm(p => ({ ...p, frozenExpiry: e.target.value }))} />
+                    </FormRow>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex gap-2 pt-2">
               <button type="submit" className={btnPrimary + ' flex-1'}>確認進貨</button>
               <button type="button" onClick={() => setModal(null)} className={btnSecondary}>取消</button>

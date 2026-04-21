@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Plus,
   Trash2,
@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Sparkles,
   Loader2,
+  Search,
 } from "lucide-react";
 import {
   SectionCard,
@@ -87,7 +88,71 @@ ${lastBatchInfo}
   )
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+// ── 可搜尋下拉元件 ───────────────────────────────────────────
+function SearchableSelect({ value, onChange, options, placeholder = '請選擇' }) {
+  const [open, setOpen]     = useState(false)
+  const [query, setQuery]   = useState('')
+  const ref                 = useRef(null)
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return q ? options.filter(o => o.label.toLowerCase().includes(q)) : options
+  }, [options, query])
+
+  const selected = options.find(o => o.value === value)
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button"
+        onClick={() => { setOpen(v => !v); setQuery('') }}
+        className={inputCls + ' w-full text-left flex items-center justify-between gap-2 ' + (!value ? 'text-gray-400' : 'text-gray-800')}>
+        <span className="truncate">{selected ? selected.label : placeholder}</span>
+        <Search size={13} className="shrink-0 text-gray-400" />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-gray-100">
+            <input autoFocus type="text" value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="搜尋..."
+              className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300" />
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            <button type="button"
+              onClick={() => { onChange(''); setOpen(false); setQuery('') }}
+              className="w-full text-left px-3 py-2 text-sm text-gray-400 hover:bg-gray-50">
+              {placeholder}
+            </button>
+            {filtered.length === 0 && (
+              <p className="px-3 py-2 text-sm text-gray-400">查無結果</p>
+            )}
+            {filtered.map(o => (
+              <button type="button" key={o.value}
+                onClick={() => { onChange(o.value); setOpen(false); setQuery('') }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-orange-50 transition-colors ${
+                  o.value === value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-700'
+                }`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const STEPS = ["食材投入", "產出設定", "電力成本", "包材選用", "成本分析"];
 
 // ── 步驟條 ────────────────────────────────────────────────────
@@ -135,7 +200,7 @@ function StepBar({ current }) {
 
 // ── 主組件 ───────────────────────────────────────────────────
 export default function Production({ data }) {
-  const { inventory, production, addProductionBatch, deleteProduction } = data;
+  const { inventory, production, addProductionBatch, deleteProduction, addInventoryItem } = data;
 
   // ── 庫存篩選 ─────────────────────────────────────────────
   const cItems = useMemo(
@@ -165,6 +230,7 @@ export default function Production({ data }) {
   const [outputUnit, setOutputUnit]     = useState("克");
   const [packSize, setPackSize]         = useState("");
   const [targetItemId, setTargetItemId] = useState("");
+  const [newItemName,   setNewItemName]  = useState("");
   const [batchNote, setBatchNote]       = useState("");
   // 有效日期（常溫/冷藏/冷凍）
   const [shelfExpiry,  setShelfExpiry]  = useState("");
@@ -303,6 +369,7 @@ export default function Production({ data }) {
     setOutputUnit("克");
     setPackSize("");
     setTargetItemId("");
+    setNewItemName("");
     setBatchNote("");
     setShelfExpiry("");
     setFridgeExpiry("");
@@ -314,8 +381,23 @@ export default function Production({ data }) {
   }
 
   // ── 確認入庫 ─────────────────────────────────────────────
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!canSubmit) return;
+
+    // 若選擇「新增品項」，先建立 B食品庫存品項並取得 id
+    let resolvedTargetId = (targetItemId && targetItemId !== '__new__') ? targetItemId : null;
+    if (targetItemId === '__new__' && newItemName.trim()) {
+      const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      addInventoryItem({
+        id:         newId,
+        category:   'B食品',
+        itemName:   newItemName.trim(),
+        currentQty: 0,
+        safetyQty:  0,
+        unit:       '包',
+      });
+      resolvedTargetId = newId;
+    }
 
     const usedIngredients = ingredients
       .filter((r) => r.itemId && r.qty)
@@ -354,7 +436,7 @@ export default function Production({ data }) {
       outputUnit,
       packSize: parseFloat(packSize),
       resultQty,
-      targetItemId: targetItemId || null,
+      targetItemId: resolvedTargetId,
       ingredientCost,
       electricCost: Math.round(electricCost * 100) / 100,
       packagingCost,
@@ -463,21 +545,15 @@ export default function Production({ data }) {
                       >
                         {/* 食材選擇 */}
                         <div>
-                          <select
-                            className={inputCls}
+                          <SearchableSelect
                             value={row.itemId}
-                            onChange={(e) =>
-                              updateIngredient(idx, "itemId", e.target.value)
-                            }
-                          >
-                            <option value="">選擇食材</option>
-                            {cItems.map((i) => (
-                              <option key={i.id} value={i.id}>
-                                {i.itemName}（庫存 {i.currentQty}
-                                {i.unit}）
-                              </option>
-                            ))}
-                          </select>
+                            onChange={v => updateIngredient(idx, 'itemId', v)}
+                            placeholder="選擇食材"
+                            options={cItems.map(i => ({
+                              value: i.id,
+                              label: `${i.itemName}（庫存 ${i.currentQty}${i.unit}）`
+                            }))}
+                          />
                         </div>
                         {/* 用量 */}
                         <div className="flex items-center gap-1">
@@ -621,18 +697,24 @@ export default function Production({ data }) {
                 )}
 
                 <FormRow label="入庫至 B食品（選填）">
-                  <select
-                    className={inputCls}
-                    value={targetItemId}
-                    onChange={(e) => setTargetItemId(e.target.value)}
-                  >
-                    <option value="">不更新庫存</option>
-                    {bItems.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.itemName}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    value={targetItemId === '__new__' ? '' : targetItemId}
+                    onChange={v => { setTargetItemId(v); setNewItemName(''); }}
+                    placeholder="不更新庫存"
+                    options={bItems.map(i => ({ value: i.id, label: i.itemName }))}
+                  />
+                  <button type="button"
+                    onClick={() => setTargetItemId(t => t === '__new__' ? '' : '__new__')}
+                    className="mt-2 flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                    <Plus size={13} />
+                    {targetItemId === '__new__' ? '取消新增' : '庫存中沒有此品項？直接新增'}
+                  </button>
+                  {targetItemId === '__new__' && (
+                    <input autoFocus type="text" className={inputCls + ' mt-2'}
+                      placeholder="輸入新品項名稱（分類為 B食品）"
+                      value={newItemName}
+                      onChange={e => setNewItemName(e.target.value)} />
+                  )}
                 </FormRow>
 
                 {/* 批次有效日期 */}
@@ -799,21 +881,15 @@ export default function Production({ data }) {
                           ${isOver ? "border-red-200 bg-red-50/40" : "border-gray-100 bg-gray-50"}`}
                       >
                         {/* 包材選擇 */}
-                        <select
-                          className={inputCls}
+                        <SearchableSelect
                           value={row.itemId}
-                          onChange={(e) =>
-                            updatePackaging(idx, "itemId", e.target.value)
-                          }
-                        >
-                          <option value="">選擇包材</option>
-                          {dItems.map((i) => (
-                            <option key={i.id} value={i.id}>
-                              {i.itemName}（庫存 {i.currentQty}
-                              {i.unit}）
-                            </option>
-                          ))}
-                        </select>
+                          onChange={v => updatePackaging(idx, 'itemId', v)}
+                          placeholder="選擇包材"
+                          options={dItems.map(i => ({
+                            value: i.id,
+                            label: `${i.itemName}（庫存 ${i.currentQty}${i.unit}）`
+                          }))}
+                        />
 
                         {/* 數量 */}
                         <div className="flex items-center gap-1">
@@ -986,10 +1062,14 @@ export default function Production({ data }) {
                 )}
 
                 {/* 入庫目標確認 */}
-                {targetItemId && (
+                {(targetItemId && targetItemId !== '__new__') && (
                   <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">
-                    ✅ 完成後將新增 <strong>{resultQty} 包</strong> 至「
-                    {bItems.find((i) => i.id === targetItemId)?.itemName}」庫存
+                    ✅ 完成後將新增 <strong>{resultQty} 包</strong> 至「{bItems.find((i) => i.id === targetItemId)?.itemName}」庫存
+                  </div>
+                )}
+                {targetItemId === '__new__' && newItemName.trim() && (
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">
+                    ✅ 將建立新品項「{newItemName.trim()}」並入庫 <strong>{resultQty} 包</strong>
                   </div>
                 )}
               </div>
