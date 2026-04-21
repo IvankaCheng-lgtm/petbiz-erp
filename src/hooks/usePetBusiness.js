@@ -297,8 +297,9 @@ export default function usePetBusiness() {
       expiryData, expiryBatch } = params;
     // 支援兩種命名，統一處理
     const batchExpiry = expiryBatch || expiryData || null;
-    const expenseId = uid();
-    const newBatch = { id: uid(), ...params, expenseId };
+    const expenseId    = uid();
+    const expiryBatchId = batchExpiry ? uid() : null;
+    const newBatch = { id: uid(), ...params, expenseId, expiryBatchId };
     const newExp = {
       id: expenseId, date, type: "電費",
       note: `生產電費：${note || "烘乾機"}（${hours}h）`,
@@ -323,6 +324,7 @@ export default function usePetBusiness() {
           // expiryBatches 格式：[{ batchId, normalExp, fridgeExp, freezerExp, qty }]
           const newBatches = batchExpiry
             ? [...prevBatches, normalizeBatch({
+                batchId:    expiryBatchId,
                 normalExp:  batchExpiry.normalExp  || batchExpiry.shelfExpiry  || null,
                 fridgeExp:  batchExpiry.fridgeExp  || batchExpiry.fridgeExpiry || null,
                 freezerExp: batchExpiry.freezerExp || batchExpiry.frozenExpiry || null,
@@ -362,10 +364,19 @@ export default function usePetBusiness() {
             const idx = next.findIndex(i => i.id === itemId);
             if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
           });
-          // 2. 扣回 B食品產出庫存
+          // 2. 扣回 B食品產出庫存，並移除對應效期批次
           if (batch.targetItemId && batch.resultQty) {
             const idx = next.findIndex(i => i.id === batch.targetItemId);
-            if (idx !== -1) next[idx] = { ...next[idx], currentQty: Math.max(0, next[idx].currentQty - batch.resultQty) };
+            if (idx !== -1) {
+              const prevBatches = next[idx].expiryBatches ?? [];
+              next[idx] = {
+                ...next[idx],
+                currentQty: Math.max(0, next[idx].currentQty - batch.resultQty),
+                expiryBatches: batch.expiryBatchId
+                  ? prevBatches.filter(b => b.batchId !== batch.expiryBatchId)
+                  : prevBatches,
+              };
+            }
           }
           return next;
         };
