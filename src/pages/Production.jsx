@@ -13,6 +13,7 @@ import {
 import {
   SectionCard,
   FormRow,
+  Modal,
   inputCls,
   btnPrimary,
   btnSecondary,
@@ -464,10 +465,24 @@ export default function Production({ data }) {
     resetForm();
   }
 
+  const [detailBatch, setDetailBatch] = useState(null);
+  const [prodSearch,  setProdSearch]  = useState('');
+
   const sorted = useMemo(
     () => [...production].sort((a, b) => b.date.localeCompare(a.date)),
     [production],
   );
+
+  const filteredProd = useMemo(() => {
+    const q = prodSearch.trim().toLowerCase()
+    if (!q) return sorted
+    return sorted.filter(p =>
+      p.date?.includes(q) ||
+      p.note?.toLowerCase().includes(q) ||
+      p.usedIngredients?.some(i => i.itemName?.toLowerCase().includes(q)) ||
+      p.usedPackaging?.some(i => i.itemName?.toLowerCase().includes(q))
+    )
+  }, [sorted, prodSearch]);
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -1166,6 +1181,21 @@ export default function Production({ data }) {
 
       {/* ── 生產紀錄列表 ── */}
       <SectionCard title="生產紀錄">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="relative flex-1 max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={prodSearch}
+              onChange={e => setProdSearch(e.target.value)}
+              placeholder="搜尋日期、備註、食材名稱…"
+              className={inputCls + ' pl-8 text-sm'}
+            />
+          </div>
+          {prodSearch && (
+            <span className="text-xs text-gray-400">找到 {filteredProd.length} 筆</span>
+          )}
+        </div>
         <div className="overflow-x-auto -mx-2 px-2">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
@@ -1182,25 +1212,17 @@ export default function Production({ data }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {sorted.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="py-3 text-gray-500 whitespace-nowrap">
-                    {p.date}
-                  </td>
-                  <td className="py-3 text-gray-700 max-w-[140px] truncate">
-                    {p.note || "—"}
-                  </td>
+              {filteredProd.map((p) => (
+                <tr key={p.id}
+                  onClick={() => setDetailBatch(p)}
+                  className="hover:bg-orange-50/40 transition-colors cursor-pointer">
+                  <td className="py-3 text-gray-500 whitespace-nowrap">{p.date}</td>
+                  <td className="py-3 text-gray-700 max-w-[140px] truncate">{p.note || "—"}</td>
                   <td className="py-3 text-right text-gray-600">
                     {p.ingredientCost != null ? fmt(p.ingredientCost) : "—"}
                   </td>
                   <td className="py-3 text-right">
-                    <span
-                      className={
-                        getElectricRate(p.date) === 6.24
-                          ? "text-orange-500"
-                          : "text-blue-500"
-                      }
-                    >
+                    <span className={getElectricRate(p.date) === 6.24 ? "text-orange-500" : "text-blue-500"}>
                       {p.electricCost != null ? fmt(p.electricCost) : "—"}
                     </span>
                   </td>
@@ -1210,19 +1232,14 @@ export default function Production({ data }) {
                   <td className="py-3 text-right font-semibold text-gray-800">
                     {p.totalCost != null ? fmt(p.totalCost) : "—"}
                   </td>
-                  <td className="py-3 text-right font-bold text-emerald-600">
-                    {p.resultQty} 包
-                  </td>
+                  <td className="py-3 text-right font-bold text-emerald-600">{p.resultQty} 包</td>
                   <td className="py-3 text-right font-semibold text-purple-600">
-                    {p.costPerPack != null
-                      ? `$${p.costPerPack.toFixed(1)}`
-                      : "—"}
+                    {p.costPerPack != null ? `$${p.costPerPack.toFixed(1)}` : "—"}
                   </td>
                   <td className="py-3 text-center">
                     <button
-                      onClick={() => deleteProduction(p.id)}
-                      className={btnDanger}
-                    >
+                      onClick={(e) => { e.stopPropagation(); deleteProduction(p.id); }}
+                      className={btnDanger}>
                       <Trash2 size={14} />
                     </button>
                   </td>
@@ -1230,15 +1247,143 @@ export default function Production({ data }) {
               ))}
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
-                    尚無生產紀錄
-                  </td>
+                  <td colSpan={9} className="py-10 text-center text-gray-400">尚無生產紀錄</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </SectionCard>
+
+      {/* ── 批次詳細 Modal ── */}
+      {detailBatch && (
+        <Modal
+          title={`批次詳細：${detailBatch.date}${detailBatch.note ? ` — ${detailBatch.note}` : ''}`}
+          size="md"
+          onClose={() => setDetailBatch(null)}
+        >
+          <div className="space-y-4 text-sm">
+
+            {/* 產出資訊 */}
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="bg-emerald-50 rounded-xl py-3">
+                <p className="text-xs text-gray-400">總產出</p>
+                <p className="text-lg font-bold text-gray-800">
+                  {detailBatch.outputQty ?? '—'} {detailBatch.outputUnit ?? ''}
+                </p>
+              </div>
+              <div className="bg-emerald-50 rounded-xl py-3">
+                <p className="text-xs text-gray-400">每包規格</p>
+                <p className="text-lg font-bold text-gray-800">
+                  {detailBatch.packSize ?? '—'} {detailBatch.outputUnit ?? ''}
+                </p>
+              </div>
+              <div className="bg-emerald-50 rounded-xl py-3">
+                <p className="text-xs text-gray-400">產出包數</p>
+                <p className="text-lg font-bold text-emerald-600">{detailBatch.resultQty} 包</p>
+              </div>
+            </div>
+
+            {/* 食材 */}
+            {detailBatch.usedIngredients?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">食材投入</p>
+                <div className="space-y-1">
+                  {detailBatch.usedIngredients.map((ing, i) => (
+                    <div key={i} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2">
+                      <span className="text-gray-700">{ing.itemName}</span>
+                      <div className="flex items-center gap-4 text-right">
+                        <span className="text-gray-500">{ing.qty} {ing.unit ?? ''}</span>
+                        <span className="text-gray-400 text-xs w-20">${ing.unitPrice ?? 0}/單位</span>
+                        <span className="font-semibold text-emerald-600 w-16">{fmt(ing.cost ?? 0)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 包材 */}
+            {detailBatch.usedPackaging?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">包材使用</p>
+                <div className="space-y-1">
+                  {detailBatch.usedPackaging.map((pkg, i) => (
+                    <div key={i} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2">
+                      <span className="text-gray-700">{pkg.itemName}</span>
+                      <div className="flex items-center gap-4 text-right">
+                        <span className="text-gray-500">{pkg.qty} {pkg.unit ?? ''}</span>
+                        <span className="text-gray-400 text-xs w-20">${pkg.unitPrice ?? 0}/單位</span>
+                        <span className="font-semibold text-emerald-600 w-16">{fmt(pkg.cost ?? 0)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 電力 */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">電力</p>
+              <div className="flex gap-3">
+                <div className="bg-gray-50 rounded-lg px-3 py-2 flex-1 text-center">
+                  <p className="text-xs text-gray-400">機器瓦數</p>
+                  <p className="font-semibold text-gray-700">{detailBatch.machineWatt ?? '—'} W</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg px-3 py-2 flex-1 text-center">
+                  <p className="text-xs text-gray-400">烘烤時數</p>
+                  <p className="font-semibold text-gray-700">{detailBatch.hours ?? '—'} h</p>
+                </div>
+                <div className={`rounded-lg px-3 py-2 flex-1 text-center ${getElectricRate(detailBatch.date) === 6.24 ? 'bg-orange-50' : 'bg-blue-50'}`}>
+                  <p className="text-xs text-gray-400">電費</p>
+                  <p className={`font-semibold ${getElectricRate(detailBatch.date) === 6.24 ? 'text-orange-600' : 'text-blue-600'}`}>
+                    {detailBatch.electricCost != null ? fmt(detailBatch.electricCost) : '—'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 成本彙總 */}
+            <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-1.5">
+              <div className="flex justify-between text-gray-500">
+                <span>食材成本</span><span>{fmt(detailBatch.ingredientCost ?? 0)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>電費</span><span>{fmt(detailBatch.electricCost ?? 0)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>包材成本</span><span>{fmt(detailBatch.packagingCost ?? 0)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-gray-800 pt-1.5 border-t border-gray-200">
+                <span>總成本</span><span>{fmt(detailBatch.totalCost ?? 0)}</span>
+              </div>
+              <div className="flex justify-between font-black text-purple-600 text-base pt-0.5">
+                <span>單包成本</span>
+                <span>${detailBatch.costPerPack != null ? detailBatch.costPerPack.toFixed(2) : '—'}</span>
+              </div>
+            </div>
+
+            {/* 有效期批次 */}
+            {detailBatch.expiryBatch && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold text-blue-700">📅 有效期批次</p>
+                {detailBatch.expiryBatch.batchNote && (
+                  <p className="text-gray-600">{detailBatch.expiryBatch.batchNote}</p>
+                )}
+                <div className="flex flex-wrap gap-3 text-xs text-gray-600 pt-1">
+                  {detailBatch.expiryBatch.shelfExpiry  && <span>常溫到期：{detailBatch.expiryBatch.shelfExpiry}</span>}
+                  {detailBatch.expiryBatch.fridgeExpiry && <span>冷藏到期：{detailBatch.expiryBatch.fridgeExpiry}</span>}
+                  {detailBatch.expiryBatch.frozenExpiry && <span>冷凍到期：{detailBatch.expiryBatch.frozenExpiry}</span>}
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => setDetailBatch(null)} className={btnSecondary + ' w-full'}>
+              關閉
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* ── AI 食材比例計算助手 ── */}
       <AiRecipeAssistant cItems={cItems} production={production} />

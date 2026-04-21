@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import ExcelJS from 'exceljs'
-import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Calendar, Upload, Download } from 'lucide-react'
+import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Calendar, Upload, Download, Search } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt } from '../utils/format'
 import { askGemini } from '../services/geminiService'
@@ -584,7 +584,19 @@ export default function Procurement({ data }) {
     [suppliers]
   )
 
-  const filtered = useMemo(() => inventory.filter(i => i.category === activeTab), [inventory, activeTab])
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    const base = inventory.filter(i => i.category === activeTab)
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return base
+    return base.filter(i =>
+      i.itemName?.toLowerCase().includes(q) ||
+      i.sku?.toLowerCase().includes(q) ||
+      i.supplier?.toLowerCase().includes(q) ||
+      i.barcode?.toLowerCase().includes(q)
+    )
+  }, [inventory, activeTab, searchQuery])
 
   const stockStatus = (item) => {
     if (item.currentQty <= 0)                    return { label: '缺貨', color: 'red' }
@@ -635,15 +647,27 @@ export default function Procurement({ data }) {
         </div>
       )}
 
-      {/* Tab */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
-        {CATEGORIES.map(cat => (
-          <button key={cat} onClick={() => setActiveTab(cat)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors
-              ${activeTab === cat ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {cat}
-          </button>
-        ))}
+      {/* Tab + 搜尋 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 flex-wrap">
+          {CATEGORIES.map(cat => (
+            <button key={cat} onClick={() => { setActiveTab(cat); setSearchQuery('') }}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors
+                ${activeTab === cat ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {cat}
+            </button>
+          ))}
+        </div>
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="搜尋品項、貨號、供應商…"
+            className={inputCls + ' pl-8 text-sm'}
+          />
+        </div>
       </div>
 
       {/* 表格 */}
