@@ -156,6 +156,13 @@ function SearchableSelect({ value, onChange, options, placeholder = '請選擇' 
 const STEPS = ["食材投入", "產出設定", "電力成本", "包材選用", "成本分析"];
 const today = () => new Date().toISOString().slice(0, 10);
 
+function addDays(dateStr, days) {
+  if (!dateStr || !days) return ''
+  const d = new Date(dateStr)
+  d.setDate(d.getDate() + parseInt(days))
+  return d.toISOString().slice(0, 10)
+}
+
 // ── 步驟條 ────────────────────────────────────────────────────
 function StepBar({ current }) {
   return (
@@ -700,7 +707,16 @@ export default function Production({ data }) {
                 <FormRow label="入庫至 B食品（選填）">
                   <SearchableSelect
                     value={targetItemId === '__new__' ? '' : targetItemId}
-                    onChange={v => { setTargetItemId(v); setNewItemName(''); }}
+                    onChange={v => {
+                      setTargetItemId(v)
+                      setNewItemName('')
+                      const item = bItems.find(i => i.id === v)
+                      if (item) {
+                        setShelfExpiry(addDays(date, item.shelfDays))
+                        setFridgeExpiry(addDays(date, item.fridgeDays))
+                        setFrozenExpiry(addDays(date, item.frozenDays))
+                      }
+                    }}
                     placeholder="不更新庫存"
                     options={bItems.map(i => ({ value: i.id, label: i.itemName }))}
                   />
@@ -722,23 +738,28 @@ export default function Production({ data }) {
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-3">
                   <p className="text-xs font-semibold text-blue-700">📅 批次有效日期（選填，將自動寫入庫存）</p>
                   <FormRow label="批次備註">
-                    <input type="text" className={inputCls} placeholder="例：凍举雞肉片 2025-07批"
+                    <input type="text" className={inputCls} placeholder="例：凍乾雞肉片 2025-07批"
                       value={batchNote} onChange={e => setBatchNote(e.target.value)} />
                   </FormRow>
-                  <div className="grid grid-cols-3 gap-2">
-                    <FormRow label="常溫到期">
-                      <input type="date" className={inputCls}
-                        value={shelfExpiry} onChange={e => setShelfExpiry(e.target.value)} />
-                    </FormRow>
-                    <FormRow label="冷藏到期">
-                      <input type="date" className={inputCls}
-                        value={fridgeExpiry} onChange={e => setFridgeExpiry(e.target.value)} />
-                    </FormRow>
-                    <FormRow label="冷凍到期">
-                      <input type="date" className={inputCls}
-                        value={frozenExpiry} onChange={e => setFrozenExpiry(e.target.value)} />
-                    </FormRow>
-                  </div>
+                  {(() => {
+                    const selItem = bItems.find(i => i.id === targetItemId)
+                    return (
+                      <div className="grid grid-cols-3 gap-2">
+                        <FormRow label={`常溫到期${selItem?.shelfDays ? `（${selItem.shelfDays}天）` : ''}`}>
+                          <input type="date" className={inputCls}
+                            value={shelfExpiry} onChange={e => setShelfExpiry(e.target.value)} />
+                        </FormRow>
+                        <FormRow label={`冷藏到期${selItem?.fridgeDays ? `（${selItem.fridgeDays}天）` : ''}`}>
+                          <input type="date" className={inputCls}
+                            value={fridgeExpiry} onChange={e => setFridgeExpiry(e.target.value)} />
+                        </FormRow>
+                        <FormRow label={`冷凍到期${selItem?.frozenDays ? `（${selItem.frozenDays}天）` : ''}`}>
+                          <input type="date" className={inputCls}
+                            value={frozenExpiry} onChange={e => setFrozenExpiry(e.target.value)} />
+                        </FormRow>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             )}
@@ -1076,34 +1097,6 @@ export default function Production({ data }) {
               </div>
             )}
 
-            {/* ── 常駐底部成本列 ── */}
-            <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 rounded-b-2xl flex flex-wrap items-center gap-4 text-sm">
-              <span className="text-gray-400 font-medium">即時成本</span>
-              <span className="text-gray-600">
-                食材 <strong>{fmt(ingredientCost)}</strong>
-              </span>
-              <span className="text-gray-400">+</span>
-              <span className="text-gray-600">
-                電費 <strong>{fmt(electricCost)}</strong>
-              </span>
-              <span className="text-gray-400">+</span>
-              <span className="text-gray-600">
-                包材 <strong>{fmt(packagingCost)}</strong>
-              </span>
-              <span className="text-gray-400">=</span>
-              <span className="font-bold text-gray-800">
-                總計 {fmt(totalCost)}
-              </span>
-              {resultQty > 0 && (
-                <>
-                  <span className="text-gray-400 mx-1">｜</span>
-                  <span className="font-black text-purple-600 text-base">
-                    單包 ${costPerPack}
-                  </span>
-                </>
-              )}
-            </div>
-
             {/* ── 步驟導航按鈕 ── */}
             <div className="flex justify-between pt-2 border-t border-gray-100">
               <button
@@ -1140,6 +1133,32 @@ export default function Production({ data }) {
                 </button>
               )}
             </div>
+          {/* ── 常駐底部成本列 ── */}
+          <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 rounded-b-2xl flex flex-wrap items-center gap-4 text-sm">
+            <span className="text-gray-400 font-medium">即時成本</span>
+            <span className="text-gray-600">
+              食材 <strong>{fmt(ingredientCost)}</strong>
+            </span>
+            <span className="text-gray-400">+</span>
+            <span className="text-gray-600">
+              電費 <strong>{fmt(electricCost)}</strong>
+            </span>
+            <span className="text-gray-400">+</span>
+            <span className="text-gray-600">
+              包材 <strong>{fmt(packagingCost)}</strong>
+            </span>
+            <span className="text-gray-400">=</span>
+            <span className="font-bold text-gray-800">
+              總計 {fmt(totalCost)}
+            </span>
+            {resultQty > 0 && (
+              <>
+                <span className="text-gray-400 mx-1">｜</span>
+                <span className="font-black text-purple-600 text-base">
+                  單包 ${costPerPack}
+                </span>
+              </>
+            )}
           </div>
         </div>
       )}

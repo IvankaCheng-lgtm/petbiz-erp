@@ -297,9 +297,10 @@ export default function usePetBusiness() {
       expiryData, expiryBatch } = params;
     // 支援兩種命名，統一處理
     const batchExpiry = expiryBatch || expiryData || null;
-    const newBatch = { id: uid(), ...params };
+    const expenseId = uid();
+    const newBatch = { id: uid(), ...params, expenseId };
     const newExp = {
-      id: uid(), date, type: "電費",
+      id: expenseId, date, type: "電費",
       note: `生產電費：${note || "烘乾機"}（${hours}h）`,
       amount: Math.round(electricCost * 100) / 100,
       isProductionCost: true, isReported: false,
@@ -347,7 +348,37 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   const deleteProduction = useCallback((id) => {
-    setProduction(prev => prev.filter(p => p.id !== id));
+    setProduction(prev => {
+      const batch = prev.find(p => p.id === id);
+      if (batch) {
+        // 1. 補回食材與包材庫存
+        const restoreInv = (list) => {
+          const next = [...list];
+          (batch.usedIngredients ?? []).forEach(({ itemId, qty }) => {
+            const idx = next.findIndex(i => i.id === itemId);
+            if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
+          });
+          (batch.usedPackaging ?? []).forEach(({ itemId, qty }) => {
+            const idx = next.findIndex(i => i.id === itemId);
+            if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
+          });
+          // 2. 扣回 B食品產出庫存
+          if (batch.targetItemId && batch.resultQty) {
+            const idx = next.findIndex(i => i.id === batch.targetItemId);
+            if (idx !== -1) next[idx] = { ...next[idx], currentQty: Math.max(0, next[idx].currentQty - batch.resultQty) };
+          }
+          return next;
+        };
+        setInventory(restoreInv);
+        cloudUpdate("inventory", restoreInv);
+        // 3. 刪除對應電費支出
+        if (batch.expenseId) {
+          setExpenses(e => e.filter(x => x.id !== batch.expenseId));
+          cloudUpdate("expenses", list => list.filter(x => x.id !== batch.expenseId));
+        }
+      }
+      return prev.filter(p => p.id !== id);
+    });
     cloudUpdate("production", list => list.filter(p => p.id !== id));
   }, [cloudUpdate]);
 
