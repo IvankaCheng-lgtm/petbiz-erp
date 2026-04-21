@@ -154,6 +154,7 @@ function SearchableSelect({ value, onChange, options, placeholder = '請選擇' 
 }
 
 const STEPS = ["食材投入", "產出設定", "電力成本", "包材選用", "成本分析"];
+const today = () => new Date().toISOString().slice(0, 10);
 
 // ── 步驟條 ────────────────────────────────────────────────────
 function StepBar({ current }) {
