@@ -1133,6 +1133,7 @@ export default function Production({ data }) {
                 </button>
               )}
             </div>
+          </div>
           {/* ── 常駐底部成本列 ── */}
           <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 rounded-b-2xl flex flex-wrap items-center gap-4 text-sm">
             <span className="text-gray-400 font-medium">即時成本</span>
