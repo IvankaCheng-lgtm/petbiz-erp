@@ -237,6 +237,7 @@ export default function Production({ data }) {
   // 步驟二：產出（多規格）[{ targetItemId, newItemName, packSize, packQty, batchNote, shelfExpiry, fridgeExpiry, frozenExpiry }]
   const [outputs, setOutputs] = useState([]);
   const [outputUnit, setOutputUnit] = useState("克");
+  const [totalOutputQty, setTotalOutputQty] = useState(""); // 手動輸入總產出量（僅供紀錄）
 
   // 步驟三：電力
   const [machineWatt, setMachineWatt] = useState(1100);
@@ -300,19 +301,44 @@ export default function Production({ data }) {
     [ingredientCost, electricCost, packagingCost],
   );
 
-  // 各規格成本（按重量比例平攤）
+  // 包材成本：分為「指定規格」和「共用（按重量平攤）」
+  const packagingCostByOutput = useMemo(() => {
+    // 各規格的指定包材成本
+    const direct = outputs.map((_, oi) =>
+      packaging
+        .filter(r => r.outputIdx === oi)
+        .reduce((s, r) => {
+          const item = dItems.find(i => i.id === r.itemId);
+          return s + (item ? (item.unitPrice || 0) * (parseFloat(r.qty) || 0) : 0);
+        }, 0)
+    );
+    // 共用包材成本（outputIdx === null）
+    const shared = packaging
+      .filter(r => r.outputIdx === null)
+      .reduce((s, r) => {
+        const item = dItems.find(i => i.id === r.itemId);
+        return s + (item ? (item.unitPrice || 0) * (parseFloat(r.qty) || 0) : 0);
+      }, 0);
+    return { direct, shared };
+  }, [packaging, outputs, dItems]);
+
+  // 各規格成本（食材+電費按重量比例，包材依指定/共用分別計算）
   const outputsWithCost = useMemo(() => {
-    if (totalOutputWeight === 0) return outputs.map(o => ({ ...o, cost: 0, costPerPack: 0 }));
-    return outputs.map(row => {
+    if (totalOutputWeight === 0) return outputs.map(o => ({ ...o, cost: 0, costPerPack: 0, ratio: 0, weight: 0 }));
+    return outputs.map((row, oi) => {
       const ps = parseFloat(row.packSize) || 0;
       const pq = parseFloat(row.packQty) || 0;
       const weight = ps * pq;
       const ratio = weight / totalOutputWeight;
-      const cost = totalCost * ratio;
+      // 食材 + 電費 按重量比例
+      const ingElecCost = (ingredientCost + electricCost) * ratio;
+      // 包材：直接指定 + 共用按比例
+      const pkgCost = packagingCostByOutput.direct[oi] + packagingCostByOutput.shared * ratio;
+      const cost = ingElecCost + pkgCost;
       const costPerPack = pq > 0 ? Math.round((cost / pq) * 100) / 100 : 0;
-      return { ...row, cost, costPerPack, weight, ratio };
+      return { ...row, cost, costPerPack, weight, ratio, pkgCost };
     });
-  }, [outputs, totalOutputWeight, totalCost]);
+  }, [outputs, totalOutputWeight, ingredientCost, electricCost, packagingCostByOutput]);
 
   const rate = useMemo(() => getElectricRate(date), [date]);
   const isSummer = rate === 6.24;
@@ -339,6 +365,14 @@ export default function Production({ data }) {
         .map((row) => dItems.find((i) => i.id === row.itemId)?.itemName),
     [packaging, dItems],
   );
+
+  // 各規格的包材列表（用於步驟四顯示）
+  const outputLabels = useMemo(() =>
+    outputs.map((row, idx) => {
+      if (row.targetItemId === '__new__') return row.newItemName || `新品項 ${idx + 1}`;
+      return bItems.find(i => i.id === row.targetItemId)?.itemName || `規格 ${idx + 1}`;
+    })
+  , [outputs, bItems]);
 
   const allShortages = useMemo(
     () => [...ingredientShortage, ...packagingShortage],
@@ -371,7 +405,7 @@ export default function Production({ data }) {
 
   // ── 包材操作 ─────────────────────────────────────────────
   function addPackagingRow() {
-    setPackaging((p) => [...p, { itemId: "", qty: "" }]);
+    setPackaging((p) => [...p, { itemId: "", qty: "", outputIdx: null }]);
   }
   function removePackagingRow(idx) {
     setPackaging((p) => p.filter((_, i) => i !== idx));
@@ -399,6 +433,7 @@ export default function Production({ data }) {
     setIngredients([]);
     setOutputs([]);
     setOutputUnit("克");
+    setTotalOutputQty("");
     setMachineWatt(1100);
     setHours(16);
     setElecRatio(100);
@@ -469,7 +504,7 @@ export default function Production({ data }) {
         elecRatio: parseFloat(elecRatio),
         usedIngredients,
         usedPackaging,
-        outputQty: output.weight,
+        outputQty: parseFloat(totalOutputQty) || output.weight,
         outputUnit,
         packSize: parseFloat(output.packSize),
         resultQty: parseFloat(output.packQty),
@@ -691,8 +726,8 @@ export default function Production({ data }) {
                   產出設定
                 </h2>
 
-                {/* 單位選擇 */}
-                <div className="flex items-center gap-3">
+                {/* 產出單位 + 總產出量 */}
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-sm text-gray-600">產出單位</span>
                   <select
                     className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
@@ -702,6 +737,22 @@ export default function Production({ data }) {
                     <option>克</option>
                     <option>個</option>
                   </select>
+                  <span className="text-sm text-gray-600 ml-2">總產出量</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number" min="0" step="0.1"
+                      className={inputCls + ' w-28'}
+                      placeholder="例：5000"
+                      value={totalOutputQty}
+                      onChange={e => setTotalOutputQty(e.target.value)}
+                    />
+                    <span className="text-sm text-gray-400">{outputUnit}</span>
+                  </div>
+                  {totalOutputWeight > 0 && totalOutputQty && (
+                    <span className="text-xs text-gray-400">
+                      （各規格合計：{totalOutputWeight}{outputUnit}）
+                    </span>
+                  )}
                 </div>
 
                 {/* 規格列表標題 */}
@@ -997,6 +1048,13 @@ export default function Production({ data }) {
                   </div>
                 )}
 
+                {/* 有多規格時顯示說明 */}
+                {outputs.length > 1 && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 text-xs text-blue-700">
+                    💡 可為每項包材指定歸屬規格，未指定則按產出重量比例自動平攤
+                  </div>
+                )}
+
                 {/* 包材列表 */}
                 <div className="space-y-2">
                   {packaging.map((row, idx) => {
@@ -1004,63 +1062,67 @@ export default function Production({ data }) {
                     const rowCost = item
                       ? (item.unitPrice || 0) * (parseFloat(row.qty) || 0)
                       : 0;
-                    const isOver =
-                      item && (parseFloat(row.qty) || 0) > item.currentQty;
+                    const isOver = item && (parseFloat(row.qty) || 0) > item.currentQty;
                     return (
-                      <div
-                        key={idx}
-                        className={`grid grid-cols-[1fr_120px_100px_80px_32px] gap-2 items-center p-3 rounded-xl border
-                          ${isOver ? "border-red-200 bg-red-50/40" : "border-gray-100 bg-gray-50"}`}
-                      >
-                        {/* 包材選擇 */}
-                        <SearchableSelect
-                          value={row.itemId}
-                          onChange={v => updatePackaging(idx, 'itemId', v)}
-                          placeholder="選擇包材"
-                          options={dItems.map(i => ({
-                            value: i.id,
-                            label: `${i.itemName}（庫存 ${i.currentQty}${i.unit}）`
-                          }))}
-                        />
-
-                        {/* 數量 */}
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            placeholder="數量"
-                            className={
-                              inputCls + (isOver ? " border-red-300" : "")
-                            }
-                            value={row.qty}
-                            onChange={(e) =>
-                              updatePackaging(idx, "qty", e.target.value)
-                            }
+                      <div key={idx} className={`p-3 rounded-xl border space-y-2 ${
+                        isOver ? "border-red-200 bg-red-50/40" : "border-gray-100 bg-gray-50"
+                      }`}>
+                        <div className="grid grid-cols-[1fr_120px_100px_80px_32px] gap-2 items-center">
+                          {/* 包材選擇 */}
+                          <SearchableSelect
+                            value={row.itemId}
+                            onChange={v => updatePackaging(idx, 'itemId', v)}
+                            placeholder="選擇包材"
+                            options={dItems.map(i => ({
+                              value: i.id,
+                              label: `${i.itemName}（庫存 ${i.currentQty}${i.unit}）`
+                            }))}
                           />
-                          <span className="text-xs text-gray-400 shrink-0">
-                            {item?.unit || ""}
-                          </span>
+                          {/* 數量 */}
+                          <div className="flex items-center gap-1">
+                            <input type="number" min="1" step="1" placeholder="數量"
+                              className={inputCls + (isOver ? " border-red-300" : "")}
+                              value={row.qty}
+                              onChange={e => updatePackaging(idx, "qty", e.target.value)} />
+                            <span className="text-xs text-gray-400 shrink-0">{item?.unit || ""}</span>
+                          </div>
+                          {/* 單價 */}
+                          <div className="text-xs text-gray-500 text-right">
+                            {item ? `${fmtPrice(item.unitPrice || 0)}/個` : "—"}
+                          </div>
+                          {/* 小計 */}
+                          <div className={`text-sm font-semibold text-right ${
+                            isOver ? "text-red-500" : "text-emerald-600"
+                          }`}>
+                            {rowCost > 0 ? fmt(rowCost) : "—"}
+                          </div>
+                          <button onClick={() => removePackagingRow(idx)}
+                            className="text-gray-300 hover:text-red-400 transition-colors">
+                            <Trash2 size={15} />
+                          </button>
                         </div>
 
-                        {/* 單價 */}
-                        <div className="text-xs text-gray-500 text-right">
-                          {item ? `${fmtPrice(item.unitPrice || 0)}/個` : "—"}
-                        </div>
-
-                        {/* 小計 */}
-                        <div
-                          className={`text-sm font-semibold text-right ${isOver ? "text-red-500" : "text-emerald-600"}`}
-                        >
-                          {rowCost > 0 ? fmt(rowCost) : "—"}
-                        </div>
-
-                        <button
-                          onClick={() => removePackagingRow(idx)}
-                          className="text-gray-300 hover:text-red-400 transition-colors"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {/* 歸屬規格（有多規格時才顯示） */}
+                        {outputs.length > 1 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400 shrink-0">歸屬規格：</span>
+                            <select
+                              className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
+                              value={row.outputIdx === null ? '' : String(row.outputIdx)}
+                              onChange={e => updatePackaging(idx, 'outputIdx', e.target.value === '' ? null : parseInt(e.target.value))}
+                            >
+                              <option value="">共用（按重量比例平攤）</option>
+                              {outputLabels.map((label, oi) => (
+                                <option key={oi} value={String(oi)}>{label || `規格 ${oi + 1}`}</option>
+                              ))}
+                            </select>
+                            {row.outputIdx !== null && (
+                              <span className="text-xs font-medium text-orange-600 shrink-0">
+                                → 直接計入
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1156,19 +1218,39 @@ export default function Production({ data }) {
                 {/* 多規格成本平攤 */}
                 {outputsWithCost.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">各規格成本平攤（依產出重量比例）</p>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">各規格成本平攤</p>
                     {outputsWithCost.map((row, idx) => {
                       const label = row.targetItemId === '__new__'
                         ? (row.newItemName || `新品項 ${idx + 1}`)
                         : (bItems.find(i => i.id === row.targetItemId)?.itemName || `規格 ${idx + 1}`);
                       const pq = parseFloat(row.packQty) || 0;
+                      const directPkg = packagingCostByOutput.direct[idx] || 0;
+                      const sharedPkg = packagingCostByOutput.shared * row.ratio;
                       return (
                         <div key={idx} className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 space-y-1">
                           <div className="flex justify-between items-center">
                             <span className="font-semibold text-gray-800 text-sm">{label}</span>
                             <span className="text-xs text-gray-400">{row.packSize}{outputUnit}/包 × {pq}包 · 占比 {row.ratio != null ? (row.ratio * 100).toFixed(1) : 0}%</span>
                           </div>
-                          <div className="flex justify-between text-sm">
+                          <div className="text-xs text-gray-400 space-y-0.5 pl-1">
+                            <div className="flex justify-between">
+                              <span>食材+電費（按重量{(row.ratio * 100).toFixed(1)}%）</span>
+                              <span>{fmt((ingredientCost + electricCost) * row.ratio)}</span>
+                            </div>
+                            {directPkg > 0 && (
+                              <div className="flex justify-between text-orange-500">
+                                <span>包材（指定）</span>
+                                <span>{fmt(directPkg)}</span>
+                              </div>
+                            )}
+                            {sharedPkg > 0 && (
+                              <div className="flex justify-between">
+                                <span>包材（共用平攤）</span>
+                                <span>{fmt(sharedPkg)}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex justify-between text-sm pt-1 border-t border-purple-100">
                             <span className="text-gray-500">分攤成本</span>
                             <span className="text-gray-700">{fmt(row.cost)}</span>
                           </div>
