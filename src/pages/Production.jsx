@@ -556,7 +556,8 @@ export default function Production({ data }) {
     const groups = [];
     const seen = new Map();
     filteredProd.forEach(p => {
-      const key = p.batchGroupId || p.id;
+      // 有 batchGroupId 用它，否則用 date+note 作為備用分組 key
+      const key = p.batchGroupId || (p.date + '__' + (p.note || ''));
       if (seen.has(key)) {
         seen.get(key).items.push(p);
       } else {
