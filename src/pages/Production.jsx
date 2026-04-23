@@ -532,6 +532,25 @@ export default function Production({ data }) {
     resetForm();
   }
 
+  const [detailBatch, setDetailBatch] = useState(null);
+  const [prodSearch,  setProdSearch]  = useState('');
+
+  const sorted = useMemo(
+    () => [...production].sort((a, b) => b.date.localeCompare(a.date)),
+    [production],
+  );
+
+  const filteredProd = useMemo(() => {
+    const q = prodSearch.trim().toLowerCase()
+    if (!q) return sorted
+    return sorted.filter(p =>
+      p.date?.includes(q) ||
+      p.note?.toLowerCase().includes(q) ||
+      p.usedIngredients?.some(i => i.itemName?.toLowerCase().includes(q)) ||
+      p.usedPackaging?.some(i => i.itemName?.toLowerCase().includes(q))
+    )
+  }, [sorted, prodSearch]);
+
   // 依 batchGroupId 分組，沒有 batchGroupId 的則自成一組
   const groupedProd = useMemo(() => {
     const groups = [];
@@ -557,24 +576,6 @@ export default function Production({ data }) {
       return next;
     });
   }
-  const [detailBatch, setDetailBatch] = useState(null);
-  const [prodSearch,  setProdSearch]  = useState('');
-
-  const sorted = useMemo(
-    () => [...production].sort((a, b) => b.date.localeCompare(a.date)),
-    [production],
-  );
-
-  const filteredProd = useMemo(() => {
-    const q = prodSearch.trim().toLowerCase()
-    if (!q) return sorted
-    return sorted.filter(p =>
-      p.date?.includes(q) ||
-      p.note?.toLowerCase().includes(q) ||
-      p.usedIngredients?.some(i => i.itemName?.toLowerCase().includes(q)) ||
-      p.usedPackaging?.some(i => i.itemName?.toLowerCase().includes(q))
-    )
-  }, [sorted, prodSearch]);
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
