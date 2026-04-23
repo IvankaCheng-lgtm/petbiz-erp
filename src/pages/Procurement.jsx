@@ -609,7 +609,7 @@ export default function Procurement({ data }) {
 
   const [searchQuery, setSearchQuery] = useState('')
 
-  const [sortAZ, setSortAZ] = useState(false);
+  const [sortAZ, setSortAZ] = useState(true);
 
   const filtered = useMemo(() => {
     const base = inventory.filter(i => i.category === activeTab)
