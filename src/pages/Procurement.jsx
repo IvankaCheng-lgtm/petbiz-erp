@@ -97,7 +97,9 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
         </FormRow>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="現有數量">
-            <input ref={currentQtyRef} type="number" min="0" className={inputCls} value={editForm.currentQty}
+            <input ref={currentQtyRef} type="number" min="0"
+              step={editTarget?.category === 'C食材' ? '0.1' : '1'}
+              className={inputCls} value={editForm.currentQty}
               onChange={e => setEditForm(p => ({ ...p, currentQty: e.target.value }))} required />
           </FormRow>
           <FormRow label="安全水位">
@@ -440,7 +442,7 @@ export default function Procurement({ data }) {
 
   function submitAdjust(e) {
     e.preventDefault()
-    const change = parseInt(adjustForm.change)
+    const change = parseFloat(adjustForm.change)
     if (isNaN(change) || change === 0) return
     adjustInventory(editTarget.id, editTarget.itemName, change, adjustForm.reason || '庫存盤點')
     setModal(null)
@@ -714,7 +716,9 @@ export default function Procurement({ data }) {
                     <td className="py-3 text-xs text-gray-500">{item.sku || '—'}</td>
                     <td className="py-3 text-gray-500 text-xs">{item.supplier || '—'}</td>
                     <td className={`py-3 text-right font-bold ${item.currentQty < item.safetyQty ? 'text-red-600' : 'text-gray-800'}`}>
-                      {item.currentQty}
+                      {item.category === 'C食材'
+                        ? (Math.round(item.currentQty * 10) / 10).toFixed(1)
+                        : item.currentQty}
                     </td>
                     <td className="py-3 text-right text-gray-500">{item.safetyQty}</td>
                     <td className="py-3 text-center text-gray-500">{item.unit}</td>
@@ -869,7 +873,7 @@ export default function Procurement({ data }) {
                     <div className="grid grid-cols-[1.2fr_60px_60px_44px_80px_68px_24px] gap-1 items-center">
                       <input type="text" placeholder={`品項 ${idx + 1}`} className={inputCls + ' text-xs'} value={row.itemName}
                         onChange={e => updateRow(row._key, 'itemName', e.target.value)} required={idx === 0} />
-                      <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.currentQty}
+                      <input type="number" min="0" step={addCategory === 'C食材' ? '0.1' : '1'} placeholder="0" className={inputCls + ' text-xs text-right'} value={row.currentQty}
                         onChange={e => updateRow(row._key, 'currentQty', e.target.value)} />
                       <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.safetyQty}
                         onChange={e => updateRow(row._key, 'safetyQty', e.target.value)} />
@@ -1126,18 +1130,21 @@ export default function Procurement({ data }) {
               <div className="flex gap-2">
                 <input
                   type="number"
+                  step={editTarget?.category === 'C食材' ? '0.1' : '1'}
                   className={inputCls + ' flex-1'}
-                  placeholder="增加輸正數，減少輸負數（如 -3）"
+                  placeholder={editTarget?.category === 'C食材' ? '增加輸正數，減少輸負數（如 -1.5）' : '增加輸正數，減少輸負數（如 -3）'}
                   value={adjustForm.change}
                   onChange={e => setAdjustForm(p => ({ ...p, change: e.target.value }))}
                   required
                 />
               </div>
-              {adjustForm.change && !isNaN(parseInt(adjustForm.change)) && (
+              {adjustForm.change && !isNaN(parseFloat(adjustForm.change)) && (
                 <p className="text-xs mt-1.5">
                   <span className="text-gray-400">異動後庫存：</span>
-                  <span className={`font-bold ml-1 ${Math.max(0, editTarget.currentQty + parseInt(adjustForm.change)) < editTarget.safetyQty ? 'text-red-500' : 'text-emerald-600'}`}>
-                    {Math.max(0, editTarget.currentQty + parseInt(adjustForm.change))} {editTarget.unit}
+                  <span className={`font-bold ml-1 ${Math.max(0, editTarget.currentQty + parseFloat(adjustForm.change)) < editTarget.safetyQty ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {(Math.round(Math.max(0, editTarget.currentQty + parseFloat(adjustForm.change)) * 10) / 10).toFixed(
+                      editTarget.category === 'C食材' ? 1 : 0
+                    )} {editTarget.unit}
                   </span>
                 </p>
               )}
@@ -1168,7 +1175,10 @@ export default function Procurement({ data }) {
                 onChange={e => setPurchaseForm(p => ({ ...p, date: e.target.value }))} required />
             </FormRow>
             <FormRow label="進貨數量">
-              <input type="number" min="1" className={inputCls} placeholder="0" value={purchaseForm.qty}
+              <input type="number"
+                min="0.1"
+                step={purchaseForm.category === 'C食材' ? '0.1' : '1'}
+                className={inputCls} placeholder="0" value={purchaseForm.qty}
                 onChange={e => setPurchaseForm(p => ({ ...p, qty: e.target.value }))} required />
             </FormRow>
             <FormRow label="進貨單價（元）">

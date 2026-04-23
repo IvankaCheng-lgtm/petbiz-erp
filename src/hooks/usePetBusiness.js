@@ -435,8 +435,13 @@ export default function usePetBusiness() {
   const adjustInventory = useCallback((itemId, itemName, change, reason) => {
     const date = new Date().toISOString().slice(0, 10);
     const log = { id: uid(), date, itemId, itemName, change, reason: reason || '庫存盤點' };
-    setInventory(prev => prev.map(i => i.id === itemId ? { ...i, currentQty: Math.max(0, i.currentQty + change) } : i));
-    cloudUpdate('inventory', list => list.map(i => i.id === itemId ? { ...i, currentQty: Math.max(0, i.currentQty + change) } : i));
+    const newQty = (prev) => {
+      const item = prev.find(i => i.id === itemId);
+      const raw = (item?.currentQty ?? 0) + change;
+      return Math.round(Math.max(0, raw) * 10) / 10;
+    };
+    setInventory(prev => prev.map(i => i.id === itemId ? { ...i, currentQty: newQty(prev) } : i));
+    cloudUpdate('inventory', list => list.map(i => i.id === itemId ? { ...i, currentQty: newQty(list) } : i));
     setInventoryLogs(prev => [...prev, log]);
     cloudUpdate('inventoryLogs', list => [...list, log]);
   }, [cloudUpdate]);
