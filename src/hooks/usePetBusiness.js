@@ -367,23 +367,19 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   const deleteProduction = useCallback((id) => {
-    // 先取出 batch，再分別執行 side effects，避免在 state updater 內呼叫 setInventory
     setProduction(prev => {
       const batch = prev.find(p => p.id === id);
       if (batch) {
         const restoreInv = (list) => {
           const next = [...list];
-          // 補回食材庫存
           (batch.usedIngredients ?? []).forEach(({ itemId, qty }) => {
             const idx = next.findIndex(i => i.id === itemId);
             if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
           });
-          // 補回包材庫存
           (batch.usedPackaging ?? []).forEach(({ itemId, qty }) => {
             const idx = next.findIndex(i => i.id === itemId);
             if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
           });
-          // 扣回 B食品產出庫存，並移除對應效期批次
           if (batch.targetItemId && batch.resultQty) {
             const idx = next.findIndex(i => i.id === batch.targetItemId);
             if (idx !== -1) {
@@ -401,7 +397,6 @@ export default function usePetBusiness() {
         };
         setInventory(restoreInv);
         cloudUpdate('inventory', restoreInv);
-        // 寫入負數庫存異動紀錄
         if (batch.targetItemId && batch.resultQty) {
           const log = {
             id: uid(), date: new Date().toISOString().slice(0, 10),
@@ -421,6 +416,65 @@ export default function usePetBusiness() {
       return prev.filter(p => p.id !== id);
     });
     cloudUpdate('production', list => list.filter(p => p.id !== id));
+  }, [cloudUpdate]);
+
+  // 刪除同批次所有規格：食材/包材只補回一次，各規格的 B食品產出分別扣回
+  const deleteProductionGroup = useCallback((batches) => {
+    if (!batches || batches.length === 0) return;
+    const ids = new Set(batches.map(b => b.id));
+    const first = batches[0];
+
+    const restoreInv = (list) => {
+      const next = [...list];
+      // 食材與包材只補回一次（取第一筆，各規格共用同一份）
+      (first.usedIngredients ?? []).forEach(({ itemId, qty }) => {
+        const idx = next.findIndex(i => i.id === itemId);
+        if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
+      });
+      (first.usedPackaging ?? []).forEach(({ itemId, qty }) => {
+        const idx = next.findIndex(i => i.id === itemId);
+        if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
+      });
+      // 各規格的 B食品產出分別扣回
+      batches.forEach(batch => {
+        if (batch.targetItemId && batch.resultQty) {
+          const idx = next.findIndex(i => i.id === batch.targetItemId);
+          if (idx !== -1) {
+            const prevBatches = next[idx].expiryBatches ?? [];
+            next[idx] = {
+              ...next[idx],
+              currentQty: Math.max(0, next[idx].currentQty - batch.resultQty),
+              expiryBatches: batch.expiryBatchId
+                ? prevBatches.filter(b => b.batchId !== batch.expiryBatchId)
+                : prevBatches,
+            };
+          }
+        }
+      });
+      return next;
+    };
+
+    setInventory(restoreInv);
+    cloudUpdate('inventory', restoreInv);
+
+    // 寫入異動紀錄
+    const date = new Date().toISOString().slice(0, 10);
+    const logs = batches
+      .filter(b => b.targetItemId && b.resultQty)
+      .map(b => ({
+        id: uid(), date,
+        itemId: b.targetItemId,
+        itemName: b.targetItemName ?? b.note ?? '',
+        change: -b.resultQty,
+        reason: `刪除生產批次（${b.date}${b.note ? ' ' + b.note : ''}）`,
+      }));
+    if (logs.length > 0) {
+      setInventoryLogs(prev => [...prev, ...logs]);
+      cloudUpdate('inventoryLogs', list => [...list, ...logs]);
+    }
+
+    setProduction(prev => prev.filter(p => !ids.has(p.id)));
+    cloudUpdate('production', list => list.filter(p => !ids.has(p.id)));
   }, [cloudUpdate]);
 
   // ── 配方 ──────────────────────────────────────────────────────
@@ -737,7 +791,7 @@ export default function usePetBusiness() {
     addExpense, deleteExpense, toggleExpenseReported,
     addPurchase,
     addInventoryItem, addInventoryItems, updateInventoryItem, deleteInventoryItem, resetInventoryToSeed, importInventoryItems,
-    addProductionBatch, deleteProduction,
+    addProductionBatch, deleteProduction, deleteProductionGroup,
     saveFormula, deleteFormula,
     addSupplier, updateSupplier, deleteSupplier,
     addMarketEvent, updateMarketEvent, deleteMarketEvent, deleteMarketSale,

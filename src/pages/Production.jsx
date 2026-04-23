@@ -209,7 +209,7 @@ function StepBar({ current }) {
 
 // ── 主組件 ───────────────────────────────────────────────────
 export default function Production({ data }) {
-  const { inventory, production, addProductionBatch, deleteProduction, addInventoryItem, updateInventoryItem } = data;
+  const { inventory, production, addProductionBatch, deleteProduction, deleteProductionGroup, addInventoryItem, updateInventoryItem } = data;
 
   // ── 庫存篩選 ─────────────────────────────────────────────
   const cItems = useMemo(
@@ -1487,7 +1487,7 @@ export default function Production({ data }) {
                         {isMulti ? '—' : (first.costPerPack != null ? `$${first.costPerPack.toFixed(1)}` : '—')}
                       </td>
                       <td className="py-3 text-center">
-                        <button onClick={e => { e.stopPropagation(); groupItems.forEach(p => deleteProduction(p.id)); }}
+                        <button onClick={e => { e.stopPropagation(); deleteProductionGroup(groupItems); }}
                           className={btnDanger}>
                           <Trash2 size={14} />
                         </button>
