@@ -300,7 +300,7 @@ export default function usePetBusiness() {
   // expiryData: { normalExp, fridgeExp, freezerExp } — 選填，有值才寫入 expiryBatches
   const addProductionBatch = useCallback(async (params) => {
     const { date, note, hours, usedIngredients, usedPackaging, resultQty, targetItemId, electricCost,
-      expiryData, expiryBatch } = params;
+      expiryData, expiryBatch, overwriteCost, costPerPack } = params;
     // 支援兩種命名，統一處理
     const batchExpiry = expiryBatch || expiryData || null;
     const expenseId    = uid();
@@ -353,6 +353,26 @@ export default function usePetBusiness() {
     await cloudUpdate("production", list => [...list, newBatch]);
     await cloudUpdate("expenses",   list => [...list, newExp]);
     await cloudUpdate("inventory",  applyInv);
+    // 對 targetItemId 寫入庫存異動紀錄
+    if (targetItemId && resultQty) {
+      const targetItemName = params.targetItemName ?? note ?? ''
+      const log = {
+        id: uid(), date, itemId: targetItemId,
+        itemName: targetItemName,
+        change: +resultQty,
+        reason: `生產入庫（${note || '批次生產'}）`,
+      };
+      setInventoryLogs(prev => [...prev, log]);
+      cloudUpdate('inventoryLogs', list => [...list, log]);
+      // 覆寫成本到庫存表
+      if (overwriteCost && costPerPack) {
+        const costUpdate = (list) => list.map(i =>
+          i.id === targetItemId ? { ...i, cost: costPerPack } : i
+        );
+        setInventory(costUpdate);
+        cloudUpdate('inventory', costUpdate);
+      }
+    }
   }, [cloudUpdate]);
 
   const deleteProduction = useCallback((id) => {
@@ -388,7 +408,19 @@ export default function usePetBusiness() {
         };
         setInventory(restoreInv);
         cloudUpdate("inventory", restoreInv);
-        // 3. 刪除對應電費支出
+        // 3. 對 targetItemId 寫入負數異動紀錄
+        if (batch.targetItemId && batch.resultQty) {
+          const log = {
+            id: uid(), date: new Date().toISOString().slice(0, 10),
+            itemId: batch.targetItemId,
+            itemName: batch.targetItemName ?? batch.note ?? '',
+            change: -batch.resultQty,
+            reason: `刪除生產批次（${batch.date}${batch.note ? ' ' + batch.note : ''}）`,
+          };
+          setInventoryLogs(prev => [...prev, log]);
+          cloudUpdate('inventoryLogs', list => [...list, log]);
+        }
+        // 4. 刪除對應電費支出
         if (batch.expenseId) {
           setExpenses(e => e.filter(x => x.id !== batch.expenseId));
           cloudUpdate("expenses", list => list.filter(x => x.id !== batch.expenseId));

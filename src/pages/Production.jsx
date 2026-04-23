@@ -209,7 +209,7 @@ function StepBar({ current }) {
 
 // ── 主組件 ───────────────────────────────────────────────────
 export default function Production({ data }) {
-  const { inventory, production, addProductionBatch, deleteProduction, addInventoryItem } = data;
+  const { inventory, production, addProductionBatch, deleteProduction, addInventoryItem, updateInventoryItem } = data;
 
   // ── 庫存篩選 ─────────────────────────────────────────────
   const cItems = useMemo(
@@ -252,6 +252,8 @@ export default function Production({ data }) {
 
   // 步驟四：包材 [{ itemId, qty }]
   const [packaging, setPackaging] = useState([]);
+  // 步驟五：成本覆寫
+  const [overwriteCost, setOverwriteCost] = useState(false);
 
   // ── 衍生計算（順序重要：resultQty 先，其他依賴它）────────
   const resultQty = useMemo(() => {
@@ -386,6 +388,7 @@ export default function Production({ data }) {
     setMachineWatt(1100);
     setHours(16);
     setPackaging([]);
+    setOverwriteCost(false);
     setShowForm(false);
   }
 
@@ -404,6 +407,7 @@ export default function Production({ data }) {
         currentQty: 0,
         safetyQty:  0,
         unit:       '包',
+        cost:       costPerPack,
       });
       resolvedTargetId = newId;
     }
@@ -446,12 +450,15 @@ export default function Production({ data }) {
       packSize: parseFloat(packSize),
       resultQty,
       targetItemId: resolvedTargetId,
+      targetItemName: resolvedTargetId
+        ? (bItems.find(i => i.id === resolvedTargetId)?.itemName ?? newItemName.trim())
+        : '',
       ingredientCost,
       electricCost: Math.round(electricCost * 100) / 100,
       packagingCost,
       totalCost: Math.round(totalCost * 100) / 100,
       costPerPack,
-      // 有效期批次資訊
+      overwriteCost,
       expiryBatch: (shelfExpiry || fridgeExpiry || frozenExpiry) ? {
         productionDate: date,
         batchNote: batchNote || note || '',
@@ -1099,14 +1106,46 @@ export default function Production({ data }) {
                 )}
 
                 {/* 入庫目標確認 */}
-                {(targetItemId && targetItemId !== '__new__') && (
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">
-                    ✅ 完成後將新增 <strong>{resultQty} 包</strong> 至「{bItems.find((i) => i.id === targetItemId)?.itemName}」庫存
-                  </div>
-                )}
+                {(targetItemId && targetItemId !== '__new__') && (() => {
+                  const targetItem = bItems.find(i => i.id === targetItemId)
+                  const existingCost = targetItem?.cost ?? null
+                  return (
+                    <>
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">
+                        ✅ 完成後將新增 <strong>{resultQty} 包</strong> 至「{targetItem?.itemName}」庫存
+                      </div>
+                      {/* 成本覆寫區塊 */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 space-y-2 text-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-600">庫存現有成本</span>
+                          <span className={`font-semibold ${existingCost ? 'text-gray-800' : 'text-gray-400'}`}>
+                            {existingCost != null ? `$${existingCost}` : '尚未設定'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-600">本批單包成本</span>
+                          <span className="font-semibold text-purple-600">${costPerPack}</span>
+                        </div>
+                        <label className="flex items-center gap-2 pt-1 cursor-pointer">
+                          <input type="checkbox" checked={overwriteCost}
+                            onChange={e => setOverwriteCost(e.target.checked)}
+                            className="accent-purple-500 w-4 h-4" />
+                          <span className="text-gray-700">
+                            以本批成本 <strong className="text-purple-600">${costPerPack}</strong> 覆寫入庫存表「成本」欄
+                          </span>
+                        </label>
+                        {overwriteCost && existingCost != null && existingCost !== costPerPack && (
+                          <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5">
+                            ⚠️ 將從 ${existingCost} 更新為 ${costPerPack}
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )
+                })()}
                 {targetItemId === '__new__' && newItemName.trim() && (
                   <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">
-                    ✅ 將建立新品項「{newItemName.trim()}」並入庫 <strong>{resultQty} 包</strong>
+                    ✅ 將建立新品項「{newItemName.trim()}」並入庫 <strong>{resultQty} 包</strong>，成本將自動寫入 ${costPerPack}
                   </div>
                 )}
               </div>
@@ -1334,6 +1373,12 @@ export default function Production({ data }) {
                   <p className="text-xs text-gray-400">烘烤時數</p>
                   <p className="font-semibold text-gray-700">{detailBatch.hours ?? '—'} h</p>
                 </div>
+                {detailBatch.elecRatio != null && detailBatch.elecRatio < 100 && (
+                  <div className="bg-amber-50 rounded-lg px-3 py-2 flex-1 text-center">
+                    <p className="text-xs text-gray-400">分擔佔比</p>
+                    <p className="font-semibold text-amber-600">{detailBatch.elecRatio}%</p>
+                  </div>
+                )}
                 <div className={`rounded-lg px-3 py-2 flex-1 text-center ${getElectricRate(detailBatch.date) === 6.24 ? 'bg-orange-50' : 'bg-blue-50'}`}>
                   <p className="text-xs text-gray-400">電費</p>
                   <p className={`font-semibold ${getElectricRate(detailBatch.date) === 6.24 ? 'text-orange-600' : 'text-blue-600'}`}>
