@@ -65,13 +65,13 @@ export default function Settings({ data }) {
     setTimeout(() => setUserMsg(''), 3000)
   }
 
-  function handleChangePwd(id) {
+  const handleChangePwd = useCallback((id) => {
     if (!editPwdVal.trim()) return
     changePassword(id, editPwdVal.trim())
     setEditPwdId(null); setEditPwdVal('')
     setUserMsg('✅ 密碼已更新')
     setTimeout(() => setUserMsg(''), 3000)
-  }
+  }, [editPwdVal, changePassword])
 
   // 電費參數（存 localStorage）
   const [elecParams, setElecParams] = useState(() => {

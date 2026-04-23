@@ -537,10 +537,32 @@ export default function Procurement({ data }) {
       e.target.value = ''
       return
     }
+    const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
+    if (file.size > MAX_FILE_SIZE) {
+      setImportMsg('❌ 檔案大小不可超過 5MB')
+      setTimeout(() => setImportMsg(''), 5000)
+      e.target.value = ''
+      return
+    }
     try {
       const buf = await file.arrayBuffer()
+      // 驗證 XLSX 檔案魔術字節 (PK header)
+      const header = new Uint8Array(buf.slice(0, 4))
+      const isPK = header[0] === 0x50 && header[1] === 0x4B && header[2] === 0x03 && header[3] === 0x04
+      if (!isPK) {
+        setImportMsg('❌ 檔案格式不正確，請使用正確的 Excel 檔案')
+        setTimeout(() => setImportMsg(''), 5000)
+        e.target.value = ''
+        return
+      }
       const wb  = new ExcelJS.Workbook()
       await wb.xlsx.load(buf)
+      if (!wb.worksheets || wb.worksheets.length === 0) {
+        setImportMsg('❌ Excel 檔案中找不到工作表')
+        setTimeout(() => setImportMsg(''), 5000)
+        e.target.value = ''
+        return
+      }
       const ws  = wb.worksheets[0]
       const headers = ws.getRow(1).values.slice(1) // index 0 是空的
       const VALID_CATS = ['A用品', 'B食品', 'C食材', 'D包材']

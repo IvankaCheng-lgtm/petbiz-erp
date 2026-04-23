@@ -234,17 +234,9 @@ export default function Production({ data }) {
   // 步驟一：食材 [{ itemId, qty }]
   const [ingredients, setIngredients] = useState([]);
 
-  // 步驟二：產出
-  const [outputQty, setOutputQty]       = useState("");
-  const [outputUnit, setOutputUnit]     = useState("克");
-  const [packSize, setPackSize]         = useState("");
-  const [targetItemId, setTargetItemId] = useState("");
-  const [newItemName,   setNewItemName]  = useState("");
-  const [batchNote, setBatchNote]       = useState("");
-  // 有效日期（常溫/冷藏/冷凍）
-  const [shelfExpiry,  setShelfExpiry]  = useState("");
-  const [fridgeExpiry, setFridgeExpiry] = useState("");
-  const [frozenExpiry, setFrozenExpiry] = useState("");
+  // 步驟二：產出（多規格）[{ targetItemId, newItemName, packSize, packQty, batchNote, shelfExpiry, fridgeExpiry, frozenExpiry }]
+  const [outputs, setOutputs] = useState([]);
+  const [outputUnit, setOutputUnit] = useState("克");
 
   // 步驟三：電力
   const [machineWatt, setMachineWatt] = useState(1100);
@@ -256,12 +248,20 @@ export default function Production({ data }) {
   // 步驟五：成本覆寫
   const [overwriteCost, setOverwriteCost] = useState(false);
 
-  // ── 衍生計算（順序重要：resultQty 先，其他依賴它）────────
-  const resultQty = useMemo(() => {
-    const oq = parseFloat(outputQty) || 0;
-    const ps = parseFloat(packSize) || 0;
-    return ps > 0 ? Math.floor(oq / ps) : 0;
-  }, [outputQty, packSize]);
+  // ── 衍生計算 ────────────────────────────────────────────
+  // 總產出重量
+  const totalOutputWeight = useMemo(() => {
+    return outputs.reduce((sum, row) => {
+      const ps = parseFloat(row.packSize) || 0;
+      const pq = parseFloat(row.packQty) || 0;
+      return sum + ps * pq;
+    }, 0);
+  }, [outputs]);
+
+  // 總包數
+  const totalPackQty = useMemo(() => {
+    return outputs.reduce((sum, row) => sum + (parseFloat(row.packQty) || 0), 0);
+  }, [outputs]);
 
   const ingredientCost = useMemo(
     () =>
@@ -300,10 +300,19 @@ export default function Production({ data }) {
     [ingredientCost, electricCost, packagingCost],
   );
 
-  const costPerPack = useMemo(
-    () => (resultQty > 0 ? Math.round((totalCost / resultQty) * 100) / 100 : 0),
-    [totalCost, resultQty],
-  );
+  // 各規格成本（按重量比例平攤）
+  const outputsWithCost = useMemo(() => {
+    if (totalOutputWeight === 0) return outputs.map(o => ({ ...o, cost: 0, costPerPack: 0 }));
+    return outputs.map(row => {
+      const ps = parseFloat(row.packSize) || 0;
+      const pq = parseFloat(row.packQty) || 0;
+      const weight = ps * pq;
+      const ratio = weight / totalOutputWeight;
+      const cost = totalCost * ratio;
+      const costPerPack = pq > 0 ? Math.round((cost / pq) * 100) / 100 : 0;
+      return { ...row, cost, costPerPack, weight, ratio };
+    });
+  }, [outputs, totalOutputWeight, totalCost]);
 
   const rate = useMemo(() => getElectricRate(date), [date]);
   const isSummer = rate === 6.24;
@@ -336,7 +345,7 @@ export default function Production({ data }) {
     [ingredientShortage, packagingShortage],
   );
 
-  const canSubmit = allShortages.length === 0 && resultQty > 0;
+  const canSubmit = allShortages.length === 0 && totalPackQty > 0;
 
   // ── 步驟驗證 ─────────────────────────────────────────────
   function canNext() {
@@ -344,7 +353,7 @@ export default function Production({ data }) {
       return (
         ingredients.length > 0 && ingredients.every((r) => r.itemId && r.qty)
       );
-    if (step === 1) return outputQty && packSize && resultQty > 0;
+    if (step === 1) return outputs.length > 0 && outputs.every(o => o.packSize && o.packQty);
     if (step === 2) return machineWatt && hours;
     return true;
   }
@@ -371,21 +380,25 @@ export default function Production({ data }) {
     setPackaging((p) => p.map((r, i) => (i === idx ? { ...r, [f]: v } : r)));
   }
 
+  // ── 產出操作 ─────────────────────────────────────────────
+  function addOutputRow() {
+    setOutputs(p => [...p, { targetItemId: '', newItemName: '', packSize: '', packQty: '', batchNote: '', shelfExpiry: '', fridgeExpiry: '', frozenExpiry: '' }]);
+  }
+  function removeOutputRow(idx) {
+    setOutputs(p => p.filter((_, i) => i !== idx));
+  }
+  function updateOutput(idx, f, v) {
+    setOutputs(p => p.map((r, i) => (i === idx ? { ...r, [f]: v } : r)));
+  }
+
   // ── 重置表單 ─────────────────────────────────────────────
   function resetForm() {
     setStep(0);
     setDate(today());
     setNote("");
     setIngredients([]);
-    setOutputQty("");
+    setOutputs([]);
     setOutputUnit("克");
-    setPackSize("");
-    setTargetItemId("");
-    setNewItemName("");
-    setBatchNote("");
-    setShelfExpiry("");
-    setFridgeExpiry("");
-    setFrozenExpiry("");
     setMachineWatt(1100);
     setHours(16);
     setElecRatio(100);
@@ -398,21 +411,24 @@ export default function Production({ data }) {
   async function handleSubmit() {
     if (!canSubmit) return;
 
-    // 若選擇「新增品項」，先建立 B食品庫存品項並取得 id
-    let resolvedTargetId = (targetItemId && targetItemId !== '__new__') ? targetItemId : null;
-    if (targetItemId === '__new__' && newItemName.trim()) {
-      const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      addInventoryItem({
-        id:         newId,
-        category:   'B食品',
-        itemName:   newItemName.trim(),
-        currentQty: 0,
-        safetyQty:  0,
-        unit:       '包',
-        cost:       costPerPack,
-      });
-      resolvedTargetId = newId;
-    }
+    // 處理多規格產出：為每個新品項建立庫存
+    const resolvedOutputs = await Promise.all(outputsWithCost.map(async (output) => {
+      let resolvedId = (output.targetItemId && output.targetItemId !== '__new__') ? output.targetItemId : null;
+      if (output.targetItemId === '__new__' && output.newItemName?.trim()) {
+        const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        addInventoryItem({
+          id:         newId,
+          category:   'B食品',
+          itemName:   output.newItemName.trim(),
+          currentQty: 0,
+          safetyQty:  0,
+          unit:       '包',
+          cost:       output.costPerPack,
+        });
+        resolvedId = newId;
+      }
+      return { ...output, resolvedId };
+    }));
 
     const usedIngredients = ingredients
       .filter((r) => r.itemId && r.qty)
@@ -440,36 +456,40 @@ export default function Production({ data }) {
         };
       });
 
-    addProductionBatch({
-      date,
-      note,
-      machineWatt: parseFloat(machineWatt),
-      hours: parseFloat(hours),
-      elecRatio: parseFloat(elecRatio),
-      usedIngredients,
-      usedPackaging,
-      outputQty: parseFloat(outputQty),
-      outputUnit,
-      packSize: parseFloat(packSize),
-      resultQty,
-      targetItemId: resolvedTargetId,
-      targetItemName: resolvedTargetId
-        ? (bItems.find(i => i.id === resolvedTargetId)?.itemName ?? newItemName.trim())
-        : '',
-      ingredientCost,
-      electricCost: Math.round(electricCost * 100) / 100,
-      packagingCost,
-      totalCost: Math.round(totalCost * 100) / 100,
-      costPerPack,
-      overwriteCost,
-      expiryBatch: (shelfExpiry || fridgeExpiry || frozenExpiry) ? {
-        productionDate: date,
-        batchNote: batchNote || note || '',
-        qty: resultQty,
-        shelfExpiry:  shelfExpiry  || null,
-        fridgeExpiry: fridgeExpiry || null,
-        frozenExpiry: frozenExpiry || null,
-      } : null,
+    // 為每個規格建立生產批次記錄
+    resolvedOutputs.forEach(output => {
+      const targetItem = output.resolvedId ? bItems.find(i => i.id === output.resolvedId) : null;
+      const itemName = targetItem?.itemName || output.newItemName?.trim() || '';
+      
+      addProductionBatch({
+        date,
+        note: `${note}${output.batchNote ? ` - ${output.batchNote}` : ''}`,
+        machineWatt: parseFloat(machineWatt),
+        hours: parseFloat(hours),
+        elecRatio: parseFloat(elecRatio),
+        usedIngredients,
+        usedPackaging,
+        outputQty: output.weight,
+        outputUnit,
+        packSize: parseFloat(output.packSize),
+        resultQty: parseFloat(output.packQty),
+        targetItemId: output.resolvedId,
+        targetItemName: itemName,
+        ingredientCost: Math.round(ingredientCost * output.ratio * 100) / 100,
+        electricCost: Math.round(electricCost * output.ratio * 100) / 100,
+        packagingCost: Math.round(packagingCost * output.ratio * 100) / 100,
+        totalCost: Math.round(output.cost * 100) / 100,
+        costPerPack: output.costPerPack,
+        overwriteCost,
+        expiryBatch: (output.shelfExpiry || output.fridgeExpiry || output.frozenExpiry) ? {
+          productionDate: date,
+          batchNote: output.batchNote || note || '',
+          qty: parseFloat(output.packQty),
+          shelfExpiry:  output.shelfExpiry  || null,
+          fridgeExpiry: output.fridgeExpiry || null,
+          frozenExpiry: output.frozenExpiry || null,
+        } : null,
+      });
     });
 
     resetForm();
@@ -671,121 +691,155 @@ export default function Production({ data }) {
                   產出設定
                 </h2>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormRow label="總產出量">
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        className={inputCls}
-                        placeholder="例：5000"
-                        value={outputQty}
-                        onChange={(e) => setOutputQty(e.target.value)}
-                      />
-                      <select
-                        className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 shrink-0"
-                        value={outputUnit}
-                        onChange={(e) => setOutputUnit(e.target.value)}
-                      >
-                        <option>克</option>
-                        <option>個</option>
-                      </select>
-                    </div>
-                  </FormRow>
-
-                  <FormRow label={`每包規格（${outputUnit}）`}>
-                    <input
-                      type="number"
-                      min="1"
-                      className={inputCls}
-                      placeholder="例：100"
-                      value={packSize}
-                      onChange={(e) => setPackSize(e.target.value)}
-                    />
-                  </FormRow>
+                {/* 單位選擇 */}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600">產出單位</span>
+                  <select
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    value={outputUnit}
+                    onChange={(e) => setOutputUnit(e.target.value)}
+                  >
+                    <option>克</option>
+                    <option>個</option>
+                  </select>
                 </div>
 
-                {/* 產出預覽 */}
-                {resultQty > 0 && (
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-4 grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <p className="text-xs text-gray-500">總產出</p>
-                      <p className="text-xl font-bold text-gray-800">
-                        {outputQty} {outputUnit}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">每包規格</p>
-                      <p className="text-xl font-bold text-gray-800">
-                        {packSize} {outputUnit}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">預計包數</p>
-                      <p className="text-xl font-bold text-emerald-600">
-                        {resultQty} 包
-                      </p>
-                    </div>
+                {/* 規格列表標題 */}
+                {outputs.length > 0 && (
+                  <div className="grid grid-cols-[1.2fr_80px_80px_1.2fr_32px] gap-2 text-xs font-medium text-gray-400 px-1">
+                    <span>入庫至 B食品（選填）</span>
+                    <span className="text-right">每包規格（{outputUnit}）</span>
+                    <span className="text-right">包數</span>
+                    <span>批次備註</span>
+                    <span />
                   </div>
                 )}
 
-                <FormRow label="入庫至 B食品（選填）">
-                  <SearchableSelect
-                    value={targetItemId === '__new__' ? '' : targetItemId}
-                    onChange={v => {
-                      setTargetItemId(v)
-                      setNewItemName('')
-                      const item = bItems.find(i => i.id === v)
-                      if (item) {
-                        setShelfExpiry(addDays(date, item.shelfDays))
-                        setFridgeExpiry(addDays(date, item.fridgeDays))
-                        setFrozenExpiry(addDays(date, item.frozenDays))
-                      }
-                    }}
-                    placeholder="不更新庫存"
-                    options={bItems.map(i => ({ value: i.id, label: i.itemName }))}
-                  />
-                  <button type="button"
-                    onClick={() => setTargetItemId(t => t === '__new__' ? '' : '__new__')}
-                    className="mt-2 flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-                    <Plus size={13} />
-                    {targetItemId === '__new__' ? '取消新增' : '庫存中沒有此品項？直接新增'}
-                  </button>
-                  {targetItemId === '__new__' && (
-                    <input autoFocus type="text" className={inputCls + ' mt-2'}
-                      placeholder="輸入新品項名稱（分類為 B食品）"
-                      value={newItemName}
-                      onChange={e => setNewItemName(e.target.value)} />
-                  )}
-                </FormRow>
-
-                {/* 批次有效日期 */}
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-3">
-                  <p className="text-xs font-semibold text-blue-700">📅 批次有效日期（選填，將自動寫入庫存）</p>
-                  <FormRow label="批次備註">
-                    <input type="text" className={inputCls} placeholder="例：凍乾雞肉片 2025-07批"
-                      value={batchNote} onChange={e => setBatchNote(e.target.value)} />
-                  </FormRow>
-                  {(() => {
-                    const selItem = bItems.find(i => i.id === targetItemId)
+                {/* 規格列 */}
+                <div className="space-y-3">
+                  {outputs.map((row, idx) => {
+                    const targetItem = bItems.find(i => i.id === row.targetItemId);
+                    const weight = (parseFloat(row.packSize) || 0) * (parseFloat(row.packQty) || 0);
                     return (
-                      <div className="grid grid-cols-3 gap-2">
-                        <FormRow label={`常溫到期${selItem?.shelfDays ? `（${selItem.shelfDays}天）` : ''}`}>
-                          <input type="date" className={inputCls}
-                            value={shelfExpiry} onChange={e => setShelfExpiry(e.target.value)} />
-                        </FormRow>
-                        <FormRow label={`冷藏到期${selItem?.fridgeDays ? `（${selItem.fridgeDays}天）` : ''}`}>
-                          <input type="date" className={inputCls}
-                            value={fridgeExpiry} onChange={e => setFridgeExpiry(e.target.value)} />
-                        </FormRow>
-                        <FormRow label={`冷凍到期${selItem?.frozenDays ? `（${selItem.frozenDays}天）` : ''}`}>
-                          <input type="date" className={inputCls}
-                            value={frozenExpiry} onChange={e => setFrozenExpiry(e.target.value)} />
-                        </FormRow>
+                      <div key={idx} className="border border-gray-100 bg-gray-50 rounded-xl p-3 space-y-2">
+                        <div className="grid grid-cols-[1.2fr_80px_80px_1.2fr_32px] gap-2 items-center">
+                          {/* 品項選擇 */}
+                          <SearchableSelect
+                            value={row.targetItemId === '__new__' ? '' : row.targetItemId}
+                            onChange={v => {
+                              updateOutput(idx, 'targetItemId', v);
+                              const item = bItems.find(i => i.id === v);
+                              if (item) {
+                                updateOutput(idx, 'shelfExpiry', addDays(date, item.shelfDays));
+                                updateOutput(idx, 'fridgeExpiry', addDays(date, item.fridgeDays));
+                                updateOutput(idx, 'frozenExpiry', addDays(date, item.frozenDays));
+                              }
+                            }}
+                            placeholder="不更新庫存"
+                            options={bItems.map(i => ({ value: i.id, label: i.itemName }))}
+                          />
+                          {/* 每包規格 */}
+                          <input type="number" min="1" className={inputCls + ' text-right'}
+                            placeholder="例：100"
+                            value={row.packSize}
+                            onChange={e => updateOutput(idx, 'packSize', e.target.value)} />
+                          {/* 包數 */}
+                          <input type="number" min="1" step="1" className={inputCls + ' text-right'}
+                            placeholder="包數"
+                            value={row.packQty}
+                            onChange={e => updateOutput(idx, 'packQty', e.target.value)} />
+                          {/* 批次備註 */}
+                          <input type="text" className={inputCls}
+                            placeholder="例：凍乾雞胸肉片 100g"
+                            value={row.batchNote}
+                            onChange={e => updateOutput(idx, 'batchNote', e.target.value)} />
+                          <button onClick={() => removeOutputRow(idx)}
+                            className="text-gray-300 hover:text-red-400 transition-colors">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+
+                        {/* 新增品項 */}
+                        <div className="flex items-center gap-2">
+                          <button type="button"
+                            onClick={() => updateOutput(idx, 'targetItemId', row.targetItemId === '__new__' ? '' : '__new__')}
+                            className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                            <Plus size={12} />
+                            {row.targetItemId === '__new__' ? '取消新增' : '庫存中沒有此品項？直接新增'}
+                          </button>
+                          {weight > 0 && (
+                            <span className="text-xs text-gray-400 ml-auto">產出重量：{weight}{outputUnit}</span>
+                          )}
+                        </div>
+                        {row.targetItemId === '__new__' && (
+                          <input autoFocus type="text" className={inputCls}
+                            placeholder="輸入新品項名稱（分類為 B食品）"
+                            value={row.newItemName}
+                            onChange={e => updateOutput(idx, 'newItemName', e.target.value)} />
+                        )}
+
+                        {/* 批次有效日期 */}
+                        <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 space-y-2">
+                          <p className="text-xs font-semibold text-blue-700">📅 批次有效日期（選填）</p>
+                          <div className="grid grid-cols-3 gap-2">
+                            <FormRow label={`常溫到期${targetItem?.shelfDays ? `（${targetItem.shelfDays}天）` : ''}`}>
+                              <input type="date" className={inputCls}
+                                value={row.shelfExpiry}
+                                onChange={e => updateOutput(idx, 'shelfExpiry', e.target.value)} />
+                            </FormRow>
+                            <FormRow label={`冷藏到期${targetItem?.fridgeDays ? `（${targetItem.fridgeDays}天）` : ''}`}>
+                              <input type="date" className={inputCls}
+                                value={row.fridgeExpiry}
+                                onChange={e => updateOutput(idx, 'fridgeExpiry', e.target.value)} />
+                            </FormRow>
+                            <FormRow label={`冷凍到期${targetItem?.frozenDays ? `（${targetItem.frozenDays}天）` : ''}`}>
+                              <input type="date" className={inputCls}
+                                value={row.frozenExpiry}
+                                onChange={e => updateOutput(idx, 'frozenExpiry', e.target.value)} />
+                            </FormRow>
+                          </div>
+                        </div>
                       </div>
-                    )
-                  })()}
+                    );
+                  })}
                 </div>
+
+                <button
+                  onClick={addOutputRow}
+                  className="w-full border-2 border-dashed border-gray-200 hover:border-orange-300 hover:text-orange-500 text-gray-400 rounded-xl py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-1"
+                >
+                  <Plus size={15} /> 新增規格
+                </button>
+
+                {/* 產出預覽 */}
+                {totalPackQty > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-4 space-y-2">
+                    <p className="text-xs font-semibold text-emerald-700">📦 產出預覽</p>
+                    <div className="space-y-1">
+                      {outputs.map((row, idx) => {
+                        const ps = parseFloat(row.packSize) || 0;
+                        const pq = parseFloat(row.packQty) || 0;
+                        if (!ps || !pq) return null;
+                        const weight = ps * pq;
+                        const ratio = totalOutputWeight > 0 ? weight / totalOutputWeight : 0;
+                        const label = row.targetItemId === '__new__'
+                          ? (row.newItemName || `新品項 ${idx + 1}`)
+                          : (bItems.find(i => i.id === row.targetItemId)?.itemName || `規格 ${idx + 1}`);
+                        return (
+                          <div key={idx} className="flex justify-between items-center text-sm">
+                            <span className="text-gray-700">{label}</span>
+                            <span className="text-gray-500">{ps}{outputUnit}/包 × {pq}包 = {weight}{outputUnit}</span>
+                            <span className="text-emerald-600 font-semibold w-16 text-right">{(ratio * 100).toFixed(1)}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="border-t border-emerald-200 pt-2 flex justify-between text-sm font-bold text-emerald-700">
+                      <span>共計</span>
+                      <span>{totalOutputWeight}{outputUnit} / {totalPackQty}包</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1099,33 +1153,68 @@ export default function Production({ data }) {
                   </div>
                 </div>
 
-                {/* 單包成本計算 */}
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="bg-gray-50 rounded-xl py-3">
-                    <p className="text-xs text-gray-400">總產出</p>
-                    <p className="text-lg font-bold text-gray-700">
-                      {outputQty} {outputUnit}
-                    </p>
+                {/* 多規格成本平攤 */}
+                {outputsWithCost.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">各規格成本平攤（依產出重量比例）</p>
+                    {outputsWithCost.map((row, idx) => {
+                      const label = row.targetItemId === '__new__'
+                        ? (row.newItemName || `新品項 ${idx + 1}`)
+                        : (bItems.find(i => i.id === row.targetItemId)?.itemName || `規格 ${idx + 1}`);
+                      const pq = parseFloat(row.packQty) || 0;
+                      return (
+                        <div key={idx} className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold text-gray-800 text-sm">{label}</span>
+                            <span className="text-xs text-gray-400">{row.packSize}{outputUnit}/包 × {pq}包 · 占比 {row.ratio != null ? (row.ratio * 100).toFixed(1) : 0}%</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">分攤成本</span>
+                            <span className="text-gray-700">{fmt(row.cost)}</span>
+                          </div>
+                          <div className="flex justify-between text-base font-black">
+                            <span className="text-gray-600">單包成本</span>
+                            <span className="text-purple-600">${row.costPerPack}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="bg-gray-50 rounded-xl py-3">
-                    <p className="text-xs text-gray-400">預計包數</p>
-                    <p className="text-lg font-bold text-emerald-600">
-                      {resultQty} 包
-                    </p>
-                  </div>
-                  <div className="bg-purple-50 rounded-xl py-3">
-                    <p className="text-xs text-gray-400">單包成本</p>
-                    <p className="text-2xl font-black text-purple-600">
-                      ${costPerPack}
-                    </p>
-                  </div>
-                </div>
+                )}
 
-                {/* 公式說明 */}
+                {/* 入庫確認 */}
+                {outputsWithCost.some(o => o.resolvedId || o.targetItemId === '__new__') && (
+                  <div className="space-y-2">
+                    {outputsWithCost.map((row, idx) => {
+                      const targetItem = row.resolvedId ? bItems.find(i => i.id === row.resolvedId) : null;
+                      const label = row.targetItemId === '__new__'
+                        ? (row.newItemName || `新品項 ${idx + 1}`)
+                        : targetItem?.itemName;
+                      if (!label) return null;
+                      const existingCost = targetItem?.cost ?? null;
+                      return (
+                        <div key={idx} className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">
+                          ✅ 將新增 <strong>{row.packQty} 包</strong> 至「{label}」，單包成本 ${row.costPerPack}
+                          {existingCost != null && existingCost !== row.costPerPack && (
+                            <span className="text-amber-600 ml-2">（現有成本 ${existingCost}）</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 成本覆寫 */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={overwriteCost}
+                    onChange={e => setOverwriteCost(e.target.checked)}
+                    className="accent-purple-500 w-4 h-4" />
+                  <span className="text-sm text-gray-700">以本批單包成本覆寫入庫存表「成本」欄</span>
+                </label>
+
+                {/* 平攤公式說明 */}
                 <div className="bg-blue-50 rounded-xl px-4 py-2.5 text-xs text-blue-600">
-                  單包成本 = ({fmt(ingredientCost)} + {fmt(electricCost)} +{" "}
-                  {fmt(packagingCost)}) ÷ {resultQty} 包 ={" "}
-                  <strong>${costPerPack}</strong>
+                  成本平攤公式：總成本 {fmt(totalCost)} × （規格產出重量 / 總產出重量 {totalOutputWeight}{outputUnit}）
                 </div>
 
                 {/* 防呆警示 */}
@@ -1136,50 +1225,6 @@ export default function Production({ data }) {
                       庫存不足（<strong>{allShortages.join("、")}</strong>
                       ），無法完成生產
                     </span>
-                  </div>
-                )}
-
-                {/* 入庫目標確認 */}
-                {(targetItemId && targetItemId !== '__new__') && (() => {
-                  const targetItem = bItems.find(i => i.id === targetItemId)
-                  const existingCost = targetItem?.cost ?? null
-                  return (
-                    <>
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">
-                        ✅ 完成後將新增 <strong>{resultQty} 包</strong> 至「{targetItem?.itemName}」庫存
-                      </div>
-                      {/* 成本覆寫區塊 */}
-                      <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 space-y-2 text-sm">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">庫存現有成本</span>
-                          <span className={`font-semibold ${existingCost ? 'text-gray-800' : 'text-gray-400'}`}>
-                            {existingCost != null ? `$${existingCost}` : '尚未設定'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">本批單包成本</span>
-                          <span className="font-semibold text-purple-600">${costPerPack}</span>
-                        </div>
-                        <label className="flex items-center gap-2 pt-1 cursor-pointer">
-                          <input type="checkbox" checked={overwriteCost}
-                            onChange={e => setOverwriteCost(e.target.checked)}
-                            className="accent-purple-500 w-4 h-4" />
-                          <span className="text-gray-700">
-                            以本批成本 <strong className="text-purple-600">${costPerPack}</strong> 覆寫入庫存表「成本」欄
-                          </span>
-                        </label>
-                        {overwriteCost && existingCost != null && existingCost !== costPerPack && (
-                          <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5">
-                            ⚠️ 將從 ${existingCost} 更新為 ${costPerPack}
-                          </p>
-                        )}
-                      </div>
-                    </>
-                  )
-                })()}
-                {targetItemId === '__new__' && newItemName.trim() && (
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">
-                    ✅ 將建立新品項「{newItemName.trim()}」並入庫 <strong>{resultQty} 包</strong>，成本將自動寫入 ${costPerPack}
                   </div>
                 )}
               </div>
@@ -1240,11 +1285,14 @@ export default function Production({ data }) {
             <span className="font-bold text-gray-800">
               總計 {fmt(totalCost)}
             </span>
-            {resultQty > 0 && (
+            {totalPackQty > 0 && (
               <>
                 <span className="text-gray-400 mx-1">｜</span>
                 <span className="font-black text-purple-600 text-base">
-                  單包 ${costPerPack}
+                  {outputs.length === 1
+                    ? `單包 $${outputsWithCost[0]?.costPerPack ?? 0}`
+                    : `${outputs.length} 規格 / ${totalPackQty}包`
+                  }
                 </span>
               </>
             )}
