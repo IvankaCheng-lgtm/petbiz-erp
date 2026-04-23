@@ -319,7 +319,7 @@ export default function Procurement({ data }) {
   const [editTarget,   setEditTarget]   = useState(null)
   const [importMsg,    setImportMsg]    = useState('')
   const [purchaseForm, setPurchaseForm] = useState({
-    date: today(), itemId: '', itemName: '', category: 'C食材', qty: '', unitPrice: '', note: '', supplierId: '', supplierName: '',
+    date: today(), itemId: '', itemName: '', category: 'C食材', qty: '', unitPrice: '', note: '', supplierId: '', supplierName: '', recordExpense: true,
   })
   const [addCategory,      setAddCategory]      = useState('A用品')
   const [addRecordExpense, setAddRecordExpense] = useState(false)
@@ -426,6 +426,7 @@ export default function Procurement({ data }) {
     setPurchaseForm({
       date: today(), itemId: item.id, itemName: item.itemName, category: item.category,
       qty: '', unitPrice: '', note: '', supplierId: '', supplierName: '',
+      recordExpense: true,
       // 效期欄位（僅 B食品使用）
       prodDate: '', shelfExpiry: '', fridgeExpiry: '', frozenExpiry: '',
       // 帶入品項已設定的標準保存天數
@@ -1185,14 +1186,6 @@ export default function Procurement({ data }) {
               <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={purchaseForm.unitPrice}
                 onChange={e => setPurchaseForm(p => ({ ...p, unitPrice: e.target.value }))} required />
             </FormRow>
-            {purchaseForm.qty && purchaseForm.unitPrice && (
-              <div className="bg-orange-50 rounded-xl px-4 py-3 text-sm">
-                <span className="text-gray-500">預計支出：</span>
-                <span className="font-bold text-orange-600 ml-1">
-                  {fmt(parseFloat(purchaseForm.qty) * parseFloat(purchaseForm.unitPrice))}
-                </span>
-              </div>
-            )}
             <FormRow label="來源廠商">
               <select
                 className={inputCls}
@@ -1212,8 +1205,17 @@ export default function Procurement({ data }) {
               <input type="text" className={inputCls} placeholder="選填" value={purchaseForm.note}
                 onChange={e => setPurchaseForm(p => ({ ...p, note: e.target.value }))} />
             </FormRow>
-
-            {/* 效期欄位：僅 B食品顯示 */}
+            <label className="flex items-center gap-2 text-sm text-gray-600 bg-orange-50 border border-orange-100 rounded-xl px-4 py-3 cursor-pointer">
+              <input type="checkbox" checked={purchaseForm.recordExpense}
+                onChange={e => setPurchaseForm(p => ({ ...p, recordExpense: e.target.checked }))}
+                className="accent-orange-400 w-4 h-4" />
+              <span>同時記入支出項目（類型：進貨）</span>
+              {purchaseForm.recordExpense && purchaseForm.qty && purchaseForm.unitPrice && (
+                <span className="ml-auto text-xs font-semibold text-orange-600">
+                  {fmt(parseFloat(purchaseForm.qty) * parseFloat(purchaseForm.unitPrice))}
+                </span>
+              )}
+            </label>
             {purchaseForm.category === 'B食品' && (
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-3">
                 <p className="text-xs font-semibold text-blue-700">📅 此批次效期（選填）</p>

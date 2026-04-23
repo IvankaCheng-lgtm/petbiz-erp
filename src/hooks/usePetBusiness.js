@@ -213,17 +213,17 @@ export default function usePetBusiness() {
     cloudUpdate("expenses", list => list.map(e => e.id === id ? { ...e, isReported: !e.isReported } : e));
   }, [cloudUpdate]);
 
-  const addPurchase = useCallback(async ({ date, itemId, itemName, category, qty, unitPrice, note, supplierId = null, supplierName = '', expiryBatch = null }) => {
+  const addPurchase = useCallback(async ({ date, itemId, itemName, category, qty, unitPrice, note, supplierId = null, supplierName = '', expiryBatch = null, recordExpense = true }) => {
     const amount = qty * unitPrice;
     const resolvedSupplierId = supplierId || null;
-    const newExp = {
+    const newExp = recordExpense ? {
       id: uid(), date, type: "進貨",
       note: note || `進貨：${itemName}`,
       amount, isProductionCost: true, isReported: false,
       inventoryCategory: category,
       supplierId: resolvedSupplierId,
       supplierName: supplierName || '',
-    };
+    } : null;
     const applyInv = (list) => {
       const idx = list.findIndex(i => i.id === itemId);
       if (idx !== -1) {
@@ -238,9 +238,9 @@ export default function usePetBusiness() {
       }
       return [...list, { id: uid(), category, itemName, currentQty: qty, safetyQty: 0, unit: '個' }];
     };
-    setExpenses(prev => [...prev, newExp]);
+    if (newExp) setExpenses(prev => [...prev, newExp]);
     setInventory(applyInv);
-    await cloudUpdate("expenses", list => [...list, newExp]);
+    if (newExp) await cloudUpdate("expenses", list => [...list, newExp]);
     await cloudUpdate("inventory", applyInv);
   }, [cloudUpdate]);
 
@@ -303,15 +303,8 @@ export default function usePetBusiness() {
       expiryData, expiryBatch, overwriteCost, costPerPack } = params;
     // 支援兩種命名，統一處理
     const batchExpiry = expiryBatch || expiryData || null;
-    const expenseId    = uid();
     const expiryBatchId = batchExpiry ? uid() : null;
-    const newBatch = { id: uid(), ...params, expenseId, expiryBatchId };
-    const newExp = {
-      id: expenseId, date, type: "電費",
-      note: `生產電費：${note || "烘乾機"}（${hours}h）`,
-      amount: Math.round(electricCost * 100) / 100,
-      isProductionCost: true, isReported: false,
-    };
+    const newBatch = { id: uid(), ...params, expiryBatchId };
     const applyInv = (list) => {
       let next = [...list];
       // 食材和包材扣除也使用 FIFO
@@ -348,10 +341,8 @@ export default function usePetBusiness() {
       return next;
     };
     setProduction(prev => [...prev, newBatch]);
-    setExpenses(prev => [...prev, newExp]);
     setInventory(applyInv);
     await cloudUpdate("production", list => [...list, newBatch]);
-    await cloudUpdate("expenses",   list => [...list, newExp]);
     await cloudUpdate("inventory",  applyInv);
     // 對 targetItemId 寫入庫存異動紀錄
     if (targetItemId && resultQty) {
