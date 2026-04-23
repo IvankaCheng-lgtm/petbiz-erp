@@ -609,17 +609,20 @@ export default function Procurement({ data }) {
 
   const [searchQuery, setSearchQuery] = useState('')
 
+  const [sortAZ, setSortAZ] = useState(false);
+
   const filtered = useMemo(() => {
     const base = inventory.filter(i => i.category === activeTab)
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return base
-    return base.filter(i =>
+    const result = !q ? base : base.filter(i =>
       i.itemName?.toLowerCase().includes(q) ||
       i.sku?.toLowerCase().includes(q) ||
       i.supplier?.toLowerCase().includes(q) ||
       i.barcode?.toLowerCase().includes(q)
     )
-  }, [inventory, activeTab, searchQuery])
+    if (sortAZ) return [...result].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || '', 'zh-Hant'))
+    return result
+  }, [inventory, activeTab, searchQuery, sortAZ])
 
   const stockStatus = (item) => {
     if (item.currentQty <= 0)                    return { label: '缺貨', color: 'red' }
@@ -691,6 +694,15 @@ export default function Procurement({ data }) {
             className={inputCls + ' pl-8 text-sm'}
           />
         </div>
+        <button
+          onClick={() => setSortAZ(v => !v)}
+          className={`flex items-center gap-1 text-sm font-medium px-3 py-2 rounded-xl border transition-colors ${
+            sortAZ
+              ? 'bg-blue-50 border-blue-200 text-blue-600'
+              : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+          }`}>
+          A→Z
+        </button>
       </div>
 
       {/* 表格 */}
