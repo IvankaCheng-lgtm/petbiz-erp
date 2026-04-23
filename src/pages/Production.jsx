@@ -248,7 +248,8 @@ export default function Production({ data }) {
 
   // 步驟三：電力
   const [machineWatt, setMachineWatt] = useState(1100);
-  const [hours, setHours] = useState(16);
+  const [hours,       setHours]       = useState(16);
+  const [elecRatio,   setElecRatio]   = useState(100); // 電費分擔佔比 %
 
   // 步驟四：包材 [{ itemId, qty }]
   const [packaging, setPackaging] = useState([]);
@@ -273,14 +274,14 @@ export default function Production({ data }) {
     [ingredients, cItems],
   );
 
-  const electricCost = useMemo(
-    () =>
-      calcElectricityCost(
-        parseFloat(machineWatt) || 0,
-        parseFloat(hours) || 0,
-        date,
-      ),
+  const electricCostFull = useMemo(
+    () => calcElectricityCost(parseFloat(machineWatt) || 0, parseFloat(hours) || 0, date),
     [machineWatt, hours, date],
+  );
+
+  const electricCost = useMemo(
+    () => electricCostFull * ((parseFloat(elecRatio) || 0) / 100),
+    [electricCostFull, elecRatio],
   );
 
   const packagingCost = useMemo(
@@ -387,6 +388,7 @@ export default function Production({ data }) {
     setFrozenExpiry("");
     setMachineWatt(1100);
     setHours(16);
+    setElecRatio(100);
     setPackaging([]);
     setOverwriteCost(false);
     setShowForm(false);
@@ -443,6 +445,7 @@ export default function Production({ data }) {
       note,
       machineWatt: parseFloat(machineWatt),
       hours: parseFloat(hours),
+      elecRatio: parseFloat(elecRatio),
       usedIngredients,
       usedPackaging,
       outputQty: parseFloat(outputQty),
@@ -839,6 +842,41 @@ export default function Production({ data }) {
                   </FormRow>
                 </div>
 
+                {/* 電費分擔佔比 */}
+                <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-amber-800">⚡ 本批電費佔比</span>
+                    <span className="text-xs text-amber-500">同機同時生產多品項時使用</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number" min="1" max="100" step="1"
+                      className={inputCls + ' w-24 text-center font-bold'}
+                      value={elecRatio}
+                      onChange={e => setElecRatio(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+                    />
+                    <span className="text-sm font-bold text-amber-700">%</span>
+                    <div className="flex gap-1.5">
+                      {[100, 50, 33, 25].map(p => (
+                        <button key={p} type="button"
+                          onClick={() => setElecRatio(p)}
+                          className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                            elecRatio === p
+                              ? 'bg-amber-400 text-white border-amber-400'
+                              : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'
+                          }`}>
+                          {p === 100 ? '全部' : p === 50 ? '1/2' : p === 33 ? '1/3' : '1/4'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {elecRatio < 100 && (
+                    <p className="text-xs text-amber-600">
+                      總電費 {fmt(electricCostFull)} × {elecRatio}% = 本批分擔 <strong>{fmt(electricCost)}</strong>
+                    </p>
+                  )}
+                </div>
+
                 {/* 電費計算結果 */}
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="bg-gray-50 rounded-xl py-3">
@@ -860,13 +898,9 @@ export default function Production({ data }) {
                       ${rate}/度
                     </p>
                   </div>
-                  <div
-                    className={`rounded-xl py-3 ${isSummer ? "bg-orange-50" : "bg-blue-50"}`}
-                  >
-                    <p className="text-xs text-gray-400">電費小計</p>
-                    <p
-                      className={`text-lg font-bold ${isSummer ? "text-orange-600" : "text-blue-600"}`}
-                    >
+                  <div className={`rounded-xl py-3 ${isSummer ? "bg-orange-50" : "bg-blue-50"}`}>
+                    <p className="text-xs text-gray-400">電費{elecRatio < 100 ? `（${elecRatio}%）` : ''}</p>
+                    <p className={`text-lg font-bold ${isSummer ? "text-orange-600" : "text-blue-600"}`}>
                       {fmt(electricCost)}
                     </p>
                   </div>
