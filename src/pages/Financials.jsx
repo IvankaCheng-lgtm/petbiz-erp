@@ -28,7 +28,12 @@ function MdText({ text }) {
   )
 }
 
-const CHANNELS      = ['電商', '市集']
+const CHANNELS = [
+  { group: '線上', options: ['電商', '社群'] },
+  { group: '線下', options: ['市集', '寄賣點銷售'] },
+  { group: '其他', options: ['大宗/B2B', '其他營收'] },
+]
+const CHANNELS_FLAT = CHANNELS.flatMap(g => g.options)
 const CATEGORIES    = ['食品', '烘焙', '蛋糕', '用品']
 const EXPENSE_TYPES = ['進貨', '人事', '電費', '租金', '耗材', '行銷', '攤位', '場地費', '設備', '運費', '雜項']
 const TABS          = ['營收', '支出']
@@ -388,7 +393,11 @@ export default function Financials({ data }) {
     setExpForm({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
   }
 
-  const channelColor = { '電商': 'orange', '市集': 'green' }
+  const channelColor = {
+    '電商': 'orange', '社群': 'orange',
+    '市集': 'green',  '寄賣點銷售': 'green',
+    '大宗/B2B': 'blue', '其他營收': 'gray',
+  }
   const catColor     = { '食品': 'orange', '烘焙': 'green', '蛋糕': 'purple', '用品': 'blue' }
 
   return (
@@ -552,7 +561,11 @@ export default function Financials({ data }) {
             <FormRow label="通路">
               <select className={inputCls} value={revForm.channel}
                 onChange={e => setRevForm(p => ({ ...p, channel: e.target.value }))}>
-                {CHANNELS.map(c => <option key={c}>{c}</option>)}
+                {CHANNELS.map(g => (
+                  <optgroup key={g.group} label={g.group}>
+                    {g.options.map(c => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </FormRow>
             <FormRow label="商品類別">
