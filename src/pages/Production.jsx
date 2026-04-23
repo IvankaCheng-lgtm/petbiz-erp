@@ -493,11 +493,11 @@ export default function Production({ data }) {
 
     // 為每個規格建立生產批次記錄
     const batchGroupId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    resolvedOutputs.forEach(output => {
+    for (const output of resolvedOutputs) {
       const targetItem = output.resolvedId ? bItems.find(i => i.id === output.resolvedId) : null;
       const itemName = targetItem?.itemName || output.newItemName?.trim() || '';
       
-      addProductionBatch({
+      await addProductionBatch({
         batchGroupId,
         date,
         note: `${note}${output.batchNote ? ` - ${output.batchNote}` : ''}`,
@@ -527,7 +527,7 @@ export default function Production({ data }) {
           frozenExpiry: output.frozenExpiry || null,
         } : null,
       });
-    });
+    }
 
     resetForm();
   }
