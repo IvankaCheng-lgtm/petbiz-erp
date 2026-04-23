@@ -492,11 +492,13 @@ export default function Production({ data }) {
       });
 
     // 為每個規格建立生產批次記錄
+    const batchGroupId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     resolvedOutputs.forEach(output => {
       const targetItem = output.resolvedId ? bItems.find(i => i.id === output.resolvedId) : null;
       const itemName = targetItem?.itemName || output.newItemName?.trim() || '';
       
       addProductionBatch({
+        batchGroupId,
         date,
         note: `${note}${output.batchNote ? ` - ${output.batchNote}` : ''}`,
         machineWatt: parseFloat(machineWatt),
@@ -530,6 +532,31 @@ export default function Production({ data }) {
     resetForm();
   }
 
+  // 依 batchGroupId 分組，沒有 batchGroupId 的則自成一組
+  const groupedProd = useMemo(() => {
+    const groups = [];
+    const seen = new Map();
+    filteredProd.forEach(p => {
+      const key = p.batchGroupId || p.id;
+      if (seen.has(key)) {
+        seen.get(key).items.push(p);
+      } else {
+        const group = { key, items: [p] };
+        seen.set(key, group);
+        groups.push(group);
+      }
+    });
+    return groups;
+  }, [filteredProd]);
+
+  const [expandedGroups, setExpandedGroups] = useState(new Set());
+  function toggleGroup(key) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
   const [detailBatch, setDetailBatch] = useState(null);
   const [prodSearch,  setProdSearch]  = useState('');
 
@@ -1415,39 +1442,88 @@ export default function Production({ data }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredProd.map((p) => (
-                <tr key={p.id}
-                  onClick={() => setDetailBatch(p)}
-                  className="hover:bg-orange-50/40 transition-colors cursor-pointer">
-                  <td className="py-3 text-gray-500 whitespace-nowrap">{p.date}</td>
-                  <td className="py-3 text-gray-700 max-w-[140px] truncate">{p.note || "—"}</td>
-                  <td className="py-3 text-right text-gray-600">
-                    {p.ingredientCost != null ? fmt(p.ingredientCost) : "—"}
-                  </td>
-                  <td className="py-3 text-right">
-                    <span className={getElectricRate(p.date) === 6.24 ? "text-orange-500" : "text-blue-500"}>
-                      {p.electricCost != null ? fmt(p.electricCost) : "—"}
-                    </span>
-                  </td>
-                  <td className="py-3 text-right text-gray-600">
-                    {p.packagingCost != null ? fmt(p.packagingCost) : "—"}
-                  </td>
-                  <td className="py-3 text-right font-semibold text-gray-800">
-                    {p.totalCost != null ? fmt(p.totalCost) : "—"}
-                  </td>
-                  <td className="py-3 text-right font-bold text-emerald-600">{p.resultQty} 包</td>
-                  <td className="py-3 text-right font-semibold text-purple-600">
-                    {p.costPerPack != null ? `$${p.costPerPack.toFixed(1)}` : "—"}
-                  </td>
-                  <td className="py-3 text-center">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteProduction(p.id); }}
-                      className={btnDanger}>
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {groupedProd.map(({ key, items: groupItems }) => {
+                const first = groupItems[0];
+                const isMulti = groupItems.length > 1;
+                const expanded = expandedGroups.has(key);
+                const groupTotalCost = groupItems.reduce((s, p) => s + (p.totalCost ?? 0), 0);
+                const groupResultQty = groupItems.reduce((s, p) => s + (p.resultQty ?? 0), 0);
+                return (
+                  <>
+                    {/* 主列 */}
+                    <tr key={key}
+                      onClick={() => isMulti ? toggleGroup(key) : setDetailBatch(first)}
+                      className="hover:bg-orange-50/40 transition-colors cursor-pointer">
+                      <td className="py-3 text-gray-500 whitespace-nowrap">{first.date}</td>
+                      <td className="py-3 text-gray-700 max-w-[140px]">
+                        <div className="flex items-center gap-1">
+                          {isMulti && (
+                            <span className="text-orange-400">{expanded ? '▾' : '▸'}</span>
+                          )}
+                          <span className="truncate">{first.note || '—'}</span>
+                          {isMulti && (
+                            <span className="ml-1 text-xs bg-orange-100 text-orange-600 font-semibold px-1.5 py-0.5 rounded-full shrink-0">
+                              {groupItems.length} 規格
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 text-right text-gray-600">{first.ingredientCost != null ? fmt(first.ingredientCost) : '—'}</td>
+                      <td className="py-3 text-right">
+                        <span className={getElectricRate(first.date) === 6.24 ? 'text-orange-500' : 'text-blue-500'}>
+                          {first.electricCost != null ? fmt(first.electricCost) : '—'}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right text-gray-600">{first.packagingCost != null ? fmt(first.packagingCost) : '—'}</td>
+                      <td className="py-3 text-right font-semibold text-gray-800">
+                        {isMulti ? fmt(groupTotalCost) : (first.totalCost != null ? fmt(first.totalCost) : '—')}
+                      </td>
+                      <td className="py-3 text-right font-bold text-emerald-600">
+                        {isMulti ? `${groupResultQty} 包` : `${first.resultQty} 包`}
+                      </td>
+                      <td className="py-3 text-right font-semibold text-purple-600">
+                        {isMulti ? '—' : (first.costPerPack != null ? `$${first.costPerPack.toFixed(1)}` : '—')}
+                      </td>
+                      <td className="py-3 text-center">
+                        <button onClick={e => { e.stopPropagation(); groupItems.forEach(p => deleteProduction(p.id)); }}
+                          className={btnDanger}>
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                    {/* 展開的規格子列 */}
+                    {isMulti && expanded && groupItems.map((p, si) => (
+                      <tr key={p.id}
+                        onClick={() => setDetailBatch(p)}
+                        className="bg-orange-50/30 hover:bg-orange-50/60 transition-colors cursor-pointer">
+                        <td className="py-2 pl-6 text-gray-400 text-xs">└ 規格 {si + 1}</td>
+                        <td className="py-2 text-gray-600 text-xs max-w-[140px] truncate">
+                          {p.targetItemName || p.note || '—'}
+                          {p.packSize && <span className="ml-1 text-gray-400">{p.packSize}{p.outputUnit}/包</span>}
+                        </td>
+                        <td className="py-2 text-right text-xs text-gray-500">{p.ingredientCost != null ? fmt(p.ingredientCost) : '—'}</td>
+                        <td className="py-2 text-right text-xs">
+                          <span className={getElectricRate(p.date) === 6.24 ? 'text-orange-400' : 'text-blue-400'}>
+                            {p.electricCost != null ? fmt(p.electricCost) : '—'}
+                          </span>
+                        </td>
+                        <td className="py-2 text-right text-xs text-gray-500">{p.packagingCost != null ? fmt(p.packagingCost) : '—'}</td>
+                        <td className="py-2 text-right text-xs font-semibold text-gray-700">{p.totalCost != null ? fmt(p.totalCost) : '—'}</td>
+                        <td className="py-2 text-right text-xs font-bold text-emerald-600">{p.resultQty} 包</td>
+                        <td className="py-2 text-right text-xs font-semibold text-purple-600">
+                          {p.costPerPack != null ? `$${p.costPerPack.toFixed(1)}` : '—'}
+                        </td>
+                        <td className="py-2 text-center">
+                          <button onClick={e => { e.stopPropagation(); deleteProduction(p.id); }}
+                            className={btnDanger}>
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </>
+                );
+              })}
               {sorted.length === 0 && (
                 <tr>
                   <td colSpan={9} className="py-10 text-center text-gray-400">尚無生產紀錄</td>
