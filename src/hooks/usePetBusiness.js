@@ -367,21 +367,23 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   const deleteProduction = useCallback((id) => {
+    // 先取出 batch，再分別執行 side effects，避免在 state updater 內呼叫 setInventory
     setProduction(prev => {
       const batch = prev.find(p => p.id === id);
       if (batch) {
-        // 1. 補回食材與包材庫存
         const restoreInv = (list) => {
           const next = [...list];
+          // 補回食材庫存
           (batch.usedIngredients ?? []).forEach(({ itemId, qty }) => {
             const idx = next.findIndex(i => i.id === itemId);
             if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
           });
+          // 補回包材庫存
           (batch.usedPackaging ?? []).forEach(({ itemId, qty }) => {
             const idx = next.findIndex(i => i.id === itemId);
             if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
           });
-          // 2. 扣回 B食品產出庫存，並移除對應效期批次
+          // 扣回 B食品產出庫存，並移除對應效期批次
           if (batch.targetItemId && batch.resultQty) {
             const idx = next.findIndex(i => i.id === batch.targetItemId);
             if (idx !== -1) {
@@ -398,8 +400,8 @@ export default function usePetBusiness() {
           return next;
         };
         setInventory(restoreInv);
-        cloudUpdate("inventory", restoreInv);
-        // 3. 對 targetItemId 寫入負數異動紀錄
+        cloudUpdate('inventory', restoreInv);
+        // 寫入負數庫存異動紀錄
         if (batch.targetItemId && batch.resultQty) {
           const log = {
             id: uid(), date: new Date().toISOString().slice(0, 10),
@@ -411,15 +413,14 @@ export default function usePetBusiness() {
           setInventoryLogs(prev => [...prev, log]);
           cloudUpdate('inventoryLogs', list => [...list, log]);
         }
-        // 4. 刪除對應電費支出
         if (batch.expenseId) {
           setExpenses(e => e.filter(x => x.id !== batch.expenseId));
-          cloudUpdate("expenses", list => list.filter(x => x.id !== batch.expenseId));
+          cloudUpdate('expenses', list => list.filter(x => x.id !== batch.expenseId));
         }
       }
       return prev.filter(p => p.id !== id);
     });
-    cloudUpdate("production", list => list.filter(p => p.id !== id));
+    cloudUpdate('production', list => list.filter(p => p.id !== id));
   }, [cloudUpdate]);
 
   // ── 配方 ──────────────────────────────────────────────────────
