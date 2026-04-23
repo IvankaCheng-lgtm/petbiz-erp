@@ -19,7 +19,7 @@ import {
   btnSecondary,
   btnDanger,
 } from "../components/ui";
-import { fmt } from "../utils/format";
+import { fmt, fmtPrice } from "../utils/format";
 import { calcElectricityCost, getElectricRate } from "../hooks/usePetBusiness";
 import { askGemini } from "../services/geminiService";
 
@@ -599,7 +599,7 @@ export default function Production({ data }) {
                         </div>
                         {/* 單價 */}
                         <div className="text-xs text-gray-500 text-right">
-                          {item ? `$${item.unitPrice || 0}/${item.unit}` : "—"}
+                          {item ? `${fmtPrice(item.unitPrice || 0)}/${item.unit}` : "—"}
                         </div>
                         {/* 小計 */}
                         <div
@@ -950,7 +950,7 @@ export default function Production({ data }) {
 
                         {/* 單價 */}
                         <div className="text-xs text-gray-500 text-right">
-                          {item ? `$${item.unitPrice || 0}/個` : "—"}
+                          {item ? `${fmtPrice(item.unitPrice || 0)}/個` : "—"}
                         </div>
 
                         {/* 小計 */}

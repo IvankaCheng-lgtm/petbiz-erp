@@ -1,6 +1,15 @@
 export const fmt = (n) =>
   new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(n)
 
+/** 小數點後第 2 位，無條件進位（用於 C食材/D包材單價） */
+export const fmtPrice = (n) => {
+  const rounded = Math.ceil((parseFloat(n) || 0) * 100) / 100
+  return new Intl.NumberFormat('zh-TW', {
+    style: 'currency', currency: 'TWD',
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(rounded)
+}
+
 export const fmtNum = (n) =>
   new Intl.NumberFormat('zh-TW').format(n)
 

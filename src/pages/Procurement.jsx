@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import ExcelJS from 'exceljs'
 import { Plus, Trash2, Edit2, AlertTriangle, Package, X, Sparkles, Copy, Check, Calendar, Upload, Download, Search } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
-import { fmt } from '../utils/format'
+import { fmt, fmtPrice } from '../utils/format'
 import { askGemini } from '../services/geminiService'
 import InventoryAI from '../components/InventoryAI'
 
@@ -733,9 +733,9 @@ export default function Procurement({ data }) {
                       </>
                     ) : (
                       <>
-                        <td className="py-3 text-right text-gray-600">{item.unitPrice ? fmt(item.unitPrice) : '—'}</td>
+                        <td className="py-3 text-right text-gray-600">{item.unitPrice ? fmtPrice(item.unitPrice) : '—'}</td>
                         <td className="py-3 text-right font-semibold text-emerald-600">
-                          {item.unitPrice ? fmt((item.unitPrice || 0) * item.currentQty) : '—'}
+                          {item.unitPrice ? fmtPrice(Math.ceil((item.unitPrice || 0) * item.currentQty * 100) / 100) : '—'}
                         </td>
                       </>
                     )}
@@ -782,7 +782,7 @@ export default function Procurement({ data }) {
           <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-4 justify-end text-sm">
             <span className="text-gray-500">庫存總價：
               <span className="font-bold text-emerald-600 ml-1">
-                {fmt(filtered.reduce((s, i) => s + (i.unitPrice || 0) * i.currentQty, 0))}
+                {fmtPrice(filtered.reduce((s, i) => Math.ceil((s + (i.unitPrice || 0) * i.currentQty) * 100) / 100, 0))}
               </span>
             </span>
           </div>
