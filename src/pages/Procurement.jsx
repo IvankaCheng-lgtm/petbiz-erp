@@ -310,7 +310,7 @@ const emptyRow = () => ({
 })
 
 export default function Procurement({ data }) {
-  const { inventory, addPurchase, addInventoryItem, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory, importInventoryItems, suppliers = [], addExpense } = data
+  const { inventory, addPurchase, addInventoryItem, addInventoryItems, updateInventoryItem, deleteInventoryItem, revenues = [], inventoryLogs = [], adjustInventory, importInventoryItems, suppliers = [], addExpense } = data
 
   const [activeTab,    setActiveTab]    = useState('A用品')
   const [modal,        setModal]        = useState(null)
@@ -341,21 +341,19 @@ export default function Procurement({ data }) {
   function submitAdd(e) {
     e.preventDefault()
     const validRows = rows.filter(row => row.itemName.trim())
-    validRows.forEach(row => {
-      addInventoryItem({
-        category:   addCategory,
-        itemName:   row.itemName.trim(),
-        currentQty: parseFloat(row.currentQty) || 0,
-        safetyQty:  parseFloat(row.safetyQty)  || 0,
-        unit:       row.unit || '個',
-        supplier:   row.supplier.trim(),
-        barcode:    row.barcode?.trim() || '',
-        listPrice:  parseFloat(row.listPrice)  || 0,
-        salePrice:  parseFloat(row.salePrice)  || 0,
-        cost:       parseFloat(row.cost)       || 0,
-        unitPrice:  parseFloat(row.unitPrice)  || 0,
-      })
-    })
+    addInventoryItems(validRows.map(row => ({
+      category:   addCategory,
+      itemName:   row.itemName.trim(),
+      currentQty: parseFloat(row.currentQty) || 0,
+      safetyQty:  parseFloat(row.safetyQty)  || 0,
+      unit:       row.unit || '個',
+      supplier:   row.supplier.trim(),
+      barcode:    row.barcode?.trim() || '',
+      listPrice:  parseFloat(row.listPrice)  || 0,
+      salePrice:  parseFloat(row.salePrice)  || 0,
+      cost:       parseFloat(row.cost)       || 0,
+      unitPrice:  parseFloat(row.unitPrice)  || 0,
+    })))
     if (addRecordExpense && addExpense) {
       const isABCat = addCategory === 'A用品' || addCategory === 'B食品'
       const total = validRows.reduce((s, row) => {
@@ -707,13 +705,13 @@ export default function Procurement({ data }) {
                   <tr key={item.id}
                     onClick={() => setLogItem(item)}
                     className={`hover:bg-gray-50 transition-colors cursor-pointer ${item.currentQty < item.safetyQty ? 'bg-red-50/40' : ''}`}>
-                    <td className="py-3 text-xs text-gray-500">{item.sku || '—'}</td>
                     <td className="py-3 font-medium text-gray-800">
                       <div className="flex items-center gap-2">
                         {item.currentQty < item.safetyQty && <AlertTriangle size={13} className="text-red-500 shrink-0" />}
                         {item.itemName}
                       </div>
                     </td>
+                    <td className="py-3 text-xs text-gray-500">{item.sku || '—'}</td>
                     <td className="py-3 text-gray-500 text-xs">{item.supplier || '—'}</td>
                     <td className={`py-3 text-right font-bold ${item.currentQty < item.safetyQty ? 'text-red-600' : 'text-gray-800'}`}>
                       {item.currentQty}

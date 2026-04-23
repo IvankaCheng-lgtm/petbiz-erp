@@ -251,6 +251,12 @@ export default function usePetBusiness() {
     cloudUpdate("inventory", list => [...list, item]);
   }, [cloudUpdate]);
 
+  const addInventoryItems = useCallback((dataList) => {
+    const items = dataList.map(data => ({ id: uid(), ...data }));
+    setInventory(prev => [...prev, ...items]);
+    cloudUpdate("inventory", list => [...list, ...items]);
+  }, [cloudUpdate]);
+
   // 支援 barcode、shelfLifeNormal/Fridge/Freezer 欄位
   const updateInventoryItem = useCallback((id, data) => {
     const cleaned = {
@@ -701,7 +707,7 @@ export default function usePetBusiness() {
     addRevenue, deleteRevenue, toggleRevenueReported,
     addExpense, deleteExpense, toggleExpenseReported,
     addPurchase,
-    addInventoryItem, updateInventoryItem, deleteInventoryItem, resetInventoryToSeed, importInventoryItems,
+    addInventoryItem, addInventoryItems, updateInventoryItem, deleteInventoryItem, resetInventoryToSeed, importInventoryItems,
     addProductionBatch, deleteProduction,
     saveFormula, deleteFormula,
     addSupplier, updateSupplier, deleteSupplier,
