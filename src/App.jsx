@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Component } from 'react'
 import { Menu, X, LogOut, ClipboardList } from 'lucide-react'
 import usePetBusiness from './hooks/usePetBusiness'
 import useAuth from './hooks/useAuth'
@@ -16,6 +16,20 @@ import SalesOrder  from './pages/SalesOrder'
 import Suppliers   from './pages/Suppliers'
 import { getAccountingReminders } from './utils/accounting'
 import logoImg from './assets/LOGO.png'
+
+class ErrorBoundary extends Component {
+  state = { error: null }
+  static getDerivedStateFromError(e) { return { error: e } }
+  render() {
+    if (this.state.error) return (
+      <div className="p-8 text-red-600 bg-red-50 min-h-screen">
+        <h2 className="text-xl font-bold mb-2">Runtime Error</h2>
+        <pre className="text-sm whitespace-pre-wrap">{this.state.error?.message}\n{this.state.error?.stack}</pre>
+      </div>
+    )
+    return this.props.children
+  }
+}
 
 const NAV_ITEMS = [
   { key: 'dashboard',   label: '營業總覽',   icon: '📊' },
@@ -220,7 +234,9 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          {PAGE_MAP[activePage]}
+          <ErrorBoundary>
+            {PAGE_MAP[activePage]}
+          </ErrorBoundary>
         </main>
       </div>
     </div>
