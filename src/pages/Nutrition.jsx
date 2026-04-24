@@ -86,6 +86,9 @@ export default function Nutrition({ data }) {
   // ── 計算 ─────────────────────────────────────────────────
   function handleCalculate() {
     if (mode === 'general') {
+      const totalAmount = ingredients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+      if (totalAmount === 0) return
+
       const protein  = sumField('protein')
       const fat      = sumField('fat')
       const satFat   = sumField('satFat')
@@ -93,8 +96,11 @@ export default function Nutrition({ data }) {
       const carb     = sumField('carb')
       const sugar    = sumField('sugar')
       const sodium   = sumField('sodium')
-      const moisture = sumField('moisture')
+      const moistureG = sumField('moisture')
+      const moisture  = moistureG / totalAmount * 100
+
       const calcCal  = protein * 4 + fat * 9 + carb * 4
+      const calPer100g = totalAmount > 0 ? Math.round(calcCal / totalAmount * 100) : 0
       const dm = (v) => moisture < 100 ? Math.round(v / (100 - moisture) * 100 * 10) / 10 : 0
       setResult({
         mode: 'general',
@@ -105,22 +111,40 @@ export default function Nutrition({ data }) {
         carb:    Math.round(carb * 100) / 100,
         sugar:   Math.round(sugar * 100) / 100,
         sodium:  Math.round(sodium * 100) / 100,
-        moisture,
+        moisture: Math.round(moisture * 100) / 100,
         calcCal: Math.round(calcCal),
+        calPer100g,
         dmProtein: dm(protein),
         dmFat:     dm(fat),
         dmCarb:    dm(carb),
+        totalAmount: Math.round(totalAmount),
       })
     } else {
-      const protein  = sumField('protein')
-      const fat      = sumField('fat')
-      const rawFiber = sumField('fiber')
-      const fiber    = fiberConvert ? Math.round(rawFiber * 0.6 * 100) / 100 : Math.round(rawFiber * 100) / 100
-      const moisture = sumField('moisture')
-      const ash      = sumField('ash')
-      const carb     = Math.max(0, 100 - protein - fat - fiber - moisture - ash)
-      const me       = 10 * (3.5 * protein + 8.5 * fat + 3.5 * carb)
-      const dm = (v) => moisture < 100 ? Math.round(v / (100 - moisture) * 100 * 10) / 10 : 0
+      const totalAmount = ingredients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+      if (totalAmount === 0) return
+
+      const proteinG  = sumField('protein')
+      const fatG      = sumField('fat')
+      const rawFiberG = sumField('fiber')
+      const moistureG = sumField('moisture')
+      const ashG      = sumField('ash')
+
+      // 轉換為百分比
+      const protein  = proteinG  / totalAmount * 100
+      const fat      = fatG      / totalAmount * 100
+      const rawFiber = rawFiberG / totalAmount * 100
+      const moisture = moistureG / totalAmount * 100
+      const ash      = ashG      / totalAmount * 100
+
+      const fiber = fiberConvert
+        ? Math.round(rawFiber * 0.6 * 100) / 100
+        : Math.round(rawFiber * 100) / 100
+
+      const carb = Math.max(0, 100 - protein - fat - fiber - moisture - ash)
+      const me   = 10 * (3.5 * protein + 8.5 * fat + 3.5 * carb)
+      const calPer100g = Math.round(me / 10)
+      const dm   = (v) => moisture < 100 ? Math.round(v / (100 - moisture) * 100 * 10) / 10 : 0
+
       setResult({
         mode: 'aafco',
         protein:   Math.round(protein * 100) / 100,
@@ -131,10 +155,12 @@ export default function Nutrition({ data }) {
         ash:       Math.round(ash * 100) / 100,
         carb:      Math.round(carb * 100) / 100,
         me:        Math.round(me),
+        calPer100g,
         dmProtein: dm(protein),
         dmFat:     dm(fat),
         dmFiber:   dm(fiber),
         dmCarb:    dm(carb),
+        totalAmount: Math.round(totalAmount),
       })
     }
   }
@@ -352,6 +378,10 @@ export default function Nutrition({ data }) {
                     <span className="font-bold text-lg">熱量（計算值）</span>
                     <span className="font-bold text-lg">{result.calcCal} 大卡</span>
                   </div>
+                  <div className="px-4 py-2 border-b border-gray-200 flex justify-between bg-orange-50">
+                    <span className="font-bold text-base text-orange-700">每 100g 熱量</span>
+                    <span className="font-bold text-base text-orange-700">{result.calPer100g} 大卡</span>
+                  </div>
                   {[
                     ['蛋白質', result.protein, 'g'],
                     ['脂肪', result.fat, 'g'],
@@ -435,6 +465,10 @@ export default function Nutrition({ data }) {
                   <p className="text-xs text-gray-400 mb-1">ME = 10 × (3.5×{result.protein} + 8.5×{result.fat} + 3.5×{result.carb})</p>
                   <p className="text-4xl font-black" style={{ color: BRAND_DARK }}>{result.me}</p>
                   <p className="text-sm text-gray-500 mt-1">kcal / kg</p>
+                  <div className="mt-3 bg-orange-50 border border-orange-100 rounded-xl px-4 py-2.5 inline-flex items-center gap-3">
+                    <span className="text-sm text-orange-700 font-medium">每 100g 熱量</span>
+                    <span className="text-2xl font-black text-orange-600">{result.calPer100g} kcal</span>
+                  </div>
                 </div>
               </SectionCard>
 
