@@ -47,6 +47,19 @@ export default function App() {
     [bizData.revenues, bizData.expenses]
   )
 
+  // 未登入則顯示登入頁（必須在所有 hooks 之後）
+  if (!currentUser) return <Login onLogin={auth.login} />
+
+  // Firebase 資料載入中
+  if (bizData.loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#722927', borderTopColor: 'transparent' }} />
+        <p className="text-sm text-gray-500">載入雲端資料中...</p>
+      </div>
+    </div>
+  )
+
   const PAGE_MAP = {
     dashboard:   <Dashboard   data={bizData} />,
     financials:  <Financials  data={bizData} />,
@@ -60,19 +73,6 @@ export default function App() {
     suppliers:     <Suppliers    data={bizData} />,
     settings:     <Settings     data={{ ...bizData, auth }} />,
   }
-
-  // 未登入則顯示登入頁（必須在所有 hooks 之後）
-  if (!currentUser) return <Login onLogin={auth.login} />
-
-  // Firebase 資料載入中
-  if (bizData.loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#722927', borderTopColor: 'transparent' }} />
-        <p className="text-sm text-gray-500">載入雲端資料中...</p>
-      </div>
-    </div>
-  )
 
   function navigate(key) {
     setActivePage(key)
