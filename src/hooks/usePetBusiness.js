@@ -706,8 +706,9 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   // ── 市集現場收款 ──────────────────────────────────────────────
-  const processMarketSale = useCallback(async ({ items, paymentMethod, totalAmount, eventId }) => {
+  const processMarketSale = useCallback(async ({ items, giftItems = [], paymentMethod, totalAmount, eventId }) => {
     const today = new Date().toISOString().slice(0, 10);
+    const allItems = [...items, ...giftItems];
     const catMap = { "A用品": "用品", "B食品": "食品" };
     const cats = [...new Set(items.map(i => catMap[i.category] ?? "食品"))];
     const category = cats.length === 1 ? cats[0] : "食品";
@@ -715,26 +716,44 @@ export default function usePetBusiness() {
       id: uid(), date: today, channel: "市集", category,
       amount: totalAmount, isReported: false, paymentMethod, eventId,
       items,
+      giftItems: giftItems.length > 0 ? giftItems : undefined,
     };
     const applyInv = (list) => {
       let next = [...list];
-      items.forEach(({ itemId, qty }) => {
+      // 一般商品 + 贈品都扣庫存
+      allItems.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
         if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
       return next;
     };
-    const logs = items.map(it => ({
-      id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
-      change: -it.qty, reason: `市集銷售`,
-      revenueId: revenueItem.id,
-    }));
+    const logs = [
+      ...items.map(it => ({
+        id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
+        change: -it.qty, reason: `市集銷售`,
+        revenueId: revenueItem.id,
+      })),
+      ...giftItems.map(it => ({
+        id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
+        change: -it.qty, reason: `市集贈品`,
+        revenueId: revenueItem.id,
+      })),
+    ];
+    // 贈品成本記入支出
+    const giftCost = giftItems.reduce((s, it) => s + (it.cost || 0) * it.qty, 0);
+    const giftExpense = giftCost > 0 ? {
+      id: uid(), date: today, type: '行銷',
+      note: `市集贈品成本：${giftItems.map(i => i.itemName).join('、')}`,
+      amount: giftCost, isProductionCost: false, isReported: false,
+    } : null;
     setRevenues(prev => [...prev, revenueItem]);
     setInventory(applyInv);
     setInventoryLogs(prev => [...prev, ...logs]);
+    if (giftExpense) setExpenses(prev => [...prev, giftExpense]);
     await cloudUpdate("revenues",      list => [...list, revenueItem]);
     await cloudUpdate("inventory",     applyInv);
     await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
+    if (giftExpense) await cloudUpdate("expenses", list => [...list, giftExpense]);
   }, [cloudUpdate]);
 
   // ── 系統 ──────────────────────────────────────────────────────

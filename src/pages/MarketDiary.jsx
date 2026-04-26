@@ -183,6 +183,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   const [isScanning,  setIsScanning]  = useState(false)
   const [scanMsg,     setScanMsg]     = useState('')   // 成功/查無訊息
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [itemSearch,   setItemSearch]   = useState('')
   const scannerRef   = useRef(null)
   const barcodeRef   = useRef(null)
   const inventoryRef = useRef(inventory)
@@ -248,8 +249,13 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
     () => inventory.filter(i => i.category === 'A用品' || i.category === 'B食品'),
     [inventory]
   )
+  const filteredSaleItems = useMemo(() => {
+    const q = itemSearch.trim().toLowerCase()
+    if (!q) return saleItems
+    return saleItems.filter(i => i.itemName?.toLowerCase().includes(q) || i.barcode?.includes(q))
+  }, [saleItems, itemSearch])
   const subtotal = useMemo(
-    () => cart.reduce((s, c) => s + c.qty * c.unitPrice, 0),
+    () => cart.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice, 0),
     [cart]
   )
   const totalAmount = useMemo(() => {
@@ -291,7 +297,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
         next[idx] = { ...next[idx], qty: next[idx].qty + 1 }
         return next
       }
-      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0 }]
+      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0, cost: item.cost || 0, isGift: false }]
     })
   }
 
@@ -302,7 +308,9 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 
   async function handleCheckout() {
     if (cart.length === 0 || !selectedEventId) return
-    await processMarketSale({ items: cart, paymentMethod, totalAmount, eventId: selectedEventId })
+    const saleItems = cart.filter(c => !c.isGift)
+    const giftItems = cart.filter(c => c.isGift)
+    await processMarketSale({ items: saleItems, giftItems, paymentMethod, totalAmount, eventId: selectedEventId })
     setDone(true)
     setCart([])
     setDiscountPct('')
@@ -385,8 +393,23 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* 商品選擇 */}
         <SectionCard title="商品列表（點擊加入）">
-          <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-            {saleItems.map(item => (
+          <div className="relative mb-2">
+            <input
+              type="text"
+              placeholder="搜尋商品..."
+              value={itemSearch}
+              onChange={e => setItemSearch(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 pr-8"
+            />
+            {itemSearch && (
+              <button onClick={() => setItemSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
+            {filteredSaleItems.map(item => (
               <button key={item.id} onClick={() => addToCart(item)}
                 disabled={item.currentQty <= 0}
                 className="bg-gray-50 hover:bg-orange-50 border border-gray-200 hover:border-orange-300 rounded-xl p-3 text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
@@ -395,7 +418,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
                 <p className="text-xs text-gray-400">庫存 {item.currentQty} {item.unit}</p>
               </button>
             ))}
-            {saleItems.length === 0 && <p className="col-span-2 text-sm text-gray-400 text-center py-4">無 A用品 / B食品 庫存</p>}
+            {filteredSaleItems.length === 0 && <p className="col-span-2 text-sm text-gray-400 text-center py-4">{itemSearch ? '查無符合的商品' : '無 A用品 / B食品 庫存'}</p>}
           </div>
         </SectionCard>
 
@@ -404,8 +427,15 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
           <div className="space-y-2 min-h-[120px]">
             {cart.length === 0 && <p className="text-sm text-gray-400 text-center py-6">點擊左側商品加入</p>}
             {cart.map(c => (
-              <div key={c.itemId} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2">
-                <span className="text-sm font-medium text-gray-700 flex-1 truncate">{c.itemName}</span>
+              <div key={c.itemId} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${
+                c.isGift ? 'bg-pink-50 border border-pink-200' : 'bg-gray-50'
+              }`}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    {c.isGift && <span className="text-xs bg-pink-200 text-pink-700 font-semibold px-1.5 py-0.5 rounded-full shrink-0">贈</span>}
+                    <span className="text-sm font-medium text-gray-700 truncate">{c.itemName}</span>
+                  </div>
+                </div>
                 <div className="flex items-center gap-1">
                   <button onClick={() => updateQty(c.itemId, c.qty - 1)}
                     className="w-6 h-6 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-bold flex items-center justify-center">−</button>
@@ -413,7 +443,18 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
                   <button onClick={() => updateQty(c.itemId, c.qty + 1)}
                     className="w-6 h-6 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-bold flex items-center justify-center">+</button>
                 </div>
-                <span className="text-sm font-semibold text-gray-800 w-16 text-right">{fmt(c.qty * c.unitPrice)}</span>
+                <span className={`text-sm font-semibold w-16 text-right ${
+                  c.isGift ? 'text-pink-400 line-through' : 'text-gray-800'
+                }`}>{fmt(c.qty * c.unitPrice)}</span>
+                <button
+                  onClick={() => setCart(prev => prev.map(x => x.itemId === c.itemId ? { ...x, isGift: !x.isGift } : x))}
+                  className={`text-xs px-2 py-1 rounded-lg border font-medium transition-colors shrink-0 ${
+                    c.isGift
+                      ? 'bg-pink-100 text-pink-600 border-pink-300'
+                      : 'bg-white text-gray-400 border-gray-200 hover:border-pink-300 hover:text-pink-500'
+                  }`}>
+                  贈品
+                </button>
                 <button onClick={() => updateQty(c.itemId, 0)} className="text-gray-300 hover:text-red-400 transition-colors"><X size={14} /></button>
               </div>
             ))}
@@ -426,6 +467,12 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
                 <span>小計</span>
                 <span>{fmt(subtotal)}</span>
               </div>
+              {cart.some(c => c.isGift) && (
+                <div className="flex justify-between text-xs text-pink-500 mt-1">
+                  <span>🎁 贈品（不列入營收）</span>
+                  <span>{cart.filter(c => c.isGift).map(c => `${c.itemName}×${c.qty}`).join('、')}</span>
+                </div>
+              )}
 
               {/* 折扣輸入（選填） */}
               <div className="mt-2 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2.5 space-y-2">
