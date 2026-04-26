@@ -1,0 +1,1 @@
+"import { useState, useMemo, useEffect, useRef } from 'react'\nimport { Html5Qrcode } from 'html5-qrcode'\nimport { Plus, Trash2, ShoppingCart, X, Calendar, BarChart2, Store, Sparkles, Loader2, TrendingUp, Camera } from 'lucide-react'\nimport { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Cartesia"

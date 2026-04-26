@@ -487,7 +487,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 }
 
 // ── 結算統計分頁 ──────────────────────────────────────────────
-function StatsTab({ marketEvents, revenues, expenses, deleteMarketSale }) {
+function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSale }) {
   const [selectedEventId, setSelectedEventId] = useState(marketEvents[0]?.id ?? '')
 
   const selectedEvent = useMemo(
@@ -506,6 +506,20 @@ function StatsTab({ marketEvents, revenues, expenses, deleteMarketSale }) {
   const totalRev   = eventRevenues.reduce((s, r) => s + r.amount, 0)
   const boothFee   = selectedEvent?.boothFee ?? 0
   const netProfit  = totalRev - boothFee
+
+  // 購買商品成本：各筆交易的商品數量 × 庫存成本
+  const goodsCost = useMemo(() => {
+    return eventRevenues.reduce((total, r) => {
+      if (!r.items) return total
+      return total + r.items.reduce((s, item) => {
+        const inv = inventory.find(i => i.id === item.itemId)
+        return s + (inv?.cost || 0) * item.qty
+      }, 0)
+    }, 0)
+  }, [eventRevenues, inventory])
+
+  const trueProfit = netProfit - goodsCost
+
   const cashRev    = eventRevenues.filter(r => r.paymentMethod === '現金').reduce((s, r) => s + r.amount, 0)
   const linePayRev = eventRevenues.filter(r => r.paymentMethod === 'LINE Pay').reduce((s, r) => s + r.amount, 0)
   const cashPct    = totalRev > 0 ? (cashRev / totalRev * 100).toFixed(0) : 0
@@ -533,11 +547,12 @@ function StatsTab({ marketEvents, revenues, expenses, deleteMarketSale }) {
       {selectedEvent && (
         <>
           {/* KPI */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: '總營收', value: fmt(totalRev), color: 'text-emerald-600' },
               { label: '攤位費', value: fmt(boothFee), color: 'text-orange-500' },
               { label: '扣費純利', value: fmt(netProfit), color: netProfit >= 0 ? 'text-emerald-600' : 'text-red-500' },
+              { label: '淨利（扣商品成本）', value: fmt(trueProfit), color: trueProfit >= 0 ? 'text-purple-600' : 'text-red-500' },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
                 <p className="text-xs text-gray-400 mb-1">{label}</p>
@@ -550,24 +565,75 @@ function StatsTab({ marketEvents, revenues, expenses, deleteMarketSale }) {
           <SectionCard title="付款方式佔比">
             {totalRev === 0
               ? <p className="text-sm text-gray-400 text-center py-4">此市集尚無收款紀錄</p>
-              : (
-                <div className="space-y-3">
-                  {[
-                    { label: '💵 現金', amount: cashRev, pct: cashPct, color: 'bg-amber-400' },
-                    { label: '💚 LINE Pay', amount: linePayRev, pct: linePayPct, color: 'bg-emerald-400' },
-                  ].map(({ label, amount, pct, color }) => (
-                    <div key={label}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="font-medium text-gray-700">{label}</span>
-                        <span className="text-gray-500">{fmt(amount)} ({pct}%)</span>
+              : (() => {
+                  // 依日期分組
+                  const dateMap = {}
+                  eventRevenues.forEach(r => {
+                    const d = r.date
+                    if (!dateMap[d]) dateMap[d] = { cash: 0, linePay: 0 }
+                    if (r.paymentMethod === '現金') dateMap[d].cash += r.amount
+                    else if (r.paymentMethod === 'LINE Pay') dateMap[d].linePay += r.amount
+                    else dateMap[d].cash += r.amount // 未標記視為現金
+                  })
+                  const dates = Object.keys(dateMap).sort()
+                  const isMultiDay = dates.length > 1
+                  return (
+                    <div className="space-y-4">
+                      {/* 整場合計 */}
+                      <div className="space-y-2">
+                        {isMultiDay && <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">整場合計</p>}
+                        {[
+                          { label: '💵 現金', amount: cashRev, pct: cashPct, color: 'bg-amber-400' },
+                          { label: '💚 LINE Pay', amount: linePayRev, pct: linePayPct, color: 'bg-emerald-400' },
+                        ].map(({ label, amount, pct, color }) => (
+                          <div key={label}>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="font-medium text-gray-700">{label}</span>
+                              <span className="text-gray-500">{fmt(amount)} ({pct}%)</span>
+                            </div>
+                            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
-                      </div>
+                      {/* 各日明細 */}
+                      {isMultiDay && (
+                        <div className="space-y-3 border-t border-gray-100 pt-3">
+                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">各日明細</p>
+                          {dates.map(date => {
+                            const { cash, linePay } = dateMap[date]
+                            const dayTotal = cash + linePay
+                            const cashP  = dayTotal > 0 ? (cash / dayTotal * 100).toFixed(0) : 0
+                            const lineP  = dayTotal > 0 ? (linePay / dayTotal * 100).toFixed(0) : 0
+                            return (
+                              <div key={date} className="bg-gray-50 rounded-xl px-3 py-2.5 space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-semibold text-gray-600">{date}</span>
+                                  <span className="text-xs text-gray-400">合計 {fmt(dayTotal)}</span>
+                                </div>
+                                {[
+                                  { label: '💵 現金', amount: cash, pct: cashP, color: 'bg-amber-400' },
+                                  { label: '💚 LINE Pay', amount: linePay, pct: lineP, color: 'bg-emerald-400' },
+                                ].map(({ label, amount, pct, color }) => (
+                                  <div key={label}>
+                                    <div className="flex justify-between text-xs mb-1">
+                                      <span className="text-gray-600">{label}</span>
+                                      <span className="text-gray-500">{fmt(amount)} ({pct}%)</span>
+                                    </div>
+                                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                      <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )
+                  )
+                })()
             }
           </SectionCard>
 
@@ -648,12 +714,11 @@ function StatsTab({ marketEvents, revenues, expenses, deleteMarketSale }) {
 // ── 數據分析分頁 ──────────────────────────────────────────────
 const PIE_COLORS = ['#10B981','#F59E0B','#3B82F6','#8B5CF6','#EF4444','#EC4899','#14B8A6','#F97316']
 
-function AnalysisTab({ marketEvents, revenues }) {
+function AnalysisTab({ marketEvents, revenues, inventory }) {
   const [aiText,    setAiText]    = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState('')
 
-  // 每個市集的統計資料
   const stats = useMemo(() => {
     return marketEvents.map(ev => {
       const evRevs = revenues.filter(r =>
@@ -663,12 +728,20 @@ function AnalysisTab({ marketEvents, revenues }) {
       const totalRev  = evRevs.reduce((s, r) => s + r.amount, 0)
       const boothFee  = ev.boothFee ?? 0
       const netProfit = totalRev - boothFee
+      const goodsCost = evRevs.reduce((total, r) => {
+        if (!r.items) return total
+        return total + r.items.reduce((s, item) => {
+          const inv = inventory.find(i => i.id === item.itemId)
+          return s + (inv?.cost || 0) * item.qty
+        }, 0)
+      }, 0)
+      const trueProfit = netProfit - goodsCost
       const days      = Math.max(1, Math.ceil((new Date(ev.endDate) - new Date(ev.startDate)) / 86400000) + 1)
       const avgDaily  = totalRev / days
       const roi       = boothFee > 0 ? ((netProfit / boothFee) * 100) : null
-      return { id: ev.id, name: ev.name, totalRev, boothFee, netProfit, avgDaily, roi, days }
+      return { id: ev.id, name: ev.name, totalRev, boothFee, netProfit, goodsCost, trueProfit, avgDaily, roi, days }
     }).filter(s => s.totalRev > 0 || s.boothFee > 0)
-  }, [marketEvents, revenues])
+  }, [marketEvents, revenues, inventory])
 
   // 圓餅圖資料：各市集累計營收佔比
   const pieData = useMemo(() => {
@@ -729,7 +802,7 @@ ${context}
           <table className="w-full text-sm min-w-[520px]">
             <thead>
               <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
-                {['市集名稱','累計營收','攤位費','純利','平均日營','ROI'].map(h => (
+                {['市集名稱','累計營收','攤位費','純利','商品成本','淨利','平均日營','ROI'].map(h => (
                   <th key={h} className="pb-3 text-left">{h}</th>
                 ))}
               </tr>
@@ -741,6 +814,8 @@ ${context}
                   <td className="py-2.5 text-emerald-600 font-semibold">{fmt(e.totalRev)}</td>
                   <td className="py-2.5 text-orange-500">{fmt(e.boothFee)}</td>
                   <td className={`py-2.5 font-semibold ${e.netProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(e.netProfit)}</td>
+                  <td className="py-2.5 text-orange-400">{fmt(Math.round(e.goodsCost))}</td>
+                  <td className={`py-2.5 font-bold ${e.trueProfit >= 0 ? 'text-purple-600' : 'text-red-500'}`}>{fmt(Math.round(e.trueProfit))}</td>
                   <td className="py-2.5 text-gray-600">{fmt(Math.round(e.avgDaily))}</td>
                   <td className="py-2.5">
                     {e.roi !== null
@@ -888,6 +963,7 @@ export default function MarketDiary({ data }) {
           marketEvents={marketEvents}
           revenues={revenues}
           expenses={expenses}
+          inventory={inventory}
           deleteMarketSale={deleteMarketSale}
         />
       )}
@@ -895,6 +971,7 @@ export default function MarketDiary({ data }) {
         <AnalysisTab
           marketEvents={marketEvents}
           revenues={revenues}
+          inventory={inventory}
         />
       )}
     </div>
