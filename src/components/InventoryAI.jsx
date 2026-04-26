@@ -67,9 +67,8 @@ export default function InventoryAI({ inventory, revenues }) {
       .map(item => {
         const daily = avgDailySales(revenues, item.id, 30)
         const daysOfStock = daily > 0 ? (item.currentQty / daily).toFixed(0) : '∞'
-        return { name: item.itemName, qty: item.currentQty, safetyQty: item.safetyQty, daily: daily.toFixed(2), daysOfStock }
+        return { name: item.itemName, qty: item.currentQty, safetyQty: item.safetyQty, unit: item.unit, daily: daily.toFixed(2), daysOfStock }
       })
-      .filter(i => parseFloat(i.daily) > 0)
   }, [inventory, revenues])
 
   async function handleAnalyze() {
@@ -154,16 +153,16 @@ export default function InventoryAI({ inventory, revenues }) {
         )}
 
         {/* 補貨速覽 */}
-        {restockData.filter(i => parseFloat(i.daysOfStock) <= 14).length > 0 && (
+        {restockData.filter(i => i.qty <= i.safetyQty).length > 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1.5">
             <div className="flex items-center gap-2 mb-2">
               <Package size={15} className="text-blue-600 shrink-0" />
-              <span className="text-sm font-semibold text-blue-700">建議近期補貨（庫存 ≤ 14 天）</span>
+              <span className="text-sm font-semibold text-blue-700">建議近期補貨（庫存 ≤ 安全水位）</span>
             </div>
-            {restockData.filter(i => parseFloat(i.daysOfStock) <= 14).map((i, idx) => (
+            {restockData.filter(i => i.qty <= i.safetyQty).map((i, idx) => (
               <div key={idx} className="flex justify-between items-center bg-white rounded-lg px-3 py-2 text-xs">
                 <span className="font-medium text-gray-700">{i.name}</span>
-                <span className="text-blue-600">約剩 {i.daysOfStock} 天庫存</span>
+                <span className="text-blue-600">庫存 {i.qty} / 安全水位 {i.safetyQty} {i.unit}</span>
               </div>
             ))}
           </div>

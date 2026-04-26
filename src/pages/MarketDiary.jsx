@@ -800,7 +800,7 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
 
   // 長條圖資料：各場次營收 vs 攤位費
   const barData = useMemo(() =>
-    stats.map(e => ({ name: e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name, 營收: e.totalRev, 攤位費: e.boothFee, 純利: e.netProfit }))
+    stats.map(e => ({ name: e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name, 營收: e.totalRev, 攞位費: e.boothFee, 純利: e.netProfit, 淨利: e.trueProfit }))
   , [stats])
 
   async function handleAI() {
@@ -916,6 +916,7 @@ ${context}
               <Bar dataKey="營收" fill="#10B981" radius={[4,4,0,0]} />
               <Bar dataKey="攤位費" fill="#F59E0B" radius={[4,4,0,0]} />
               <Bar dataKey="純利" fill="#3B82F6" radius={[4,4,0,0]} />
+              <Bar dataKey="淨利" fill="#8B5CF6" radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </SectionCard>
