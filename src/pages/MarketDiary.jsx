@@ -18,7 +18,7 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
 
   // 市集類供應商（寄賣點）
   const marketSuppliers = useMemo(
-    () => (suppliers || []).filter(s => s.category === '寄賣點'),
+    () => (suppliers || []).filter(s => s.category === '市集主辦'),
     [suppliers]
   )
 
@@ -42,7 +42,7 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
     let resolvedSupplierId = form.supplierId || null
     if (form.supplierId === '__new__' && form.newSupplierName.trim()) {
       const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
-      addSupplier({ id: newId, name: form.newSupplierName.trim(), category: '寄賣點', contact: '', phone: '', note: '' })
+      addSupplier({ id: newId, name: form.newSupplierName.trim(), category: '市集主辦', contact: '', phone: '', note: '' })
       resolvedSupplierId = newId
     }
     const supplierName = form.supplierId === '__new__'
