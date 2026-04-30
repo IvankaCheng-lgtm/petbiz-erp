@@ -240,8 +240,11 @@ export default function usePetBusiness() {
     };
     if (newExp) setExpenses(prev => [...prev, newExp]);
     setInventory(applyInv);
+    const log = { id: uid(), date, itemId, itemName, change: +qty, reason: `進貨${note ? `（${note}）` : ''}` };
+    setInventoryLogs(prev => [...prev, log]);
     if (newExp) await cloudUpdate("expenses", list => [...list, newExp]);
     await cloudUpdate("inventory", applyInv);
+    await cloudUpdate("inventoryLogs", list => [...list, log]);
   }, [cloudUpdate]);
 
   // ── 庫存 ──────────────────────────────────────────────────────

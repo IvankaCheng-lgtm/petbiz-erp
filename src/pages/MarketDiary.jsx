@@ -11,21 +11,27 @@ const STATUS_COLOR = { '已報名': 'green', '待報名': 'orange', '已結束':
 const today = () => new Date().toISOString().slice(0, 10)
 
 // ── 行事曆分頁 ────────────────────────────────────────────────
-function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMarketEvent, addExpense }) {
+function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMarketEvent, addExpense, suppliers, addSupplier }) {
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', addToExpense: false })
+  const [form, setForm] = useState({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', addToExpense: false, supplierId: '', newSupplierName: '' })
   const [editId, setEditId] = useState(null)
+
+  // 市集類供應商（寄賣點）
+  const marketSuppliers = useMemo(
+    () => (suppliers || []).filter(s => s.category === '寄賣點'),
+    [suppliers]
+  )
 
   const sorted = useMemo(() => [...marketEvents].sort((a, b) => b.startDate.localeCompare(a.startDate)), [marketEvents])
 
   function openAdd() {
-    setForm({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', addToExpense: false })
+    setForm({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', addToExpense: false, supplierId: '', newSupplierName: '' })
     setEditId(null)
     setModal(true)
   }
 
   function openEdit(ev) {
-    setForm({ name: ev.name, startDate: ev.startDate, endDate: ev.endDate, status: ev.status, boothFee: ev.boothFee ?? '', addToExpense: false })
+    setForm({ name: ev.name, startDate: ev.startDate, endDate: ev.endDate, status: ev.status, boothFee: ev.boothFee ?? '', addToExpense: false, supplierId: ev.supplierId || '', newSupplierName: '' })
     setEditId(ev.id)
     setModal(true)
   }
@@ -33,7 +39,16 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
   function handleSubmit(e) {
     e.preventDefault()
     const fee = parseFloat(form.boothFee) || 0
-    const data = { name: form.name, startDate: form.startDate, endDate: form.endDate, status: form.status, boothFee: fee }
+    let resolvedSupplierId = form.supplierId || null
+    if (form.supplierId === '__new__' && form.newSupplierName.trim()) {
+      const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
+      addSupplier({ id: newId, name: form.newSupplierName.trim(), category: '寄賣點', contact: '', phone: '', note: '' })
+      resolvedSupplierId = newId
+    }
+    const supplierName = form.supplierId === '__new__'
+      ? form.newSupplierName.trim()
+      : (marketSuppliers.find(s => s.id === form.supplierId)?.name || '')
+    const data = { name: form.name, startDate: form.startDate, endDate: form.endDate, status: form.status, boothFee: fee, supplierId: resolvedSupplierId, supplierName }
     if (editId) updateMarketEvent(editId, data)
     else addMarketEvent(data)
     if (form.addToExpense && fee > 0) {
@@ -48,10 +63,27 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
     setModal(false)
   }
 
+  // 行事曆檢視月份
+  const [calYear,  setCalYear]  = useState(() => new Date().getFullYear())
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth())
+
+  function prevMonth() {
+    if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11) }
+    else setCalMonth(m => m - 1)
+  }
+  function nextMonth() {
+    if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0) }
+    else setCalMonth(m => m + 1)
+  }
+  function goToday() {
+    setCalYear(new Date().getFullYear())
+    setCalMonth(new Date().getMonth())
+  }
+
   // 本月日曆格
+  const year = calYear
+  const month = calMonth
   const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth()
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const calCells = Array.from({ length: firstDay }, () => null)
@@ -72,7 +104,18 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
       </div>
 
       {/* 月曆 */}
-      <SectionCard title={`${year} 年 ${month + 1} 月`}>
+      <SectionCard title={
+        <div className="flex items-center justify-between w-full">
+          <button onClick={prevMonth} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">&#8249;</button>
+          <div className="flex items-center gap-2">
+            <span>{year} 年 {month + 1} 月</span>
+            {(year !== new Date().getFullYear() || month !== new Date().getMonth()) && (
+              <button onClick={goToday} className="text-xs text-orange-500 hover:text-orange-600 font-medium px-2 py-0.5 rounded-lg border border-orange-200 hover:bg-orange-50 transition-colors">回本月</button>
+            )}
+          </div>
+          <button onClick={nextMonth} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">&#8250;</button>
+        </div>
+      }>
         <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-gray-400 mb-2">
           {['日','一','二','三','四','五','六'].map(d => <div key={d}>{d}</div>)}
         </div>
@@ -152,6 +195,22 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
             <FormRow label="攤位費用（元）">
               <input type="number" min="0" className={inputCls} placeholder="0" value={form.boothFee}
                 onChange={e => setForm(p => ({ ...p, boothFee: e.target.value }))} />
+            </FormRow>
+            <FormRow label="市集場地（選填）">
+              <select className={inputCls} value={form.supplierId}
+                onChange={e => setForm(p => ({ ...p, supplierId: e.target.value, newSupplierName: '' }))}>
+                <option value="">— 不指定 —</option>
+                {marketSuppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+                <option value="__new__">＋ 新增寄賣點</option>
+              </select>
+              {form.supplierId === '__new__' && (
+                <input autoFocus type="text" className={inputCls + ' mt-2'}
+                  placeholder="輸入寄賣點名稱"
+                  value={form.newSupplierName}
+                  onChange={e => setForm(p => ({ ...p, newSupplierName: e.target.value }))} />
+              )}
             </FormRow>
             {!editId && parseFloat(form.boothFee) > 0 && (
               <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
@@ -963,7 +1022,8 @@ const TABS = [
 export default function MarketDiary({ data }) {
   const { marketEvents, inventory, revenues, expenses,
           addMarketEvent, updateMarketEvent, deleteMarketEvent,
-          processMarketSale, addExpense, deleteMarketSale } = data
+          processMarketSale, addExpense, deleteMarketSale,
+          suppliers, addSupplier } = data
   const [tab, setTab] = useState('calendar')
 
   return (
@@ -997,6 +1057,8 @@ export default function MarketDiary({ data }) {
           updateMarketEvent={updateMarketEvent}
           deleteMarketEvent={deleteMarketEvent}
           addExpense={addExpense}
+          suppliers={suppliers}
+          addSupplier={addSupplier}
         />
       )}
       {tab === 'pos' && (

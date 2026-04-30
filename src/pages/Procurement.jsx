@@ -309,6 +309,7 @@ const emptyRow = () => ({
   _key: Math.random().toString(36).slice(2),
   barcode: '', itemName: '', currentQty: '', safetyQty: '', unit: '個', supplier: '',
   listPrice: '', salePrice: '', cost: '', unitPrice: '',
+  shelfDays: '', fridgeDays: '', frozenDays: '',
 })
 
 export default function Procurement({ data }) {
@@ -355,6 +356,9 @@ export default function Procurement({ data }) {
       salePrice:  parseFloat(row.salePrice)  || 0,
       cost:       parseFloat(row.cost)       || 0,
       unitPrice:  parseFloat(row.unitPrice)  || 0,
+      shelfDays:  row.shelfDays  !== '' ? parseInt(row.shelfDays)  : null,
+      fridgeDays: row.fridgeDays !== '' ? parseInt(row.fridgeDays) : null,
+      frozenDays: row.frozenDays !== '' ? parseInt(row.frozenDays) : null,
     })))
     if (addRecordExpense && addExpense) {
       const isABCat = addCategory === 'A用品' || addCategory === 'B食品'
@@ -783,12 +787,10 @@ export default function Procurement({ data }) {
                           className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
                           <Package size={12} /> 進貨
                         </button>
-                        {(item.category === 'A用品' || item.category === 'B食品') && (
-                          <button onClick={e => { e.stopPropagation(); openAdjust(item) }}
+                        <button onClick={e => { e.stopPropagation(); openAdjust(item) }}
                             className="bg-orange-50 hover:bg-orange-100 text-orange-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
                             盤點
                           </button>
-                        )}
                         {item.category === 'B食品' && (
                           <button onClick={e => { e.stopPropagation(); setEditTarget(item); setModal('expiry') }}
                             className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
@@ -942,6 +944,22 @@ export default function Procurement({ data }) {
                           }
                         }}
                       />
+                    </div>
+                  )}
+                  {/* 保存天數：僅 B食品顯示 */}
+                  {addCategory === 'B食品' && (
+                    <div className="pl-1">
+                      <div className="grid grid-cols-3 gap-1">
+                        <input type="number" min="0" placeholder="常溫(天)" className={inputCls + ' text-xs'}
+                          value={row.shelfDays}
+                          onChange={e => updateRow(row._key, 'shelfDays', e.target.value)} />
+                        <input type="number" min="0" placeholder="冷藏(天)" className={inputCls + ' text-xs'}
+                          value={row.fridgeDays}
+                          onChange={e => updateRow(row._key, 'fridgeDays', e.target.value)} />
+                        <input type="number" min="0" placeholder="冷凍(天)" className={inputCls + ' text-xs'}
+                          value={row.frozenDays}
+                          onChange={e => updateRow(row._key, 'frozenDays', e.target.value)} />
+                      </div>
                     </div>
                   )}
                 </div>

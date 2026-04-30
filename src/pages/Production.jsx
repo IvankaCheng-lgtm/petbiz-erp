@@ -9,6 +9,7 @@ import {
   Sparkles,
   Loader2,
   Search,
+  Copy,
 } from "lucide-react";
 import {
   SectionCard,
@@ -426,6 +427,40 @@ export default function Production({ data }) {
   }
 
   // ── 重置表單 ─────────────────────────────────────────────
+  // 載入舊批次到表單（方案 3：複製修改）
+  function loadBatchToForm(batches) {
+    // batches 為同一 batchGroupId 的所有規格，取第一筆的共用資料
+    const first = batches[0];
+    setDate(first.date);
+    setNote(first.note?.split(' - ')[0] || '');
+    setIngredients(
+      (first.usedIngredients ?? []).map(i => ({ itemId: i.itemId, qty: String(i.qty) }))
+    );
+    setOutputUnit(first.outputUnit || '克');
+    setTotalOutputQty(String(first.outputQty || ''));
+    setMachineWatt(first.machineWatt || 1100);
+    setHours(first.hours || 16);
+    setElecRatio(first.elecRatio ?? 100);
+    setPackaging(
+      (first.usedPackaging ?? []).map(i => ({ itemId: i.itemId, qty: String(i.qty), outputIdx: null }))
+    );
+    setOutputs(
+      batches.map(b => ({
+        targetItemId: b.targetItemId || '',
+        newItemName: '',
+        packSize: String(b.packSize || ''),
+        packQty: String(b.resultQty || ''),
+        batchNote: b.batchNote || '',
+        shelfExpiry: '',
+        fridgeExpiry: '',
+        frozenExpiry: '',
+      }))
+    );
+    setOverwriteCost(false);
+    setStep(0);
+    setShowForm(true);
+  }
+
   function resetForm() {
     setStep(0);
     setDate(today());
@@ -534,6 +569,8 @@ export default function Production({ data }) {
 
   const [detailBatch, setDetailBatch] = useState(null);
   const [prodSearch,  setProdSearch]  = useState('');
+  const [prodPage,    setProdPage]    = useState(1);
+  const PROD_PAGE_SIZE = 15;
 
   const sorted = useMemo(
     () => [...production].sort((a, b) => b.date.localeCompare(a.date)),
@@ -577,6 +614,9 @@ export default function Production({ data }) {
       return next;
     });
   }
+
+  const totalPages = Math.ceil(groupedProd.length / PROD_PAGE_SIZE);
+  const pagedGroups = groupedProd.slice((prodPage - 1) * PROD_PAGE_SIZE, prodPage * PROD_PAGE_SIZE);
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -677,7 +717,7 @@ export default function Production({ data }) {
                           <input
                             type="number"
                             min="0"
-                            step="0.1"
+                            step="0.01"
                             placeholder="用量"
                             className={
                               inputCls + (isOver ? " border-red-300" : "")
@@ -699,7 +739,7 @@ export default function Production({ data }) {
                         <div
                           className={`text-sm font-semibold text-right ${isOver ? "text-red-500" : "text-emerald-600"}`}
                         >
-                          {rowCost > 0 ? fmt(rowCost) : "—"}
+                          {rowCost > 0 ? fmtPrice(rowCost) : "—"}
                         </div>
                         <button
                           onClick={() => removeIngredientRow(idx)}
@@ -724,7 +764,7 @@ export default function Production({ data }) {
                   <div className="bg-gray-50 rounded-xl px-4 py-3 flex justify-between items-center">
                     <span className="text-sm text-gray-500">食材總成本</span>
                     <span className="text-lg font-bold text-gray-800">
-                      {fmt(ingredientCost)}
+                      {fmtPrice(ingredientCost)}
                     </span>
                   </div>
                 )}
@@ -1123,7 +1163,7 @@ export default function Production({ data }) {
                           <div className={`text-sm font-semibold text-right ${
                             isOver ? "text-red-500" : "text-emerald-600"
                           }`}>
-                            {rowCost > 0 ? fmt(rowCost) : "—"}
+                            {rowCost > 0 ? fmtPrice(rowCost) : "—"}
                           </div>
                           <button onClick={() => removePackagingRow(idx)}
                             className="text-gray-300 hover:text-red-400 transition-colors">
@@ -1169,7 +1209,7 @@ export default function Production({ data }) {
                   <div className="bg-gray-50 rounded-xl px-4 py-3 flex justify-between items-center">
                     <span className="text-sm text-gray-500">包材總成本</span>
                     <span className="text-lg font-bold text-gray-800">
-                      {fmt(packagingCost)}
+                      {fmtPrice(packagingCost)}
                     </span>
                   </div>
                 )}
@@ -1419,7 +1459,7 @@ export default function Production({ data }) {
             <input
               type="text"
               value={prodSearch}
-              onChange={e => setProdSearch(e.target.value)}
+              onChange={e => { setProdSearch(e.target.value); setProdPage(1); }}
               placeholder="搜尋日期、備註、食材名稱…"
               className={inputCls + ' pl-8 text-sm'}
             />
@@ -1444,7 +1484,7 @@ export default function Production({ data }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {groupedProd.map(({ key, items: groupItems }) => {
+              {pagedGroups.map(({ key, items: groupItems }) => {
                 const first = groupItems[0];
                 const isMulti = groupItems.length > 1;
                 const expanded = expandedGroups.has(key);
@@ -1487,10 +1527,17 @@ export default function Production({ data }) {
                         {isMulti ? '—' : (first.costPerPack != null ? `$${first.costPerPack.toFixed(1)}` : '—')}
                       </td>
                       <td className="py-3 text-center">
-                        <button onClick={e => { e.stopPropagation(); deleteProductionGroup(groupItems); }}
-                          className={btnDanger}>
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={e => { e.stopPropagation(); loadBatchToForm(groupItems); }}
+                            className="bg-blue-50 hover:bg-blue-100 text-blue-500 p-1.5 rounded-lg transition-colors"
+                            title="複製此批次到新增表單">
+                            <Copy size={14} />
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); deleteProductionGroup(groupItems); }}
+                            className={btnDanger}>
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {/* 展開的規格子列 */}
@@ -1516,10 +1563,17 @@ export default function Production({ data }) {
                           {p.costPerPack != null ? `$${p.costPerPack.toFixed(1)}` : '—'}
                         </td>
                         <td className="py-2 text-center">
-                          <button onClick={e => { e.stopPropagation(); deleteProduction(p.id); }}
-                            className={btnDanger}>
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={e => { e.stopPropagation(); loadBatchToForm([p]); }}
+                              className="bg-blue-50 hover:bg-blue-100 text-blue-500 p-1.5 rounded-lg transition-colors"
+                              title="複製此規格到新增表單">
+                              <Copy size={14} />
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); deleteProduction(p.id); }}
+                              className={btnDanger}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1534,6 +1588,31 @@ export default function Production({ data }) {
             </tbody>
           </table>
         </div>
+
+        {/* 分頁控制 */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+            <span className="text-xs text-gray-400">共 {groupedProd.length} 筆，第 {prodPage} / {totalPages} 頁</span>
+            <div className="flex gap-1">
+              <button onClick={() => setProdPage(p => Math.max(1, p - 1))} disabled={prodPage === 1}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                上一頁
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button key={p} onClick={() => setProdPage(p)}
+                  className={`w-8 h-8 text-xs rounded-lg border transition-colors ${
+                    p === prodPage ? 'bg-orange-500 text-white border-orange-500' : 'border-gray-200 hover:bg-gray-50'
+                  }`}>
+                  {p}
+                </button>
+              ))}
+              <button onClick={() => setProdPage(p => Math.min(totalPages, p + 1))} disabled={prodPage === totalPages}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                下一頁
+              </button>
+            </div>
+          </div>
+        )}
       </SectionCard>
 
       {/* ── 批次詳細 Modal ── */}
