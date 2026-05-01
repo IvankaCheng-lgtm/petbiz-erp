@@ -336,7 +336,7 @@ export default function Production({ data }) {
       // 包材：直接指定 + 共用按比例
       const pkgCost = packagingCostByOutput.direct[oi] + packagingCostByOutput.shared * ratio;
       const cost = ingElecCost + pkgCost;
-      const costPerPack = pq > 0 ? Math.round((cost / pq) * 100) / 100 : 0;
+      const costPerPack = pq > 0 ? Math.round((cost / pq) * 10000) / 10000 : 0;
       return { ...row, cost, costPerPack, weight, ratio, pkgCost };
     });
   }, [outputs, totalOutputWeight, ingredientCost, electricCost, packagingCostByOutput]);
@@ -547,10 +547,10 @@ export default function Production({ data }) {
         resultQty: parseFloat(output.packQty),
         targetItemId: output.resolvedId,
         targetItemName: itemName,
-        ingredientCost: Math.round(ingredientCost * output.ratio * 100) / 100,
-        electricCost: Math.round(electricCost * output.ratio * 100) / 100,
-        packagingCost: Math.round(packagingCost * output.ratio * 100) / 100,
-        totalCost: Math.round(output.cost * 100) / 100,
+        ingredientCost: Math.round(ingredientCost * output.ratio * 10000) / 10000,
+        electricCost: Math.round(electricCost * output.ratio * 10000) / 10000,
+        packagingCost: Math.round(packagingCost * output.ratio * 10000) / 10000,
+        totalCost: Math.round(output.cost * 10000) / 10000,
         costPerPack: output.costPerPack,
         overwriteCost,
         expiryBatch: (output.shelfExpiry || output.fridgeExpiry || output.frozenExpiry) ? {
@@ -1362,6 +1362,22 @@ export default function Production({ data }) {
                     className="accent-purple-500 w-4 h-4" />
                   <span className="text-sm text-gray-700">以本批單包成本覆寫入庫存表「成本」欄</span>
                 </label>
+                {overwriteCost && outputsWithCost.some(o => o.targetItemId && o.targetItemId !== '__new__') && (
+                  <div className="space-y-1 pl-6">
+                    {outputsWithCost
+                      .filter(o => o.targetItemId && o.targetItemId !== '__new__')
+                      .map((o, idx) => {
+                        const existing = bItems.find(i => i.id === o.targetItemId)?.cost
+                        const label = bItems.find(i => i.id === o.targetItemId)?.itemName || `規格 ${idx + 1}`
+                        return existing != null ? (
+                          <div key={idx} className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5">
+                            「{label}」：${existing} → ${o.costPerPack}
+                          </div>
+                        ) : null
+                      })
+                    }
+                  </div>
+                )}
 
                 {/* 平攤公式說明 */}
                 <div className="bg-blue-50 rounded-xl px-4 py-2.5 text-xs text-blue-600">
