@@ -596,11 +596,10 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSale }) {
   const [selectedEventId, setSelectedEventId] = useState(marketEvents[0]?.id ?? '')
 
-  // marketEvents 更新時，若目前選擇無效則自動選第一筆
-  const validId = marketEvents.find(e => e.id === effectiveEventId)
+  // marketEvents 更新時，若目前選擇無效則自動 fallback 到第一筆
+  const effectiveEventId = marketEvents.find(e => e.id === selectedEventId)
     ? selectedEventId
     : (marketEvents[0]?.id ?? '')
-  const effectiveEventId = validId
 
   const selectedEvent = useMemo(
     () => marketEvents.find(e => e.id === effectiveEventId),
