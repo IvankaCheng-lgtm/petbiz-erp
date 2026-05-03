@@ -369,12 +369,16 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
     if (cart.length === 0 || !selectedEventId) return
     const saleItems = cart.filter(c => !c.isGift)
     const giftItems = cart.filter(c => c.isGift)
-    await processMarketSale({ items: saleItems, giftItems, paymentMethod, totalAmount, eventId: selectedEventId })
-    setDone(true)
-    setCart([])
-    setDiscountPct('')
-    setDiscountAmt('')
-    setTimeout(() => setDone(false), 2500)
+    try {
+      await processMarketSale({ items: saleItems, giftItems, paymentMethod, totalAmount, eventId: selectedEventId })
+      setDone(true)
+      setCart([])
+      setDiscountPct('')
+      setDiscountAmt('')
+      setTimeout(() => setDone(false), 2500)
+    } catch (err) {
+      alert('交易失敗：' + (err?.message || '未知錯誤'))
+    }
   }
 
   return (

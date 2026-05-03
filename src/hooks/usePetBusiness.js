@@ -713,8 +713,8 @@ export default function usePetBusiness() {
     const today = new Date().toISOString().slice(0, 10);
     const allItems = [...items, ...giftItems];
     const catMap = { "A用品": "用品", "B食品": "食品" };
-    const allForCat = items.length > 0 ? items : giftItems;
-    const cats = [...new Set(allForCat.map(i => catMap[i.category] ?? "食品"))];
+    const allForCat = (items.length > 0 ? items : giftItems).filter(Boolean);
+    const cats = [...new Set(allForCat.map(i => catMap[i?.category] ?? "食品"))];
     const category = cats.length === 1 ? cats[0] : "食品";
     const revenueItem = {
       id: uid(), date: today, channel: "市集", category,
@@ -747,7 +747,7 @@ export default function usePetBusiness() {
     const giftCost = giftItems.reduce((s, it) => s + (it.cost || 0) * it.qty, 0);
     const giftExpense = giftCost > 0 ? {
       id: uid(), date: today, type: '行銷',
-      note: `市集贈品成本：${giftItems.map(i => i.itemName).join('、')}`,
+      note: `市集贈品成本：${giftItems.map(i => i?.itemName || '').join('、')}`,
       amount: giftCost, isProductionCost: false, isReported: false,
     } : null;
     setRevenues(prev => [...prev, revenueItem]);
