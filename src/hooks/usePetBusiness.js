@@ -719,8 +719,8 @@ export default function usePetBusiness() {
     const revenueItem = {
       id: uid(), date: today, channel: "市集", category,
       amount: totalAmount, isReported: false, paymentMethod, eventId,
-      items,
-      giftItems: giftItems.length > 0 ? giftItems : undefined,
+      items: items.map(({ itemId, itemName, category, qty, unitPrice }) => ({ itemId, itemName, category, qty, unitPrice })),
+      giftItems: giftItems.map(({ itemId, itemName, category, qty, unitPrice, cost }) => ({ itemId, itemName, category, qty, unitPrice, cost: cost || 0 })),
     };
     const applyInv = (list) => {
       let next = [...list];
