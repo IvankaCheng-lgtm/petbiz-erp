@@ -713,7 +713,8 @@ export default function usePetBusiness() {
     const today = new Date().toISOString().slice(0, 10);
     const allItems = [...items, ...giftItems];
     const catMap = { "A用品": "用品", "B食品": "食品" };
-    const cats = [...new Set(items.map(i => catMap[i.category] ?? "食品"))];
+    const allForCat = items.length > 0 ? items : giftItems;
+    const cats = [...new Set(allForCat.map(i => catMap[i.category] ?? "食品"))];
     const category = cats.length === 1 ? cats[0] : "食品";
     const revenueItem = {
       id: uid(), date: today, channel: "市集", category,

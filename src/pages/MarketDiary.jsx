@@ -596,18 +596,24 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSale }) {
   const [selectedEventId, setSelectedEventId] = useState(marketEvents[0]?.id ?? '')
 
+  // marketEvents 更新時，若目前選擇無效則自動選第一筆
+  const validId = marketEvents.find(e => e.id === effectiveEventId)
+    ? selectedEventId
+    : (marketEvents[0]?.id ?? '')
+  const effectiveEventId = validId
+
   const selectedEvent = useMemo(
-    () => marketEvents.find(e => e.id === selectedEventId),
-    [marketEvents, selectedEventId]
+    () => marketEvents.find(e => e.id === effectiveEventId),
+    [marketEvents, effectiveEventId]
   )
 
   const eventRevenues = useMemo(() => {
     if (!selectedEvent) return []
     return revenues.filter(r =>
-      r.eventId === selectedEventId ||
+      r.eventId === effectiveEventId ||
       (r.channel === '市集' && r.date >= selectedEvent.startDate && r.date <= selectedEvent.endDate)
     )
-  }, [revenues, selectedEvent, selectedEventId])
+  }, [revenues, selectedEvent, effectiveEventId])
 
   const totalRev   = eventRevenues.reduce((s, r) => s + r.amount, 0)
   const boothFee   = selectedEvent?.boothFee ?? 0
@@ -641,7 +647,7 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
           ? <p className="text-sm text-gray-400">尚無市集活動</p>
           : (
             <select className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200`}
-              value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)}>
+              value={effectiveEventId} onChange={e => setSelectedEventId(e.target.value)}>
               {marketEvents.map(ev => (
                 <option key={ev.id} value={ev.id}>{ev.name} · {ev.startDate}</option>
               ))}
