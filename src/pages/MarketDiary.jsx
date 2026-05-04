@@ -814,6 +814,9 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
                                 {r.paymentMethod}
                               </span>
                             )}
+                            {r.isPending && (
+                              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-600">待入帳</span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-gray-800">{fmt(r.amount)}</span>
@@ -933,7 +936,7 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
 
   // 長條圖資料：各場次營收 vs 攤位費
   const barData = useMemo(() =>
-    stats.map(e => ({ name: e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name, 營收: e.totalRev, 攞位費: e.boothFee, 純利: e.netProfit, 淨利: e.trueProfit }))
+    stats.map(e => ({ name: e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name, '營收': e.totalRev, '攤位費': e.boothFee, '純利': e.netProfit, '淨利': e.trueProfit }))
   , [stats])
 
   async function handleAI() {

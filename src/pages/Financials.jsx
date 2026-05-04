@@ -355,7 +355,7 @@ export default function Financials({ data }) {
   const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '', supplierId: null, customSupplierName: '' })
   const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
 
-  const sortedRevenues = useMemo(() => [...revenues].sort((a, b) => b.date.localeCompare(a.date)), [revenues])
+  const sortedRevenues = useMemo(() => [...revenues].filter(r => !r.isPending).sort((a, b) => b.date.localeCompare(a.date)), [revenues])
   const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.date.localeCompare(a.date)), [expenses])
 
   const baseList = tab === '營收' ? sortedRevenues : sortedExpenses

@@ -147,7 +147,7 @@ export default function usePetBusiness() {
 
   // ── KPI ──────────────────────────────────────────────────────
   const kpi = useMemo(() => {
-    const totalRevenue = revenues.reduce((s, r) => s + r.amount, 0);
+    const totalRevenue = revenues.filter(r => !r.isPending).reduce((s, r) => s + r.amount, 0);
     const totalExpense = expenses.reduce((s, e) => s + e.amount, 0);
     const netProfit    = totalRevenue - totalExpense;
     const profitRate   = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
@@ -750,11 +750,15 @@ export default function usePetBusiness() {
       note: `市集贈品成本：${giftItems.map(i => i?.itemName || '').join('、')}`,
       amount: giftCost, isProductionCost: false, isReported: false,
     } : null;
-    setRevenues(prev => [...prev, revenueItem]);
+    // LINE Pay 加 isPending:true，不計入收支管理，但結算統計可見
+    const finalRevenue = paymentMethod === 'LINE Pay'
+      ? { ...revenueItem, isPending: true }
+      : revenueItem;
+    setRevenues(prev => [...prev, finalRevenue]);
     setInventory(applyInv);
     setInventoryLogs(prev => [...prev, ...logs]);
     if (giftExpense) setExpenses(prev => [...prev, giftExpense]);
-    await cloudUpdate("revenues",      list => [...list, revenueItem]);
+    await cloudUpdate("revenues",      list => [...list, finalRevenue]);
     await cloudUpdate("inventory",     applyInv);
     await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
     if (giftExpense) await cloudUpdate("expenses", list => [...list, giftExpense]);
