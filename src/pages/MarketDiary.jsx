@@ -874,9 +874,29 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
   const [aiText,    setAiText]    = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState('')
+  const [rangeMode,    setRangeMode]    = useState('3m')
+  const [customStart,  setCustomStart]  = useState('')
+  const [customEnd,    setCustomEnd]    = useState('')
+
+  const filteredEvents = useMemo(() => {
+    const todayStr = today()
+    if (rangeMode === 'all') return marketEvents
+    if (rangeMode === 'custom') {
+      if (!customStart && !customEnd) return marketEvents
+      return marketEvents.filter(ev =>
+        (!customStart || ev.endDate >= customStart) &&
+        (!customEnd   || ev.startDate <= customEnd)
+      )
+    }
+    const months = rangeMode === '3m' ? 3 : 6
+    const cutoff = new Date()
+    cutoff.setMonth(cutoff.getMonth() - months)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    return marketEvents.filter(ev => ev.endDate >= cutoffStr && ev.startDate <= todayStr)
+  }, [marketEvents, rangeMode, customStart, customEnd])
 
   const stats = useMemo(() => {
-    return marketEvents.map(ev => {
+    return filteredEvents.map(ev => {
       const evRevs = revenues.filter(r =>
         r.eventId === ev.id ||
         (r.channel === '市集' && r.date >= ev.startDate && r.date <= ev.endDate)
@@ -901,7 +921,7 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
       const ev = marketEvents.find(e => e.id === s.id)
       return ev && ev.startDate <= today() && (s.totalRev > 0 || s.boothFee > 0)
     })
-  }, [marketEvents, revenues, inventory])
+  }, [filteredEvents, revenues, inventory])
 
   // 圓餅圖資料：各市集累計營收佔比
   const pieData = useMemo(() => {
@@ -956,7 +976,26 @@ ${context}
     <div className="space-y-5">
       <h2 className="font-bold text-gray-800">數據分析</h2>
 
-      {/* ROI 表格 */}
+      {/* 區間筛選 */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        {[['3m','近3個月'],['6m','近6個月'],['all','全部'],['custom','自訂']].map(([val, label]) => (
+          <button key={val} onClick={() => setRangeMode(val)}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+              rangeMode === val ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
+            }`}>
+            {label}
+          </button>
+        ))}
+        {rangeMode === 'custom' && (
+          <>
+            <input type="date" className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+              value={customStart} onChange={e => setCustomStart(e.target.value)} />
+            <span className="text-gray-400 text-xs">～</span>
+            <input type="date" className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+              value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+          </>
+        )}
+      </div>
       <SectionCard title="各市集績效概覽">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[520px]">
