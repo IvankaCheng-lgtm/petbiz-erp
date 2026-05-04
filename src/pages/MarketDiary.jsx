@@ -601,9 +601,30 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
   const [selectedEventId, setSelectedEventId] = useState(marketEvents[0]?.id ?? '')
 
   // marketEvents 更新時，若目前選擇無效則自動 fallback 到第一筆
-  const effectiveEventId = marketEvents.find(e => e.id === selectedEventId)
+  const [rangeMode, setRangeMode] = useState('3m') // '3m' | '6m' | 'all' | 'custom'
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd,   setCustomEnd]   = useState('')
+
+  const filteredEvents = useMemo(() => {
+    const todayStr = today()
+    if (rangeMode === 'all') return marketEvents
+    if (rangeMode === 'custom') {
+      if (!customStart && !customEnd) return marketEvents
+      return marketEvents.filter(ev =>
+        (!customStart || ev.endDate >= customStart) &&
+        (!customEnd   || ev.startDate <= customEnd)
+      )
+    }
+    const months = rangeMode === '3m' ? 3 : 6
+    const cutoff = new Date()
+    cutoff.setMonth(cutoff.getMonth() - months)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    return marketEvents.filter(ev => ev.endDate >= cutoffStr && ev.startDate <= todayStr)
+  }, [marketEvents, rangeMode, customStart, customEnd])
+
+  const effectiveEventId = filteredEvents.find(e => e.id === selectedEventId)
     ? selectedEventId
-    : (marketEvents[0]?.id ?? '')
+    : (filteredEvents[0]?.id ?? marketEvents[0]?.id ?? '')
 
   const selectedEvent = useMemo(
     () => marketEvents.find(e => e.id === effectiveEventId),
@@ -646,12 +667,32 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
 
       {/* 選擇市集 */}
       <SectionCard title="選擇市集活動">
-        {marketEvents.length === 0
-          ? <p className="text-sm text-gray-400">尚無市集活動</p>
+        {/* 篩選模式 */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {[['3m','近3個月'],['6m','近6個月'],['all','全部'],['custom','自訂']].map(([val, label]) => (
+            <button key={val} onClick={() => setRangeMode(val)}
+              className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                rangeMode === val ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {rangeMode === 'custom' && (
+          <div className="flex gap-2 mb-3 items-center">
+            <input type="date" className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+              value={customStart} onChange={e => setCustomStart(e.target.value)} />
+            <span className="text-gray-400 text-xs">～</span>
+            <input type="date" className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+              value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+          </div>
+        )}
+        {filteredEvents.length === 0
+          ? <p className="text-sm text-gray-400">此區間無市集活動</p>
           : (
             <select className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200`}
               value={effectiveEventId} onChange={e => setSelectedEventId(e.target.value)}>
-              {marketEvents.map(ev => (
+              {filteredEvents.map(ev => (
                 <option key={ev.id} value={ev.id}>{ev.name} · {ev.startDate}</option>
               ))}
             </select>
@@ -855,7 +896,11 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
       const avgDaily  = totalRev / days
       const roi       = boothFee > 0 ? ((netProfit / boothFee) * 100) : null
       return { id: ev.id, name: ev.name, totalRev, boothFee, netProfit, goodsCost, trueProfit, avgDaily, roi, days }
-    }).filter(s => s.totalRev > 0 || s.boothFee > 0)
+    }).filter(s => {
+      // 只分析已開始的市集（startDate ≤ 今天）
+      const ev = marketEvents.find(e => e.id === s.id)
+      return ev && ev.startDate <= today() && (s.totalRev > 0 || s.boothFee > 0)
+    })
   }, [marketEvents, revenues, inventory])
 
   // 圓餅圖資料：各市集累計營收佔比
