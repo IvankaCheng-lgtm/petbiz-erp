@@ -28,6 +28,16 @@ export default function Dashboard({ data }) {
   const [aiError, setAiError] = useState('')
 
   const reminders = useMemo(() => getAccountingReminders(), [])
+  const [doneReminders, setDoneReminders] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('petbiz_done_reminders') || '[]') } catch { return [] }
+  })
+  function toggleReminder(id) {
+    setDoneReminders(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      localStorage.setItem('petbiz_done_reminders', JSON.stringify(next))
+      return next
+    })
+  }
   const unreportedRev = useMemo(() => revenues.filter(r => !r.isReported).length, [revenues])
   const unreportedExp = useMemo(() => expenses.filter(e => !e.isReported).length, [expenses])
   const totalUnreported = unreportedRev + unreportedExp
@@ -199,18 +209,25 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
             <div className="space-y-2 mb-4">
               {reminders.map(r => {
                 const s = REMINDER_STYLE[r.color]
+                const done = doneReminders.includes(r.id)
                 return (
-                  <div key={r.id} className={`${s.bg} border ${s.border} rounded-xl px-4 py-3 flex items-start gap-3`}>
+                  <div key={r.id} className={`${done ? 'bg-gray-50 border-gray-200 opacity-60' : `${s.bg} border ${s.border}`} border rounded-xl px-4 py-3 flex items-start gap-3 transition-all`}>
                     <span className="text-xl shrink-0 mt-0.5">{r.icon}</span>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-sm font-semibold ${s.title}`}>{r.title}</span>
-                        {r.urgent && (
+                        <span className={`text-sm font-semibold ${done ? 'text-gray-400 line-through' : s.title}`}>{r.title}</span>
+                        {r.urgent && !done && (
                           <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.badge}`}>緊急</span>
                         )}
                       </div>
                       <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{r.desc}</p>
                     </div>
+                    <button onClick={() => toggleReminder(r.id)}
+                      className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                        done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 hover:border-emerald-400'
+                      }`}>
+                      {done && <span className="text-xs font-bold">✓</span>}
+                    </button>
                   </div>
                 )
               })}

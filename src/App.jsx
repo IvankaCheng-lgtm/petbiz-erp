@@ -54,6 +54,10 @@ export default function App() {
   const auth      = useAuth()
   const { currentUser, logout } = auth
   const reminders = useMemo(() => getAccountingReminders(), [])
+  const doneReminders = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('petbiz_done_reminders') || '[]') } catch { return [] }
+  }, [])
+  const pendingReminders = reminders.filter(r => !doneReminders.includes(r.id))
 
   const unreportedTotal = useMemo(
     () => bizData.revenues.filter(r => !r.isReported).length
@@ -111,7 +115,7 @@ export default function App() {
       </div>
 
       {/* 警示徽章區 */}
-      {expanded && (bizData.inventoryAlerts.length > 0 || reminders.length > 0 || unreportedTotal > 0) && (
+      {expanded && (bizData.inventoryAlerts.length > 0 || pendingReminders.length > 0 || unreportedTotal > 0) && (
         <div className="mx-3 mt-3 space-y-1.5">
           {bizData.inventoryAlerts.length > 0 && (
             <div className="bg-red-500/20 border border-red-500/30 rounded-lg px-3 py-1.5 text-xs text-red-300 flex items-center gap-1.5">
@@ -119,10 +123,10 @@ export default function App() {
               <span>{bizData.inventoryAlerts.length} 項庫存警示</span>
             </div>
           )}
-          {reminders.length > 0 && (
+          {pendingReminders.length > 0 && (
             <div className="bg-orange-500/20 border border-orange-500/30 rounded-lg px-3 py-1.5 text-xs text-orange-300 flex items-center gap-1.5">
               <span>🧾</span>
-              <span>{reminders.length} 項會計待辦</span>
+              <span>{pendingReminders.length} 項會計待辦</span>
             </div>
           )}
           {unreportedTotal > 0 && (
@@ -222,7 +226,7 @@ export default function App() {
             {bizData.inventoryAlerts.length > 0 && (
               <span className="w-2 h-2 rounded-full bg-red-500" title="庫存警示" />
             )}
-            {reminders.length > 0 && (
+            {pendingReminders.length > 0 && (
               <span className="w-2 h-2 rounded-full bg-orange-400" title="會計待辦" />
             )}
             {unreportedTotal > 0 && (
