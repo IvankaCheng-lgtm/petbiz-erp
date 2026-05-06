@@ -243,6 +243,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   const [scanMsg,     setScanMsg]     = useState('')   // 成功/查無訊息
   const [barcodeInput, setBarcodeInput] = useState('')
   const [itemSearch,   setItemSearch]   = useState('')
+  const [itemCat,      setItemCat]      = useState('all') // 'all' | 'B食品' | 'A用品'
   const scannerRef   = useRef(null)
   const barcodeRef   = useRef(null)
   const inventoryRef = useRef(inventory)
@@ -310,9 +311,10 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
   )
   const filteredSaleItems = useMemo(() => {
     const q = itemSearch.trim().toLowerCase()
-    if (!q) return saleItems
-    return saleItems.filter(i => i.itemName?.toLowerCase().includes(q) || i.barcode?.includes(q))
-  }, [saleItems, itemSearch])
+    const byCat = itemCat === 'all' ? saleItems : saleItems.filter(i => i.category === itemCat)
+    if (!q) return byCat
+    return byCat.filter(i => i.itemName?.toLowerCase().includes(q) || i.barcode?.includes(q))
+  }, [saleItems, itemSearch, itemCat])
   const subtotal = useMemo(
     () => cart.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice, 0),
     [cart]
@@ -470,6 +472,16 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
                 <X size={14} />
               </button>
             )}
+          </div>
+          <div className="flex gap-1 mb-2">
+            {[['all','全部'],['B食品','食品'],['A用品','用品']].map(([val, label]) => (
+              <button key={val} onClick={() => setItemCat(val)}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                  itemCat === val ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-500 border-gray-200 hover:border-orange-300'
+                }`}>
+                {label}
+              </button>
+            ))}
           </div>
           <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
             {filteredSaleItems.map(item => (

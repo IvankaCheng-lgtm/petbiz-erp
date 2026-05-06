@@ -45,6 +45,7 @@ export default function SalesOrder({ data }) {
   const [scanMsg, setScanMsg] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
   const [itemSearch, setItemSearch] = useState("");
+  const [itemCat,    setItemCat]    = useState('all');
   const [done, setDone] = useState(false);
 
   // 寄賣點廠商清單
@@ -325,9 +326,23 @@ export default function SalesOrder({ data }) {
       <SectionCard title="選擇商品">
         <input type="text" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)}
           placeholder="搜尋商品名稱…"
-          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-300" />
-        <div className="space-y-1 max-h-60 overflow-y-auto">
-          {saleItems.filter((i) => !itemSearch || i.itemName?.includes(itemSearch)).map((item) => (
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-300" />
+        <div className="flex gap-1 mb-2">
+            {[['all','全部'],['B食品','食品'],['A用品','用品']].map(([val, label]) => (
+              <button key={val} onClick={() => setItemCat(val)}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                  itemCat === val ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-1 max-h-60 overflow-y-auto">
+          {saleItems.filter((i) => {
+              const matchCat = itemCat === 'all' || i.category === itemCat
+              const matchQ = !itemSearch || i.itemName?.includes(itemSearch)
+              return matchCat && matchQ
+            }).map((item) => (
             <button key={item.id} type="button" onClick={() => addToCart(item)}
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-blue-50 transition-colors text-sm text-left">
               <span className="text-gray-700 flex-1">{item.itemName}</span>
