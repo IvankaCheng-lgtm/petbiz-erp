@@ -137,7 +137,7 @@ export default function App() {
           {unreportedTotal > 0 && (
             <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg px-3 py-1.5 text-xs text-yellow-300 flex items-center gap-1.5">
               <span>📋</span>
-              <span>{unreportedTotal} \u7b46\u672a\u8655\u7406</span>
+              <span>{unreportedTotal} 筆未處理</span>
             </div>
           )}
         </div>
@@ -146,7 +146,7 @@ export default function App() {
       {/* Nav */}
       <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto">
         {NAV_ITEMS.map(({ key, label, icon }) => {
-          // \u6536\u652f\u7ba1\u7406\u986f\u793a\u672a\u8655\u7406\u6578\u91cf
+          // 收支管理顯示未處理數量
           const badge = key === 'financials' && unreportedTotal > 0 ? unreportedTotal : null
           return (
             <button key={key} onClick={() => navigate(key)}
