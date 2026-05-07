@@ -241,7 +241,7 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
             </div>
           )}
 
-          {/* \u672a\u8655\u7406\u7d71\u8a08 */}}
+          {/* 未處理統計 */}
           {totalUnreported > 0 && (
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-orange-50 rounded-xl px-4 py-3 text-center">
