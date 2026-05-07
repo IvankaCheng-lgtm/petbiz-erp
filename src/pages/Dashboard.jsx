@@ -246,11 +246,11 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-orange-50 rounded-xl px-4 py-3 text-center">
                 <p className="text-2xl font-black text-orange-500">{unreportedRev}</p>
-                <p className="text-xs text-gray-500 mt-0.5">\u672a\u8655\u7406\u71df\u6536\u7b46\u6578</p>
+                <p className="text-xs text-gray-500 mt-0.5">未處理營收筆數</p>
               </div>
               <div className="bg-blue-50 rounded-xl px-4 py-3 text-center">
                 <p className="text-2xl font-black text-blue-500">{unreportedExp}</p>
-                <p className="text-xs text-gray-500 mt-0.5">\u672a\u8655\u7406\u652f\u51fa\u7b46\u6578</p>
+                <p className="text-xs text-gray-500 mt-0.5">未處理支出筆數</p>
               </div>
             </div>
           )}
