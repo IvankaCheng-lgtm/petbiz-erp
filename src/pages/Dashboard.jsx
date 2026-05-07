@@ -206,7 +206,7 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
             <h2 className="font-bold text-gray-800">會計待辦</h2>
             {totalUnreported > 0 && (
               <span className="ml-auto bg-red-100 text-red-600 text-xs font-bold px-2.5 py-1 rounded-full">
-                {totalUnreported} \u7b46\u672a\u8655\u7406
+                {totalUnreported} 筆未處理
               </span>
             )}
           </div>
