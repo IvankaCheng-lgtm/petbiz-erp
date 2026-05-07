@@ -1,4 +1,4 @@
-import { useState, useMemo, Component } from 'react'
+﻿import { useState, useMemo, Component } from 'react'
 import { Menu, X, LogOut, ClipboardList } from 'lucide-react'
 import usePetBusiness from './hooks/usePetBusiness'
 import useAuth from './hooks/useAuth'
@@ -54,9 +54,14 @@ export default function App() {
   const auth      = useAuth()
   const { currentUser, logout } = auth
   const reminders = useMemo(() => getAccountingReminders(), [])
-  const doneReminders = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem('petbiz_done_reminders') || '[]') } catch { return [] }
-  }, [])
+  const [doneReminders, setDoneReminders] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('petbiz_done_reminders') || '{}')
+      const thisMonth = new Date().toISOString().slice(0, 7)
+      if (saved.month !== thisMonth) return []
+      return saved.ids ?? []
+    } catch { return [] }
+  })
   const pendingReminders = reminders.filter(r => !doneReminders.includes(r.id))
 
   const unreportedTotal = useMemo(
@@ -79,7 +84,7 @@ export default function App() {
   )
 
   const PAGE_MAP = {
-    dashboard:   <Dashboard   data={bizData} />,
+    dashboard:   <Dashboard   data={bizData} onDoneRemindersChange={ids => setDoneReminders(ids)} />,
     financials:  <Financials  data={bizData} />,
     procurement: <Procurement data={bizData} />,
     production:  <Production  data={bizData} />,
@@ -132,7 +137,7 @@ export default function App() {
           {unreportedTotal > 0 && (
             <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg px-3 py-1.5 text-xs text-yellow-300 flex items-center gap-1.5">
               <span>📋</span>
-              <span>{unreportedTotal} 筆未報稅</span>
+              <span>{unreportedTotal} \u7b46\u672a\u8655\u7406</span>
             </div>
           )}
         </div>
@@ -141,7 +146,7 @@ export default function App() {
       {/* Nav */}
       <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto">
         {NAV_ITEMS.map(({ key, label, icon }) => {
-          // 收支管理顯示未報稅數量
+          // \u6536\u652f\u7ba1\u7406\u986f\u793a\u672a\u8655\u7406\u6578\u91cf
           const badge = key === 'financials' && unreportedTotal > 0 ? unreportedTotal : null
           return (
             <button key={key} onClick={() => navigate(key)}

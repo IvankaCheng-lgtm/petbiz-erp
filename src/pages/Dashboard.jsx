@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
@@ -21,7 +21,7 @@ const REMINDER_STYLE = {
 }
 
 export default function Dashboard({ data }) {
-  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [] } = data
+  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [], onDoneRemindersChange } = data
   const [filter, setFilter] = useState('月')
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -29,12 +29,19 @@ export default function Dashboard({ data }) {
 
   const reminders = useMemo(() => getAccountingReminders(), [])
   const [doneReminders, setDoneReminders] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('petbiz_done_reminders') || '[]') } catch { return [] }
+    try {
+      const saved = JSON.parse(localStorage.getItem('petbiz_done_reminders') || '{}')
+      const thisMonth = new Date().toISOString().slice(0, 7)
+      if (saved.month !== thisMonth) return []
+      return saved.ids ?? []
+    } catch { return [] }
   })
   function toggleReminder(id) {
     setDoneReminders(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-      localStorage.setItem('petbiz_done_reminders', JSON.stringify(next))
+      const thisMonth = new Date().toISOString().slice(0, 7)
+      localStorage.setItem('petbiz_done_reminders', JSON.stringify({ month: thisMonth, ids: next }))
+      onDoneRemindersChange?.(next)
       return next
     })
   }
@@ -199,7 +206,7 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
             <h2 className="font-bold text-gray-800">會計待辦</h2>
             {totalUnreported > 0 && (
               <span className="ml-auto bg-red-100 text-red-600 text-xs font-bold px-2.5 py-1 rounded-full">
-                {totalUnreported} 筆未報稅
+                {totalUnreported} \u7b46\u672a\u8655\u7406
               </span>
             )}
           </div>
@@ -234,16 +241,16 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
             </div>
           )}
 
-          {/* 未報稅統計 */}
+          {/* \u672a\u8655\u7406\u7d71\u8a08 */}}
           {totalUnreported > 0 && (
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-orange-50 rounded-xl px-4 py-3 text-center">
                 <p className="text-2xl font-black text-orange-500">{unreportedRev}</p>
-                <p className="text-xs text-gray-500 mt-0.5">未報稅營收筆數</p>
+                <p className="text-xs text-gray-500 mt-0.5">\u672a\u8655\u7406\u71df\u6536\u7b46\u6578</p>
               </div>
               <div className="bg-blue-50 rounded-xl px-4 py-3 text-center">
                 <p className="text-2xl font-black text-blue-500">{unreportedExp}</p>
-                <p className="text-xs text-gray-500 mt-0.5">未報稅支出筆數</p>
+                <p className="text-xs text-gray-500 mt-0.5">\u672a\u8655\u7406\u652f\u51fa\u7b46\u6578</p>
               </div>
             </div>
           )}

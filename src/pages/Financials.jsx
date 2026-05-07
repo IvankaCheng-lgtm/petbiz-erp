@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+﻿import { useState, useMemo, useRef } from 'react'
 import { Plus, Trash2, CheckCircle, Circle, Filter, Sparkles, X, Download } from 'lucide-react'
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt, EXPENSE_TYPE_COLOR } from '../utils/format'
@@ -331,14 +331,14 @@ export default function Financials({ data }) {
       [],
       // 營收明細
       ['《營收明細》'],
-      ['日期', '通路', '類別', '金額', '報稅狀態'],
-      ...mRevs.map(r => [r.date, r.channel || '', r.category || '', r.amount, r.isReported ? '已報稅' : '未報稅']),
+      ['日期', '通路', '類別', '金額', '處理狀態'],
+      ...mRevs.map(r => [r.date, r.channel || '', r.category || '', r.amount, r.isReported ? '已處理' : '未處理']),
       ['營收小計', '', '', totalRev, ''],
       [],
       // 支出明細
       ['《支出明細》'],
-      ['日期', '類型', '備註', '金額', '報稅狀態'],
-      ...mExps.map(e => [e.date, e.type || '', e.note || '', e.amount, e.isReported ? '已報稅' : '未報稅']),
+      ['日期', '類型', '備註', '金額', '處理狀態'],
+      ...mExps.map(e => [e.date, e.type || '', e.note || '', e.amount, e.isReported ? '已處理' : '未處理']),
       ['支出小計', '', '', totalExp, ''],
       [],
       // 損益摘要
@@ -455,7 +455,7 @@ export default function Financials({ data }) {
               ? 'bg-orange-400 text-white border-orange-400'
               : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-500'}`}>
           <Filter size={14} />
-          僅顯示未報稅
+          僅顯示未處理
           {unreportedCount > 0 && (
             <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full
               ${onlyUnreported ? 'bg-white/30 text-white' : 'bg-red-100 text-red-600'}`}>
@@ -484,7 +484,7 @@ export default function Financials({ data }) {
                   </>
                 )}
                 <th className="pb-3 text-right">金額</th>
-                <th className="pb-3 text-center">已報稅</th>
+                <th className="pb-3 text-center">已處理</th>
                 <th className="pb-3 text-center">刪除</th>
               </tr>
             </thead>
@@ -509,7 +509,7 @@ export default function Financials({ data }) {
                     <button
                       onClick={() => tab === '營收' ? toggleRevenueReported(item.id) : toggleExpenseReported(item.id)}
                       className="text-gray-300 hover:text-emerald-500 transition-colors"
-                      title={item.isReported ? '已報稅，點擊取消' : '標記為已報稅'}>
+                      title={item.isReported ? '已處理，點擊取消' : '標記為已處理'}>
                       {item.isReported
                         ? <CheckCircle size={18} className="text-emerald-500" />
                         : <Circle size={18} />}
@@ -526,7 +526,7 @@ export default function Financials({ data }) {
               {paged.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-gray-400">
-                    {onlyUnreported ? '所有項目皆已報稅 ✅' : '尚無資料'}
+                    {onlyUnreported ? '所有項目皆已處理 ✅' : '尚無資料'}
                   </td>
                 </tr>
               )}
