@@ -200,6 +200,39 @@ export default function SalesOrder({ data }) {
     setTimeout(() => setDone(false), 3000);
   }
 
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
+  function startEdit(o) {
+    setEditingId(o.id);
+    setEditForm({
+      platform: o.platform ?? '',
+      note: o.note ?? '',
+      discountPct: o.discountType === 'pct' ? (o.discountValue ?? '') : '',
+      discountAmt: o.discountType === 'amt' ? (o.discountValue ?? '') : '',
+    });
+  }
+
+  function cancelEdit() { setEditingId(null); setEditForm({}); }
+
+  function saveEdit(o) {
+    const pct = parseFloat(editForm.discountPct);
+    const amt = parseFloat(editForm.discountAmt);
+    const subtotal = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice, 0);
+    let total = subtotal;
+    if (!isNaN(pct) && pct > 0) total = total * (1 - pct / 100);
+    else if (!isNaN(amt) && amt > 0) total = total - amt;
+    total = Math.max(0, Math.round(total * 100) / 100);
+    updateOrder(o.id, {
+      platform: editForm.platform,
+      note: editForm.note,
+      discountType: editForm.discountPct ? 'pct' : editForm.discountAmt ? 'amt' : null,
+      discountValue: editForm.discountPct ? pct : editForm.discountAmt ? amt : null,
+      total,
+    });
+    cancelEdit();
+  }
+
   const sortedOrders = useMemo(
     () => [...orders].sort((a, b) => b.orderDate?.localeCompare(a.orderDate)),
     [orders]
@@ -476,14 +509,46 @@ export default function SalesOrder({ data }) {
                 </div>
                 <div className="text-xs text-gray-400">{o.orderDate}</div>
                 {o.note && <div className="text-xs text-gray-500 italic">{o.note}</div>}
-                <div className="flex gap-2 pt-1">
-                  {updateOrder && (
-                    <button onClick={() => updateOrder(o.id, {})} className="text-xs text-blue-500 hover:underline">編輯</button>
-                  )}
-                  {deleteOrder && (
-                    <button onClick={() => deleteOrder(o.id)} className="text-xs text-red-400 hover:underline">刪除</button>
-                  )}
-                </div>
+                {editingId === o.id ? (
+                  <div className="pt-2 space-y-2">
+                    <input
+                      value={editForm.platform}
+                      onChange={e => setEditForm(f => ({ ...f, platform: e.target.value }))}
+                      placeholder="平台"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    <div className="flex gap-2">
+                      <input type="number" min="0" max="99"
+                        value={editForm.discountPct}
+                        onChange={e => setEditForm(f => ({ ...f, discountPct: e.target.value, discountAmt: '' }))}
+                        placeholder="折扣 %"
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                      <input type="number" min="0"
+                        value={editForm.discountAmt}
+                        onChange={e => setEditForm(f => ({ ...f, discountAmt: e.target.value, discountPct: '' }))}
+                        placeholder="折扣金額 $"
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    </div>
+                    <textarea
+                      value={editForm.note}
+                      onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))}
+                      placeholder="備註"
+                      rows={2}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
+                    <div className="flex gap-2">
+                      <button onClick={() => saveEdit(o)} className="text-xs bg-blue-500 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600">儲存</button>
+                      <button onClick={cancelEdit} className="text-xs text-gray-400 hover:underline">取消</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 pt-1">
+                    {updateOrder && (
+                      <button onClick={() => startEdit(o)} className="text-xs text-blue-500 hover:underline">編輯</button>
+                    )}
+                    {deleteOrder && (
+                      <button onClick={() => deleteOrder(o.id)} className="text-xs text-red-400 hover:underline">刪除</button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
