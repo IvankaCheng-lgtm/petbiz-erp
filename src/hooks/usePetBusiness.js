@@ -98,6 +98,7 @@ export default function usePetBusiness() {
   const [suppliers,     setSuppliers]     = useState(() => {
     try { return JSON.parse(localStorage.getItem('petbiz_suppliers') || '[]'); } catch { return []; }
   });
+  const [ingredientLibrary, setIngredientLibrary] = useState([]);
   const [loading,       setLoading]       = useState(true);
 
   const cloudUpdate = useCallback(async (field, updater) => {
@@ -125,6 +126,7 @@ export default function usePetBusiness() {
           setMarketEvents(d.marketEvents   ?? []);
           setOrders(d.orders               ?? []);
           setInventoryLogs(d.inventoryLogs ?? []);
+          setIngredientLibrary(d.ingredientLibrary ?? []);
           const cloudSuppliers = d.suppliers ?? [];
           setSuppliers(cloudSuppliers);
           try { localStorage.setItem('petbiz_suppliers', JSON.stringify(cloudSuppliers)); } catch {}
@@ -492,6 +494,23 @@ export default function usePetBusiness() {
     cloudUpdate("savedFormulas", list => list.filter(f => f.id !== id));
   }, [cloudUpdate]);
 
+  // ── 食材庫 ────────────────────────────────────────────────────
+  const addIngredient = useCallback((data) => {
+    const item = { id: uid(), ...data };
+    setIngredientLibrary(prev => [...prev, item]);
+    cloudUpdate('ingredientLibrary', list => [...list, item]);
+  }, [cloudUpdate]);
+
+  const updateIngredient = useCallback((id, data) => {
+    setIngredientLibrary(prev => prev.map(i => i.id === id ? { ...i, ...data } : i));
+    cloudUpdate('ingredientLibrary', list => list.map(i => i.id === id ? { ...i, ...data } : i));
+  }, [cloudUpdate]);
+
+  const deleteIngredient = useCallback((id) => {
+    setIngredientLibrary(prev => prev.filter(i => i.id !== id));
+    cloudUpdate('ingredientLibrary', list => list.filter(i => i.id !== id));
+  }, [cloudUpdate]);
+
   // ── 銷售訂單 ──────────────────────────────────────────────────
   const updateOrder = useCallback((id, data) => {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, ...data } : o));
@@ -812,7 +831,7 @@ export default function usePetBusiness() {
   }, []);
 
   return {
-    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, inventoryLogs, suppliers, loading,
+    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, inventoryLogs, suppliers, ingredientLibrary, loading,
     kpi, inventoryAlerts, upcomingEvents,
     addRevenue, deleteRevenue, toggleRevenueReported,
     addExpense, deleteExpense, toggleExpenseReported,
@@ -823,6 +842,7 @@ export default function usePetBusiness() {
     addSupplier, updateSupplier, deleteSupplier,
     addMarketEvent, updateMarketEvent, deleteMarketEvent, deleteMarketSale,
     processMarketSale, processOrder, updateOrder, deleteOrder, addInventoryLog, adjustInventory,
+    addIngredient, updateIngredient, deleteIngredient,
     clearAllData, exportData, importData,
   };
 }
