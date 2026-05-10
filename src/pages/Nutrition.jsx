@@ -101,7 +101,11 @@ export default function Nutrition({ data }) {
 
       const calcCal  = protein * 4 + fat * 9 + carb * 4
       const calPer100g = totalAmount > 0 ? Math.round(calcCal / totalAmount * 100) : 0
-      const dm = (v) => moisture < 100 ? Math.round(v / (100 - moisture) * 100 * 10) / 10 : 0
+      // 乃物比：先將克數轉成百分比再計算
+      const proteinPct = protein / totalAmount * 100
+      const fatPct     = fat     / totalAmount * 100
+      const carbPct    = carb    / totalAmount * 100
+      const dm = (pct) => moisture < 100 ? Math.round(pct / (100 - moisture) * 100 * 10) / 10 : 0
       setResult({
         mode: 'general',
         protein: Math.round(protein * 100) / 100,
@@ -114,53 +118,64 @@ export default function Nutrition({ data }) {
         moisture: Math.round(moisture * 100) / 100,
         calcCal: Math.round(calcCal),
         calPer100g,
-        dmProtein: dm(protein),
-        dmFat:     dm(fat),
-        dmCarb:    dm(carb),
+        dmProtein: dm(proteinPct),
+        dmFat:     dm(fatPct),
+        dmCarb:    dm(carbPct),
         totalAmount: Math.round(totalAmount),
       })
     } else {
       const totalAmount = ingredients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
       if (totalAmount === 0) return
 
+      // 絕對克數
       const proteinG  = sumField('protein')
       const fatG      = sumField('fat')
       const rawFiberG = sumField('fiber')
       const moistureG = sumField('moisture')
       const ashG      = sumField('ash')
 
-      // 轉換為百分比
+      const fiberG = fiberConvert
+        ? Math.round(rawFiberG * 0.6 * 1000) / 1000
+        : rawFiberG
+
+      // NFE（可利用碳水，纖維不計入熱量）
+      const nfeG = Math.max(0, totalAmount - proteinG - fatG - fiberG - moistureG - ashG)
+
+      // 絕對克數法計算總熱量
+      const totalKcal = proteinG * 3.5 + fatG * 8.5 + nfeG * 3.5
+      const calPer100g = totalAmount > 0 ? Math.round(totalKcal / totalAmount * 100) : 0
+      const me = Math.round(totalKcal / totalAmount * 1000) // kcal/kg
+
+      // 換算成百分比（用於保證分析顯示）
       const protein  = proteinG  / totalAmount * 100
       const fat      = fatG      / totalAmount * 100
       const rawFiber = rawFiberG / totalAmount * 100
+      const fiber    = fiberG    / totalAmount * 100
       const moisture = moistureG / totalAmount * 100
       const ash      = ashG      / totalAmount * 100
+      const carb     = nfeG      / totalAmount * 100
 
-      const fiber = fiberConvert
-        ? Math.round(rawFiber * 0.6 * 100) / 100
-        : Math.round(rawFiber * 100) / 100
-
-      const carb = Math.max(0, 100 - protein - fat - fiber - moisture - ash)
-      const me   = 10 * (3.5 * protein + 8.5 * fat + 3.5 * carb)
-      const calPer100g = Math.round(me / 10)
-      const dm   = (v) => moisture < 100 ? Math.round(v / (100 - moisture) * 100 * 10) / 10 : 0
+      const dm = (v) => moisture < 100 ? Math.round(v / (100 - moisture) * 100 * 10) / 10 : 0
 
       setResult({
         mode: 'aafco',
         protein:   Math.round(protein * 100) / 100,
         fat:       Math.round(fat * 100) / 100,
-        fiber,
+        fiber:     Math.round(fiber * 100) / 100,
         rawFiber:  Math.round(rawFiber * 100) / 100,
         moisture:  Math.round(moisture * 100) / 100,
         ash:       Math.round(ash * 100) / 100,
         carb:      Math.round(carb * 100) / 100,
-        me:        Math.round(me),
-        calPer100g,
+        // 絕對克數（供烘乾後熱量計算用）
+        proteinG:  Math.round(proteinG * 1000) / 1000,
+        fatG:      Math.round(fatG * 1000) / 1000,
+        nfeG:      Math.round(nfeG * 1000) / 1000,
+        totalAmount,
+        me, calPer100g,
         dmProtein: dm(protein),
         dmFat:     dm(fat),
         dmFiber:   dm(fiber),
         dmCarb:    dm(carb),
-        totalAmount: Math.round(totalAmount),
       })
     }
   }
@@ -193,11 +208,11 @@ export default function Nutrition({ data }) {
 
   // AAFCO 模式欄位定義
   const aafcoCols = [
-    { key: 'protein',  label: '粗蛋白(%)' },
-    { key: 'fat',      label: '粗脂肪(%)' },
-    { key: 'fiber',    label: fiberConvert ? '總膳食纖維(%)' : '粗纖維(%)' },
-    { key: 'moisture', label: '水分(%)' },
-    { key: 'ash',      label: '灰分(%)' },
+    { key: 'protein',  label: '粗蛋白(g/100g)' },
+    { key: 'fat',      label: '粗脂肪(g/100g)' },
+    { key: 'fiber',    label: fiberConvert ? '總膳食纖維(g/100g)' : '粗纖維(g/100g)' },
+    { key: 'moisture', label: '水分(g/100g)' },
+    { key: 'ash',      label: '灰分(g/100g)' },
   ]
 
   const cols = mode === 'general' ? generalCols : aafcoCols
@@ -462,11 +477,14 @@ export default function Nutrition({ data }) {
               {/* 代謝能 */}
               <SectionCard title="⚡ 代謝能 (Modified Atwater)">
                 <div className="text-center py-2">
-                  <p className="text-xs text-gray-400 mb-1">ME = 10 × (3.5×{result.protein} + 8.5×{result.fat} + 3.5×{result.carb})</p>
+                  <p className="text-xs text-gray-400 mb-1">
+                    公式：蛋白質({result.proteinG}g)×3.5 + 脂肪({result.fatG}g)×8.5 + NFE({result.nfeG}g)×3.5
+                  </p>
+                  <p className="text-xs text-orange-400 mb-3">NFE = 總重 - 蛋白 - 脂肪 - 纖維 - 水分 - 灰分（纖維不計入熱量）</p>
                   <p className="text-4xl font-black" style={{ color: BRAND_DARK }}>{result.me}</p>
-                  <p className="text-sm text-gray-500 mt-1">kcal / kg</p>
+                  <p className="text-sm text-gray-500 mt-1">kcal / kg（烘乾前）</p>
                   <div className="mt-3 bg-orange-50 border border-orange-100 rounded-xl px-4 py-2.5 inline-flex items-center gap-3">
-                    <span className="text-sm text-orange-700 font-medium">每 100g 熱量</span>
+                    <span className="text-sm text-orange-700 font-medium">烘乾前每 100g 熱量</span>
                     <span className="text-2xl font-black text-orange-600">{result.calPer100g} kcal</span>
                   </div>
                 </div>
@@ -557,7 +575,7 @@ export default function Nutrition({ data }) {
                   ['粗脂肪', result.fat],
                   ['粗纖維', result.fiber],
                   ['灰分',   result.ash],
-                  ['碳水化合物', result.carb],
+                  ['碳水化合物(NFE)', result.carb],
                 ].map(([label, val]) => (
                   <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
                     <span className="text-gray-600">{label}</span>
@@ -577,6 +595,16 @@ export default function Nutrition({ data }) {
                       {Math.max(0, Math.round((result.moisture - dryCalc.lossRatio) * 10) / 10)}%
                     </span>
                   </div>
+                </div>
+                {/* 烘乾後熱量（絕對克數法） */}
+                <div className="flex items-center justify-between px-4 py-2 text-sm bg-orange-50">
+                  <div>
+                    <span className="text-orange-700 font-semibold">烘乾後每 100g 熱量</span>
+                    <p className="text-xs text-gray-400 mt-0.5">總熱量 {Math.round(result.proteinG * 3.5 + result.fatG * 8.5 + result.nfeG * 3.5)} kcal ÷ 烘乾後 {parseFloat(dryAfter)}g × 100</p>
+                  </div>
+                  <span className="text-2xl font-black text-orange-600">
+                    {Math.round((result.proteinG * 3.5 + result.fatG * 8.5 + result.nfeG * 3.5) / parseFloat(dryAfter) * 100)} kcal
+                  </span>
                 </div>
               </div>
             </div>
