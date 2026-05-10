@@ -28,12 +28,15 @@ function N({ value, onChange, placeholder = '0' }) {
 }
 
 export default function Nutrition({ data }) {
-  const { savedFormulas, saveFormula, deleteFormula } = data
+  const { savedFormulas, saveFormula, deleteFormula, ingredientLibrary = [], addIngredient, updateIngredient, deleteIngredient } = data
 
   const [mode,        setMode]        = useState('general')
   const [formulaName, setFormulaName] = useState('')
   const [showSaved,   setShowSaved]   = useState(false)
+  const [showLibrary, setShowLibrary] = useState(false)
+  const [libForm,     setLibForm]     = useState(null)
   const [fiberConvert, setFiberConvert] = useState(false)
+  const emptyLibForm = () => ({ name: '', protein: '', fat: '', fiber: '', moisture: '', ash: '' })
 
   // ── 烘乾換算器 ─────────────────────────────────────────────────
   const [dryBefore,  setDryBefore]  = useState('')
@@ -57,6 +60,21 @@ export default function Nutrition({ data }) {
 
   // 計算結果（點「計算」後才更新）
   const [result, setResult] = useState(null)
+
+  // ── 食材庫操作 ───────────────────────────────────────────
+  function addFromLibrary(item) {
+    const newRow = { ...emptyIngredient(), name: item.name, protein: item.protein, fat: item.fat, fiber: item.fiber, moisture: item.moisture, ash: item.ash }
+    setIngredients(prev => {
+      const last = prev[prev.length - 1]
+      const isEmpty = !last.name && !last.amount && !last.protein
+      return isEmpty ? [...prev.slice(0, -1), newRow] : [...prev, newRow]
+    })
+  }
+  function saveLibForm() {
+    if (!libForm?.name?.trim()) return
+    if (libForm.id) { updateIngredient(libForm.id, libForm) } else { addIngredient(libForm) }
+    setLibForm(null)
+  }
 
   // ── 食材操作 ─────────────────────────────────────────────
   function addRow() { setIngredients(p => [...p, emptyIngredient()]) }
@@ -226,13 +244,68 @@ export default function Nutrition({ data }) {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800">🧪 營養計算室</h1>
           <p className="text-sm text-gray-400 mt-0.5">一般營養標示 · AAFCO 寵物食品規範</p>
         </div>
-        <button onClick={() => setShowSaved(v => !v)}
-          className={btnSecondary + ' flex items-center gap-2 text-sm'}>
-          <BookOpen size={15} />
-          已儲存配方（{savedFormulas.length}）
-          {showSaved ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setShowSaved(v => !v)}
+            className={btnSecondary + ' flex items-center gap-2 text-sm'}>
+            <BookOpen size={15} />
+            已儲存配方（{savedFormulas.length}）
+            {showSaved ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          <button onClick={() => setShowLibrary(v => !v)}
+            className={btnSecondary + ' flex items-center gap-2 text-sm'}>
+            🦴 食材庫（{ingredientLibrary.length}）
+            {showLibrary ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
       </div>
+
+      {/* 食材庫 */}
+      {showLibrary && (
+        <SectionCard title="🦴 常用食材庫">
+          <div className="space-y-2">
+            {ingredientLibrary.map(item => (
+              <div key={item.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-2.5 gap-2">
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-semibold text-gray-800">{item.name}</span>
+                  <span className="ml-2 text-xs text-gray-400">蛋白{item.protein} 脂肪{item.fat} 纖維{item.fiber} 水分{item.moisture} 灰分{item.ash}</span>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => addFromLibrary(item)} className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-3 py-1.5 rounded-lg transition-colors">加入配方</button>
+                  <button onClick={() => setLibForm({ ...item })} className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg transition-colors">編輯</button>
+                  <button onClick={() => deleteIngredient(item.id)} className={btnDanger}><Trash2 size={13} /></button>
+                </div>
+              </div>
+            ))}
+            {ingredientLibrary.length === 0 && <p className="text-sm text-gray-400">尚無常用食材，點擊下方新增</p>}
+            {libForm === null ? (
+              <button onClick={() => setLibForm(emptyLibForm())}
+                className="flex items-center gap-1 border-2 border-dashed border-gray-200 hover:border-orange-300 hover:text-orange-500 text-gray-400 rounded-xl px-4 py-2 text-sm font-medium transition-colors w-full justify-center">
+                <Plus size={14} /> 新增食材
+              </button>
+            ) : (
+              <div className="border border-orange-200 rounded-xl p-3 space-y-2 bg-orange-50/30">
+                <input type="text" placeholder="食材名稱" value={libForm.name || ''}
+                  onChange={e => setLibForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-300" />
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {[['protein','粗蛋白'],['fat','粗脂肪'],['fiber','纖維'],['moisture','水分'],['ash','灰分']].map(([key, label]) => (
+                    <div key={key}>
+                      <label className="text-xs text-gray-500 mb-1 block">{label} (g/100g)</label>
+                      <input type="number" min="0" step="0.01" value={libForm[key] || ''}
+                        onChange={e => setLibForm(f => ({ ...f, [key]: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-orange-300" />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={saveLibForm} className={btnPrimary + ' text-sm'}>儲存</button>
+                  <button onClick={() => setLibForm(null)} className={btnSecondary + ' text-sm'}>取消</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </SectionCard>
+      )}
 
       {/* 已儲存配方 */}
       {showSaved && (
