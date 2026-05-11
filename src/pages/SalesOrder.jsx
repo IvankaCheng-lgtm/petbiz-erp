@@ -233,6 +233,68 @@ export default function SalesOrder({ data }) {
     cancelEdit();
   }
 
+  function printShippingSlip(o) {
+    const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice, 0)
+    const discountAmt = subtotalAmt - (o.total ?? o.totalAmount ?? subtotalAmt)
+
+    // 將 LOGO 轉成 base64 嵌入 HTML
+    const logoUrl = new URL('../assets/LOGO.png', import.meta.url).href
+    const img = new Image()
+    img.src = logoUrl
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      canvas.getContext('2d').drawImage(img, 0, 0)
+      const base64 = canvas.toDataURL('image/png')
+      openPrint(base64)
+    }
+    img.onerror = () => openPrint(null)
+
+    function openPrint(logoBase64) {
+      const html = `
+        <html><head><meta charset="utf-8"><title>出貨單</title>
+        <style>
+          body { font-family: sans-serif; padding: 32px; font-size: 14px; color: #111; }
+          .header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+          .header img { height: 48px; object-fit: contain; }
+          h2 { font-size: 20px; margin: 0; }
+          .sub { color: #888; font-size: 12px; margin-bottom: 24px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+          th { background: #f3f4f6; text-align: left; padding: 8px 10px; font-size: 12px; }
+          td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+          .right { text-align: right; }
+          .total-row td { font-weight: bold; font-size: 15px; border-top: 2px solid #111; border-bottom: none; }
+          .note { background: #f9fafb; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #555; margin-top: 8px; }
+          .footer { margin-top: 32px; font-size: 11px; color: #aaa; text-align: center; }
+        </style></head><body>
+        <div class="header">
+          ${logoBase64 ? `<img src="${logoBase64}" alt="LOGO" />` : ''}
+          <h2>萌獸探險隊 出貨單</h2>
+        </div>
+        <div class="sub">訂單日期：${o.orderDate} &nbsp;|  通路：${o.platform} &nbsp;|  訂單編號：${o.id.slice(-6).toUpperCase()}</div>
+        <table>
+          <thead><tr><th>品名</th><th class="right">單價</th><th class="right">數量</th><th class="right">小計</th></tr></thead>
+          <tbody>
+            ${(o.items ?? []).map(i => `<tr><td>${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td><td class="right">$${i.qty * i.unitPrice}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        <table style="width:260px;margin-left:auto">
+          <tr><td>小計</td><td class="right">$${subtotalAmt}</td></tr>
+          ${discountAmt > 0 ? `<tr><td>折扣</td><td class="right" style="color:#16a34a">−$${discountAmt}</td></tr>` : ''}
+          <tr class="total-row"><td>合計</td><td class="right">$${o.total ?? o.totalAmount}</td></tr>
+        </table>
+        ${o.note ? `<div class="note">📝 備註：${o.note}</div>` : ''}
+        <div class="footer">萌獸探險隊 &copy; ${new Date().getFullYear()}</div>
+        </body></html>`
+      const w = window.open('', '_blank', 'width=700,height=600')
+      w.document.write(html)
+      w.document.close()
+      w.focus()
+      setTimeout(() => { w.print(); w.close() }, 300)
+    }
+  }
+
   const sortedOrders = useMemo(
     () => [...orders].sort((a, b) => b.orderDate?.localeCompare(a.orderDate)),
     [orders]
@@ -380,6 +442,9 @@ export default function SalesOrder({ data }) {
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-blue-50 transition-colors text-sm text-left">
               <span className="text-gray-700 flex-1">{item.itemName}</span>
               <span className="text-xs text-gray-400 mr-3">{item.category}</span>
+              <span className={`text-xs mr-3 font-medium ${item.currentQty <= 0 ? 'text-red-400' : item.currentQty <= 5 ? 'text-orange-400' : 'text-gray-400'}`}>
+                庫存 {item.currentQty ?? 0}
+              </span>
               <span className="text-blue-600 font-medium">${item.salePrice || item.listPrice || 0}</span>
             </button>
           ))}
@@ -544,6 +609,7 @@ export default function SalesOrder({ data }) {
                     {updateOrder && (
                       <button onClick={() => startEdit(o)} className="text-xs text-blue-500 hover:underline">編輯</button>
                     )}
+                    <button onClick={() => printShippingSlip(o)} className="text-xs text-emerald-600 hover:underline">📄 出貨單</button>
                     {deleteOrder && (
                       <button onClick={() => deleteOrder(o.id)} className="text-xs text-red-400 hover:underline">刪除</button>
                     )}
