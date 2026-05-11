@@ -147,7 +147,7 @@ export default function SalesOrder({ data }) {
         next[idx] = { ...next[idx], qty: next[idx].qty + 1 };
         return next;
       }
-      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0, listPrice: item.salePrice || item.listPrice || 0 }];
+      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0, listPrice: item.listPrice || item.salePrice || 0 }];
     });
   }
 
