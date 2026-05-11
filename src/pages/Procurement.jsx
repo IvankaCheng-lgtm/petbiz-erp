@@ -318,6 +318,7 @@ export default function Procurement({ data }) {
   const [activeTab,    setActiveTab]    = useState('A用品')
   const [modal,        setModal]        = useState(null)
   const [editTarget,   setEditTarget]   = useState(null)
+  const [batchQtyEdit, setBatchQtyEdit] = useState({}) // batchId -> qty
   const [importMsg,    setImportMsg]    = useState('')
   const [purchaseForm, setPurchaseForm] = useState({
     date: today(), itemId: '', itemName: '', category: 'C食材', qty: '', unitPrice: '', note: '', supplierId: '', supplierName: '', recordExpense: true,
@@ -1023,9 +1024,8 @@ export default function Procurement({ data }) {
 
       {/* ── 效期批次 Modal ── */}
       {modal === 'expiry' && editTarget && (
-        <Modal title={`${editTarget.itemName} — 有效期批次`} size="md" onClose={() => setModal(null)}>
+        <Modal title={`${editTarget.itemName} — 有效期批次`} size="md" onClose={() => { setModal(null); setBatchQtyEdit({}) }}>
           <div className="space-y-4">
-            {/* 標準有效期說明 */}
             {(editTarget.shelfDays || editTarget.fridgeDays || editTarget.frozenDays) && (
               <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700 flex flex-wrap gap-4">
                 {editTarget.shelfDays  && <span>常溫：{editTarget.shelfDays} 天</span>}
@@ -1033,29 +1033,63 @@ export default function Procurement({ data }) {
                 {editTarget.frozenDays && <span>冷凍：{editTarget.frozenDays} 天</span>}
               </div>
             )}
-
-            {/* 批次列表 */}
             {(editTarget.expiryBatches?.length ?? 0) === 0
               ? <p className="text-sm text-gray-400 text-center py-6">尚無批次效期資料，可從生產批次自動寫入</p>
               : (
                 <div className="space-y-2">
                   {editTarget.expiryBatches.map((b, i) => {
                     const now = new Date()
-                    const shelfExp  = (b.normalExp  || b.shelfExpiry)  ? new Date(b.normalExp  || b.shelfExpiry)  : null
-                    const fridgeExp = (b.fridgeExp  || b.fridgeExpiry) ? new Date(b.fridgeExp  || b.fridgeExpiry) : null
+                    const shelfExp  = (b.normalExp || b.shelfExpiry)  ? new Date(b.normalExp || b.shelfExpiry)  : null
+                    const fridgeExp = (b.fridgeExp || b.fridgeExpiry) ? new Date(b.fridgeExp || b.fridgeExpiry) : null
                     const frozenExp = (b.freezerExp || b.frozenExpiry) ? new Date(b.freezerExp || b.frozenExpiry) : null
                     const shelfStr  = b.normalExp  || b.shelfExpiry  || null
                     const fridgeStr = b.fridgeExp  || b.fridgeExpiry || null
                     const frozenStr = b.freezerExp || b.frozenExpiry || null
                     const isExpired = shelfExp && shelfExp < now
+                    const batchKey  = b.batchId || i
+                    const editingQty = batchQtyEdit[batchKey]
                     return (
                       <div key={i} className={`rounded-xl px-4 py-3 border text-sm ${isExpired ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-100'}`}>
                         <div className="flex justify-between items-center mb-1">
                           <span className="font-semibold text-gray-800">{b.batchNote || `批次 ${i + 1}`}</span>
                           <span className="text-xs text-gray-400">{b.productionDate}</span>
                         </div>
-                        <div className="flex flex-wrap gap-3 text-xs">
-                          {b.qty && <span className="text-gray-600">數量：{b.qty} 包</span>}
+                        <div className="flex flex-wrap items-center gap-3 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-gray-500">數量：</span>
+                            {editingQty !== undefined ? (
+                              <>
+                                <input
+                                  type="number" min="0" step="1"
+                                  value={editingQty}
+                                  onChange={e => setBatchQtyEdit(prev => ({ ...prev, [batchKey]: e.target.value }))}
+                                  className="w-16 border border-orange-300 rounded px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                                <button
+                                  onClick={() => {
+                                    const newQty = parseFloat(editingQty)
+                                    if (isNaN(newQty) || newQty < 0) return
+                                    const newBatches = editTarget.expiryBatches.map((batch, idx) =>
+                                      idx === i ? { ...batch, qty: newQty } : batch
+                                    ).filter(batch => batch.qty > 0)
+                                    const totalQty = newBatches.reduce((s, batch) => s + batch.qty, 0)
+                                    updateInventoryItem(editTarget.id, { expiryBatches: newBatches, currentQty: totalQty })
+                                    setEditTarget(prev => ({ ...prev, expiryBatches: newBatches, currentQty: totalQty }))
+                                    setBatchQtyEdit(prev => { const n = { ...prev }; delete n[batchKey]; return n })
+                                  }}
+                                  className="text-emerald-600 hover:text-emerald-700 font-medium">儲存</button>
+                                <button
+                                  onClick={() => setBatchQtyEdit(prev => { const n = { ...prev }; delete n[batchKey]; return n })}
+                                  className="text-gray-400 hover:text-gray-600">取消</button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-gray-600 font-medium">{b.qty}</span>
+                                <button
+                                  onClick={() => setBatchQtyEdit(prev => ({ ...prev, [batchKey]: b.qty }))}
+                                  className="text-blue-500 hover:underline">編輯</button>
+                              </>
+                            )}
+                          </div>
                           {shelfExp  && <span className={shelfExp  < now ? 'text-red-500 font-bold' : 'text-gray-500'}>常溫到期：{shelfStr}</span>}
                           {fridgeExp && <span className={fridgeExp < now ? 'text-red-500 font-bold' : 'text-blue-500'}>冷藏到期：{fridgeStr}</span>}
                           {frozenExp && <span className={frozenExp < now ? 'text-red-500 font-bold' : 'text-indigo-500'}>冷凍到期：{frozenStr}</span>}
@@ -1066,7 +1100,8 @@ export default function Procurement({ data }) {
                 </div>
               )
             }
-            <button onClick={() => setModal(null)} className={btnSecondary + ' w-full'}>關閉</button>
+            <p className="text-xs text-gray-400">編輯數量後，總庫存會自動同步更新</p>
+            <button onClick={() => { setModal(null); setBatchQtyEdit({}) }} className={btnSecondary + ' w-full'}>關閉</button>
           </div>
         </Modal>
       )}

@@ -41,12 +41,15 @@ function deductFIFO(item, qtyToDeduct) {
     return { ...item, currentQty: Math.max(0, item.currentQty - qtyToDeduct) };
   }
 
-  // 依 normalExp 升冪排序（無到期日的排到最後）
+  // 支援 normalExp 和舊欄位名 shelfExpiry
+  const getExp = (b) => b.normalExp || b.shelfExpiry || null
+
   const sorted = [...batches].sort((a, b) => {
-    if (!a.normalExp && !b.normalExp) return 0;
-    if (!a.normalExp) return 1;
-    if (!b.normalExp) return -1;
-    return a.normalExp.localeCompare(b.normalExp);
+    const ea = getExp(a), eb = getExp(b)
+    if (!ea && !eb) return 0;
+    if (!ea) return 1;
+    if (!eb) return -1;
+    return ea.localeCompare(eb);
   });
 
   let remaining = qtyToDeduct;
