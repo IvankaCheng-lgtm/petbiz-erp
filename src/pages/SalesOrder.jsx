@@ -147,7 +147,7 @@ export default function SalesOrder({ data }) {
         next[idx] = { ...next[idx], qty: next[idx].qty + 1 };
         return next;
       }
-      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0 }];
+      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0, listPrice: item.salePrice || item.listPrice || 0 }];
     });
   }
 
@@ -484,13 +484,19 @@ export default function SalesOrder({ data }) {
           <div className="space-y-2">
             {cart.map((c) => (
               <div key={c.itemId} className="flex items-center gap-3 text-sm">
-                <span className="flex-1 text-gray-700">{c.itemName}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-gray-700">{c.itemName}</div>
+                  {c.listPrice !== c.unitPrice && <div className="text-xs text-gray-300">定價 ${c.listPrice}</div>}
+                </div>
                 {selectedConsignee ? (
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={c.unitPrice}
-                    onChange={e => updateUnitPrice(c.itemId, e.target.value)}
-                    className="w-20 text-right border border-purple-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                  <>
+                    <span className="text-xs text-gray-300 mr-1">定價 ${c.listPrice}</span>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={c.unitPrice}
+                      onChange={e => updateUnitPrice(c.itemId, e.target.value)}
+                      className="w-20 text-right border border-purple-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                  </>
                 ) : (
                   <span className="text-gray-400 w-16 text-right">${c.unitPrice}</span>
                 )}
