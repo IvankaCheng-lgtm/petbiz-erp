@@ -121,9 +121,9 @@ export default function SalesOrder({ data }) {
     let t = subtotal;
     const pct = parseFloat(discountPct);
     const amt = parseFloat(discountAmt);
-    if (!isNaN(pct) && pct > 0 && pct < 100) t = t * (1 - pct / 100);
-    if (!isNaN(amt) && amt > 0) t = t - amt;
-    return Math.max(0, Math.round(t * 100) / 100);
+    if (!isNaN(pct) && pct > 0 && pct < 100) t = Math.round(t * (1 - pct / 100));
+    if (!isNaN(amt) && amt > 0) t = Math.round(t - amt);
+    return Math.max(0, t);
   }, [subtotal, discountPct, discountAmt]);
 
   // 寄賣點拆帳金額計算
