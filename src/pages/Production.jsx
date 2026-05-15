@@ -240,10 +240,9 @@ export default function Production({ data }) {
   const [outputUnit, setOutputUnit] = useState("克");
   const [totalOutputQty, setTotalOutputQty] = useState(""); // 手動輸入總產出量（僅供紀錄）
 
-  // 步驟三：電力
-  const [machineWatt, setMachineWatt] = useState(1100);
-  const [hours,       setHours]       = useState(16);
-  const [elecRatio,   setElecRatio]   = useState(100); // 電費分擔佔比 %
+  // 步驟三：電力（支援多台機器）
+  const [machines, setMachines] = useState([{ watt: 1100, hours: 16, label: '' }]);
+  const [elecRatio, setElecRatio] = useState(100);
 
   // 步驟四：包材 [{ itemId, qty }]
   const [packaging, setPackaging] = useState([]);
@@ -277,8 +276,8 @@ export default function Production({ data }) {
   );
 
   const electricCostFull = useMemo(
-    () => calcElectricityCost(parseFloat(machineWatt) || 0, parseFloat(hours) || 0, date),
-    [machineWatt, hours, date],
+    () => machines.reduce((s, m) => s + calcElectricityCost(parseFloat(m.watt) || 0, parseFloat(m.hours) || 0, date), 0),
+    [machines, date],
   );
 
   const electricCost = useMemo(
@@ -389,7 +388,7 @@ export default function Production({ data }) {
         ingredients.length > 0 && ingredients.every((r) => r.itemId && r.qty)
       );
     if (step === 1) return outputs.length > 0 && outputs.every(o => o.packSize && o.packQty);
-    if (step === 2) return machineWatt && hours;
+    if (step === 2) return machines.every(m => m.watt && m.hours);
     return true;
   }
 
@@ -438,8 +437,9 @@ export default function Production({ data }) {
     );
     setOutputUnit(first.outputUnit || '克');
     setTotalOutputQty(String(first.outputQty || ''));
-    setMachineWatt(first.machineWatt || 1100);
-    setHours(first.hours || 16);
+    setMachines(
+      first.machines ?? [{ watt: first.machineWatt || 1100, hours: first.hours || 16, label: '' }]
+    );
     setElecRatio(first.elecRatio ?? 100);
     setPackaging(
       (first.usedPackaging ?? []).map(i => ({ itemId: i.itemId, qty: String(i.qty), outputIdx: null }))
@@ -469,8 +469,7 @@ export default function Production({ data }) {
     setOutputs([]);
     setOutputUnit("克");
     setTotalOutputQty("");
-    setMachineWatt(1100);
-    setHours(16);
+    setMachines([{ watt: 1100, hours: 16, label: '' }]);
     setElecRatio(100);
     setPackaging([]);
     setOverwriteCost(false);
@@ -536,8 +535,9 @@ export default function Production({ data }) {
         batchGroupId,
         date,
         note: `${note}${output.batchNote ? ` - ${output.batchNote}` : ''}`,
-        machineWatt: parseFloat(machineWatt),
-        hours: parseFloat(hours),
+        machines,
+        machineWatt: machines.reduce((s, m) => s + (parseFloat(m.watt) || 0), 0),
+        hours: machines[0]?.hours ?? 0,
         elecRatio: parseFloat(elecRatio),
         usedIngredients,
         usedPackaging,
