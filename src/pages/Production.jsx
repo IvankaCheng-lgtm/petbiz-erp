@@ -994,27 +994,46 @@ export default function Production({ data }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormRow label="機器瓦數（W）">
-                    <input
-                      type="number"
-                      min="1"
-                      className={inputCls}
-                      value={machineWatt}
-                      onChange={(e) => setMachineWatt(e.target.value)}
-                    />
-                  </FormRow>
-                  <FormRow label="烘烤時數（h）">
-                    <input
-                      type="number"
-                      min="0.5"
-                      step="0.5"
-                      className={inputCls}
-                      value={hours}
-                      onChange={(e) => setHours(e.target.value)}
-                    />
-                  </FormRow>
+                <div className="grid grid-cols-[1fr_100px_100px_32px] gap-1 text-xs font-medium text-gray-400 px-1 mb-1">
+                  <span>機器名稱（選填）</span><span className="text-right">瓦數(W)</span><span className="text-right">時數(h)</span><span/>
                 </div>
+                <div className="space-y-2">
+                  {machines.map((m, idx) => (
+                    <div key={idx} className="grid grid-cols-[1fr_100px_100px_32px] gap-2 items-center bg-gray-50 rounded-xl p-3 border border-gray-100">
+                      <input type="text" placeholder="如：烘乾機、冷凍乾燥機"
+                        className={inputCls + ' text-sm'}
+                        value={m.label}
+                        onChange={e => setMachines(prev => prev.map((x, i) => i === idx ? { ...x, label: e.target.value } : x))} />
+                      <input type="number" min="1" placeholder="W"
+                        className={inputCls + ' text-right text-sm'}
+                        value={m.watt}
+                        onChange={e => setMachines(prev => prev.map((x, i) => i === idx ? { ...x, watt: e.target.value } : x))} />
+                      <input type="number" min="0.5" step="0.5" placeholder="h"
+                        className={inputCls + ' text-right text-sm'}
+                        value={m.hours}
+                        onChange={e => setMachines(prev => prev.map((x, i) => i === idx ? { ...x, hours: e.target.value } : x))} />
+                      <button onClick={() => setMachines(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev)}
+                        disabled={machines.length === 1}
+                        className="text-gray-300 hover:text-red-400 disabled:opacity-20 transition-colors">
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {machines.length > 1 && (
+                  <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 space-y-1">
+                    {machines.map((m, idx) => {
+                      const kw = ((parseFloat(m.watt)||0)*(parseFloat(m.hours)||0)/1000).toFixed(2)
+                      const cost = calcElectricityCost(parseFloat(m.watt)||0, parseFloat(m.hours)||0, date)
+                      return <div key={idx} className="flex justify-between"><span>{m.label || `機器 ${idx+1}`}（{m.watt}W × {m.hours}h = {kw}度）</span><span>{fmt(cost)}</span></div>
+                    })}
+                    <div className="flex justify-between font-semibold text-gray-700 border-t border-gray-200 pt-1"><span>合計用電</span><span>{fmt(electricCostFull)}</span></div>
+                  </div>
+                )}
+                <button onClick={() => setMachines(prev => [...prev, { watt: '', hours: '', label: '' }])}
+                  className="w-full border-2 border-dashed border-gray-200 hover:border-orange-300 hover:text-orange-500 text-gray-400 rounded-xl py-2 text-sm font-medium transition-colors flex items-center justify-center gap-1">
+                  <Plus size={14} /> 新增機器
+                </button>
 
                 {/* 電費分擔佔比 */}
                 <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-2">
@@ -1056,12 +1075,7 @@ export default function Production({ data }) {
                   <div className="bg-gray-50 rounded-xl py-3">
                     <p className="text-xs text-gray-400">用電量</p>
                     <p className="text-lg font-bold text-gray-700">
-                      {(
-                        ((parseFloat(machineWatt) || 0) *
-                          (parseFloat(hours) || 0)) /
-                        1000
-                      ).toFixed(2)}{" "}
-                      度
+                      {(machines.reduce((s,m)=>s+(parseFloat(m.watt)||0)*(parseFloat(m.hours)||0),0)/1000).toFixed(2)} 度
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-xl py-3">
@@ -1689,12 +1703,10 @@ export default function Production({ data }) {
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">電力</p>
                 <div className="flex gap-3">
                   <div className="bg-gray-50 rounded-lg px-3 py-2 flex-1 text-center">
-                    <p className="text-xs text-gray-400">機器瓦數</p>
-                    <p className="font-semibold text-gray-700">{first.machineWatt ?? '—'} W</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg px-3 py-2 flex-1 text-center">
-                    <p className="text-xs text-gray-400">烘烤時數</p>
-                    <p className="font-semibold text-gray-700">{first.hours ?? '—'} h</p>
+                    <p className="text-xs text-gray-400">機器</p>
+                    <p className="font-semibold text-gray-700 text-xs">
+                      {first.machines ? first.machines.map(m => `${m.label||'機器'} ${m.watt}W`).join('、') : `${first.machineWatt ?? '—'}W`}
+                    </p>
                   </div>
                   {first.elecRatio != null && first.elecRatio < 100 && (
                     <div className="bg-amber-50 rounded-lg px-3 py-2 flex-1 text-center">
