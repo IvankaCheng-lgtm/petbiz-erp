@@ -140,7 +140,7 @@ export default function PnL({ data }) {
     if (organizers.length === 0) return []
     return organizers.map(org => {
       const rev = filteredRevenues
-        .filter(r => r.organizerId === org.id || r.channel === '市集')
+        .filter(r => r.organizerId === org.id)
         .reduce((s, r) => s + r.amount, 0)
       const boothCost = filteredExpenses
         .filter(e => e.organizerId === org.id && (e.type === '攤位' || e.type === '場地費'))
