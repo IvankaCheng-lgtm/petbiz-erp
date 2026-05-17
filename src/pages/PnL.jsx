@@ -24,7 +24,7 @@ function PnLRow({ label, value, indent = 0, bold = false, highlight, border }) {
 }
 
 export default function PnL({ data }) {
-  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [], suppliers = [] } = data
+  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [], suppliers = [], marketEvents = [] } = data
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const printRef = useRef()
@@ -138,22 +138,19 @@ export default function PnL({ data }) {
   const organizerAnalysis = useMemo(() => {
     const organizers = suppliers.filter(s => s.category === '市集主辦')
     if (organizers.length === 0) return []
-    const { marketEvents = [] } = data
     return organizers.map(org => {
-      // 找出該主辦的所有市集活動
-      const orgEventIds = new Set(marketEvents.filter(e => e.organizerId === org.id).map(e => e.id))
-      // 收入：直接用 organizerId 或透過 eventId 關聯
+      const orgEventIds = new Set(marketEvents.filter(e => e.supplierId === org.id).map(e => e.id))
       const rev = filteredRevenues
-        .filter(r => r.organizerId === org.id || (r.eventId && orgEventIds.has(r.eventId)))
+        .filter(r => r.eventId && orgEventIds.has(r.eventId))
         .reduce((s, r) => s + r.amount, 0)
-      const boothCost = filteredExpenses
-        .filter(e => e.organizerId === org.id && (e.type === '攤位' || e.type === '場地費'))
-        .reduce((s, e) => s + e.amount, 0)
+      const boothCost = marketEvents
+        .filter(e => e.supplierId === org.id)
+        .reduce((s, e) => s + (e.boothFee || 0), 0)
       const netProfit = rev - boothCost
       return { name: org.name, rev, boothCost, netProfit }
     }).filter(o => o.rev > 0 || o.boothCost > 0)
       .sort((a, b) => b.netProfit - a.netProfit)
-  }, [suppliers, filteredRevenues, filteredExpenses, data])
+  }, [suppliers, filteredRevenues, marketEvents])
   const financialMetrics = useMemo(() => {
     const booth    = filteredExpenses.filter(e => e.type === '攤位').reduce((s, e) => s + e.amount, 0)
     const shipping = filteredExpenses.filter(e => e.type === '運費').reduce((s, e) => s + e.amount, 0)
