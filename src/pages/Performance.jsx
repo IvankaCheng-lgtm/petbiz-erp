@@ -13,7 +13,36 @@ export default function Performance({ data }) {
 
   const EC_PLATFORMS = ['萌獸官網', 'PChome', 'Yahoo', '蝦皮']
   const OFFLINE_PLATFORMS = ['私訊訂購', 'LINE訂購']
-  const [itemTab, setItemTab] = useState('ec') // 'ec' | 'market' | 'offline'
+  const [itemTab, setItemTab] = useState('ec')
+  const [expandedItem, setExpandedItem] = useState(null)
+  const [expandedMarginItem, setExpandedMarginItem] = useState(null)
+  const [selectedMarketEvent, setSelectedMarketEvent] = useState('all')
+
+  // 市集品項表現
+  const marketItemPerEvent = useMemo(() => {
+    const mktRevs = revenues.filter(r => r.channel === '市集' && r.items)
+    const allMap = {}
+    mktRevs.forEach(r => {
+      ;(r.items || []).forEach(it => {
+        if (!allMap[it.itemId]) allMap[it.itemId] = { name: it.itemName, qty: 0, amount: 0, byEvent: {} }
+        allMap[it.itemId].qty += it.qty
+        allMap[it.itemId].amount += it.qty * it.unitPrice
+        const eid = r.eventId || 'unknown'
+        allMap[it.itemId].byEvent[eid] = (allMap[it.itemId].byEvent[eid] || 0) + it.qty
+      })
+    })
+    const byEvent = {}
+    mktRevs.forEach(r => {
+      const eid = r.eventId || 'unknown'
+      if (!byEvent[eid]) byEvent[eid] = {}
+      ;(r.items || []).forEach(it => {
+        if (!byEvent[eid][it.itemId]) byEvent[eid][it.itemId] = { name: it.itemName, qty: 0, amount: 0 }
+        byEvent[eid][it.itemId].qty += it.qty
+        byEvent[eid][it.itemId].amount += it.qty * it.unitPrice
+      })
+    })
+    return { byEvent, allItems: Object.values(allMap).sort((a, b) => b.qty - a.qty) }
+  }, [revenues])
 
   // 品項全通路紼合分析
   const allItemStats = useMemo(() => {
@@ -629,6 +658,69 @@ export default function Performance({ data }) {
               </div>
             )
         )}
+      </SectionCard>
+      {/* 市集品項表現 */}
+      <SectionCard title="🏠 市集品項表現">
+        {marketItemPerEvent.allItems.length === 0
+          ? <p className="text-sm text-gray-400 text-center py-6">尚無市集品項資料（需市集現場收款時選擇品項）</p>
+          : (
+            <div className="space-y-4">
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => setSelectedMarketEvent('all')}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                    selectedMarketEvent === 'all' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                  }`}>
+                  全部場次
+                </button>
+                {marketEvents.filter(e => marketItemPerEvent.byEvent[e.id]).map(ev => (
+                  <button key={ev.id} onClick={() => setSelectedMarketEvent(ev.id)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                      selectedMarketEvent === ev.id ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                    }`}>
+                    {ev.name} <span className="opacity-60">{ev.startDate}</span>
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                const items = selectedMarketEvent === 'all'
+                  ? marketItemPerEvent.allItems
+                  : Object.values(marketItemPerEvent.byEvent[selectedMarketEvent] || {}).sort((a, b) => b.qty - a.qty)
+                if (items.length === 0) return <p className="text-sm text-gray-400 text-center py-4">此場次無品項資料</p>
+                const maxQty = items[0]?.qty || 1
+                return (
+                  <div className="space-y-2">
+                    {items.map((item, i) => (
+                      <div key={item.name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                        <span className={`text-xs font-bold w-5 ${i === 0 ? 'text-emerald-500' : 'text-gray-300'}`}>{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
+                            {i === 0 && <span className="text-xs bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">🌟 最受歡迎</span>}
+                          </div>
+                          {selectedMarketEvent === 'all' && item.byEvent && (
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {Object.entries(item.byEvent).map(([eid, q]) => {
+                                const ev = marketEvents.find(e => e.id === eid)
+                                return ev ? `${ev.name} ${q}件` : null
+                              }).filter(Boolean).join('、')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${item.qty / maxQty * 100}%` }} />
+                          </div>
+                          <span className="text-sm font-bold text-emerald-600 w-12 text-right">{item.qty} 件</span>
+                          <span className="text-xs text-gray-400 w-16 text-right">{fmt(item.amount)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+          )
+        }
       </SectionCard>
     </div>
   )
