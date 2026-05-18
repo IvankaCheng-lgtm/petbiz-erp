@@ -3,6 +3,7 @@ import { db } from "../firebase";
 import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const nowStr = () => new Date().toISOString();
 
 export function getElectricRate(dateStr) {
   const month = new Date(dateStr).getMonth() + 1;

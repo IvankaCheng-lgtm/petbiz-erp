@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -9,9 +9,149 @@ import { fmt, CATEGORY_COLORS, CHANNEL_COLORS } from '../utils/format'
 const PIE_COLORS = ['#FFB84D', '#10B981', '#8B5CF6', '#3B82F6']
 
 export default function Performance({ data }) {
-  const { revenues, expenses, orders = [], inventory = [] } = data
+  const { revenues, expenses, orders = [], inventory = [], marketEvents = [] } = data
 
   const EC_PLATFORMS = ['萌獸官網', 'PChome', 'Yahoo', '蝦皮']
+  const OFFLINE_PLATFORMS = ['私訊訂購', 'LINE訂購']
+  const [itemTab, setItemTab] = useState('ec') // 'ec' | 'market' | 'offline'
+
+  // 品項全通路紼合分析
+  const allItemStats = useMemo(() => {
+    const map = {}
+
+    // 電商訂單
+    orders.forEach(o => {
+      const ch = EC_PLATFORMS.includes(o.platform) ? '電商' : '實體'
+      ;(o.items || []).forEach(it => {
+        if (!map[it.itemId]) map[it.itemId] = { name: it.itemName, total: 0, amount: 0, ec: 0, market: 0, offline: 0, byPlatform: {} }
+        map[it.itemId].total += it.qty
+        map[it.itemId].amount += it.qty * it.unitPrice
+        if (ch === '電商') map[it.itemId].ec += it.qty
+        else map[it.itemId].offline += it.qty
+        map[it.itemId].byPlatform[o.platform] = (map[it.itemId].byPlatform[o.platform] || 0) + it.qty
+      })
+    })
+
+    // 市集現場收款
+    revenues.filter(r => r.channel === '市集' && r.items).forEach(r => {
+      ;(r.items || []).forEach(it => {
+        if (!map[it.itemId]) map[it.itemId] = { name: it.itemName, total: 0, amount: 0, ec: 0, market: 0, offline: 0, byPlatform: {} }
+        map[it.itemId].total += it.qty
+        map[it.itemId].amount += it.qty * it.unitPrice
+        map[it.itemId].market += it.qty
+        map[it.itemId].byPlatform['市集'] = (map[it.itemId].byPlatform['市集'] || 0) + it.qty
+      })
+    })
+
+    return Object.values(map)
+      .map(item => {
+        const inv = inventory.find(i => i.itemName === item.name)
+        const stock = inv?.currentQty ?? null
+        const turnover = stock !== null && item.total > 0 ? +(item.total / (item.total + stock) * 100).toFixed(1) : null
+        return { ...item, stock, turnover }
+      })
+      .sort((a, b) => b.total - a.total)
+  }, [orders, revenues, inventory])
+
+  // 庫存周轉率分析
+  const turnoverStats = useMemo(() => {
+    const now = new Date()
+    const days30ago = new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10)
+    const days90ago = new Date(now.getTime() - 90 * 86400000).toISOString().slice(0, 10)
+
+    // 計算每個品項近 30 天和 90 天的销售量
+    const salesMap = {}
+    const countSales = (items, date) => {
+      if (!items) return
+      items.forEach(it => {
+        if (!salesMap[it.itemId]) salesMap[it.itemId] = { name: it.itemName, qty30: 0, qty90: 0 }
+        if (date >= days30ago) salesMap[it.itemId].qty30 += it.qty
+        if (date >= days90ago) salesMap[it.itemId].qty90 += it.qty
+      })
+    }
+
+    orders.forEach(o => countSales(o.items, o.orderDate))
+    revenues.filter(r => r.channel === '市集' && r.items).forEach(r => countSales(r.items, r.date))
+
+    return inventory
+      .filter(i => i.category === 'A用品' || i.category === 'B食品')
+      .map(item => {
+        const s = salesMap[item.id] || { qty30: 0, qty90: 0 }
+        const dailyRate30 = s.qty30 / 30  // 日均销售量（30天）
+        const dailyRate90 = s.qty90 / 90  // 日均销售量（90天）
+        const daysLeft = dailyRate30 > 0 ? Math.round(item.currentQty / dailyRate30) : null
+        const risk = s.qty30 === 0 && item.currentQty > 0 ? 'dead'
+          : daysLeft !== null && daysLeft > 90 ? 'slow'
+          : daysLeft !== null && daysLeft < 14 ? 'urgent'
+          : 'normal'
+        return { ...item, qty30: s.qty30, qty90: s.qty90, dailyRate30, daysLeft, risk }
+      })
+      .sort((a, b) => {
+        const order = { dead: 0, slow: 1, urgent: 2, normal: 3 }
+        return order[a.risk] - order[b.risk] || b.currentQty - a.currentQty
+      })
+  }, [orders, revenues, inventory])
+
+  // 品項毛利分析
+  const itemMarginStats = useMemo(() => {
+    return allItemStats
+      .map(item => {
+        const inv = inventory.find(i => i.itemName === item.name)
+        const salePrice = inv?.salePrice || 0
+        const cost = inv?.cost || 0
+        const margin = salePrice > 0 ? salePrice - cost : null
+        const marginRate = salePrice > 0 && cost > 0 ? +((salePrice - cost) / salePrice * 100).toFixed(1) : null
+        const totalProfit = margin !== null ? Math.round(margin * item.total) : null
+        return { ...item, salePrice, cost, margin, marginRate, totalProfit }
+      })
+      .filter(i => i.salePrice > 0)
+      .sort((a, b) => (b.totalProfit ?? -Infinity) - (a.totalProfit ?? -Infinity))
+  }, [allItemStats, inventory])
+  const ecItemStats = useMemo(() => {
+    const map = {}
+    orders
+      .filter(o => EC_PLATFORMS.includes(o.platform))
+      .forEach(o => {
+        ;(o.items || []).forEach(it => {
+          if (!map[it.itemId]) map[it.itemId] = { name: it.itemName, qty: 0, amount: 0, platforms: {} }
+          map[it.itemId].qty += it.qty
+          map[it.itemId].amount += it.qty * it.unitPrice
+          map[it.itemId].platforms[o.platform] = (map[it.itemId].platforms[o.platform] || 0) + it.qty
+        })
+      })
+    return Object.values(map).sort((a, b) => b.qty - a.qty)
+  }, [orders])
+
+  // 品項销售分析：市集（從 revenues.items where channel=市集）
+  const marketItemStats = useMemo(() => {
+    const map = {}
+    revenues
+      .filter(r => r.channel === '市集' && r.items)
+      .forEach(r => {
+        ;(r.items || []).forEach(it => {
+          if (!map[it.itemId]) map[it.itemId] = { name: it.itemName, qty: 0, amount: 0 }
+          map[it.itemId].qty += it.qty
+          map[it.itemId].amount += it.qty * it.unitPrice
+        })
+      })
+    return Object.values(map).sort((a, b) => b.qty - a.qty)
+  }, [revenues])
+
+  // 品項销售分析：實體通路（私訊/LINE/寄賣點）
+  const offlineItemStats = useMemo(() => {
+    const map = {}
+    orders
+      .filter(o => OFFLINE_PLATFORMS.includes(o.platform) || (!EC_PLATFORMS.includes(o.platform) && o.platform !== '市集'))
+      .forEach(o => {
+        ;(o.items || []).forEach(it => {
+          if (!map[it.itemId]) map[it.itemId] = { name: it.itemName, qty: 0, amount: 0, platforms: {} }
+          map[it.itemId].qty += it.qty
+          map[it.itemId].amount += it.qty * it.unitPrice
+          map[it.itemId].platforms[o.platform] = (map[it.itemId].platforms[o.platform] || 0) + it.qty
+        })
+      })
+    return Object.values(map).sort((a, b) => b.qty - a.qty)
+  }, [orders])
 
   // 庫存 cost 對照表
   const inventoryCostMap = useMemo(() => {
@@ -178,6 +318,317 @@ export default function Performance({ data }) {
             <Bar dataKey="市集" fill="#10B981" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
+      </SectionCard>
+      {/* 品項全通路紼合分析 */}
+      <SectionCard title="🏆 品項全通路销售總覽">
+        {allItemStats.length === 0
+          ? <p className="text-sm text-gray-400 text-center py-6">尚無品項销售資料</p>
+          : (
+            <div className="space-y-2">
+              {/* 標題列 */}
+              <div className="grid grid-cols-[24px_1fr_60px_60px_60px_60px_70px] gap-2 text-xs font-medium text-gray-400 px-4">
+                <span>#</span>
+                <span>品項</span>
+                <span className="text-right">電商</span>
+                <span className="text-right">市集</span>
+                <span className="text-right">實體</span>
+                <span className="text-right">總計</span>
+                <span className="text-right">销售額</span>
+              </div>
+              {allItemStats.map((item, i) => {
+                const isTop = i === 0
+                const isSlow = item.turnover !== null && item.turnover < 20
+                const isExpanded = expandedItem === item.name
+                const maxQty = Math.max(...Object.values(item.byPlatform))
+                return (
+                  <div key={item.name}>
+                    <div
+                      onClick={() => setExpandedItem(isExpanded ? null : item.name)}
+                      className={`grid grid-cols-[24px_1fr_60px_60px_60px_60px_70px] gap-2 items-center rounded-xl px-4 py-3 cursor-pointer transition-colors ${
+                        isExpanded ? 'bg-orange-50 border border-orange-200' :
+                        isTop ? 'bg-orange-50 border border-orange-100' :
+                        isSlow ? 'bg-red-50/40' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}>
+                      <span className={`text-xs font-bold ${isTop ? 'text-orange-400' : 'text-gray-300'}`}>{i + 1}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {isTop && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-medium">🔥 最暢銷</span>}
+                          {isSlow && <span className="text-xs bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full font-medium">滞銷</span>}
+                          {item.stock !== null && <span className="text-xs text-gray-400">庫存 {item.stock}</span>}
+                        </div>
+                      </div>
+                      <span className="text-xs text-right text-orange-500">{item.ec > 0 ? item.ec : '—'}</span>
+                      <span className="text-xs text-right text-emerald-500">{item.market > 0 ? item.market : '—'}</span>
+                      <span className="text-xs text-right text-purple-500">{item.offline > 0 ? item.offline : '—'}</span>
+                      <span className="text-sm text-right font-bold text-gray-800">{item.total}</span>
+                      <span className="text-xs text-right text-gray-500">{fmt(item.amount)}</span>
+                    </div>
+                    {/* 展開的通路明細 */}
+                    {isExpanded && (
+                      <div className="mx-2 mb-2 bg-white border border-orange-100 rounded-xl px-4 py-3 space-y-2">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">📊 {item.name} 各通路销售明細</p>
+                        {Object.entries(item.byPlatform)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([platform, qty]) => (
+                            <div key={platform} className="flex items-center gap-3">
+                              <span className="text-xs text-gray-600 w-24 shrink-0">{platform}</span>
+                              <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    EC_PLATFORMS.includes(platform) ? 'bg-orange-400' :
+                                    platform === '市集' ? 'bg-emerald-400' : 'bg-purple-400'
+                                  }`}
+                                  style={{ width: `${maxQty > 0 ? qty / maxQty * 100 : 0}%` }} />
+                              </div>
+                              <span className="text-sm font-bold text-gray-700 w-12 text-right">{qty} 件</span>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              <p className="text-xs text-gray-400 pt-1">滞銷判斷：销售量 / （销售量 + 庫存）&lt; 20%</p>
+            </div>
+          )
+        }
+      </SectionCard>
+
+      {/* 品項毛利分析 */}
+      <SectionCard title="💰 品項毛利分析">
+        {itemMarginStats.length === 0
+          ? <p className="text-sm text-gray-400 text-center py-6">尚無資料，請確認庫存品項已填寫「售價」和「成本」欄位</p>
+          : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-[24px_1fr_60px_60px_60px_80px] gap-2 text-xs font-medium text-gray-400 px-4">
+                <span>#</span>
+                <span>品項</span>
+                <span className="text-right">售價</span>
+                <span className="text-right">成本</span>
+                <span className="text-right">毛利率</span>
+                <span className="text-right">總獲利</span>
+              </div>
+              {itemMarginStats.map((item, i) => {
+                const isExpanded = expandedMarginItem === item.name
+                const isTop = i === 0
+                const isLow = item.marginRate !== null && item.marginRate < 20
+                return (
+                  <div key={item.name}>
+                    <div
+                      onClick={() => setExpandedMarginItem(isExpanded ? null : item.name)}
+                      className={`grid grid-cols-[24px_1fr_60px_60px_60px_80px] gap-2 items-center rounded-xl px-4 py-3 cursor-pointer transition-colors ${
+                        isExpanded ? 'bg-emerald-50 border border-emerald-200' :
+                        isTop ? 'bg-emerald-50 border border-emerald-100' :
+                        isLow ? 'bg-red-50/40' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}>
+                      <span className={`text-xs font-bold ${isTop ? 'text-emerald-500' : 'text-gray-300'}`}>{i + 1}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {isTop && <span className="text-xs bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-medium">💰 最賺錢</span>}
+                          {isLow && <span className="text-xs bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full font-medium">低毛利</span>}
+                          <span className="text-xs text-gray-400">已售 {item.total} 件</span>
+                        </div>
+                      </div>
+                      <span className="text-xs text-right text-gray-600">${item.salePrice}</span>
+                      <span className="text-xs text-right text-gray-400">${item.cost}</span>
+                      <span className={`text-xs text-right font-semibold ${
+                        item.marginRate === null ? 'text-gray-300' :
+                        item.marginRate >= 30 ? 'text-emerald-600' :
+                        item.marginRate >= 20 ? 'text-orange-500' : 'text-red-500'
+                      }`}>
+                        {item.marginRate !== null ? `${item.marginRate}%` : '—'}
+                      </span>
+                      <span className="text-sm text-right font-bold text-emerald-600">
+                        {item.totalProfit !== null ? fmt(item.totalProfit) : '—'}
+                      </span>
+                    </div>
+                    {isExpanded && (
+                      <div className="mx-2 mb-2 bg-white border border-emerald-100 rounded-xl px-4 py-3 space-y-1.5 text-sm">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">💰 {item.name} 毛利明細</p>
+                        {['售價', '成本', '每件毛利', '毛利率', '已售件數', '總獲利'].map((label, idx) => {
+                          const vals = [item.salePrice, item.cost, item.margin, item.marginRate, item.total, item.totalProfit]
+                          const units = ['$', '$', '$', '%', '件', '']
+                          const val = vals[idx]
+                          return (
+                            <div key={label} className="flex justify-between">
+                              <span className="text-gray-500">{label}</span>
+                              <span className="font-semibold text-gray-800">
+                                {val !== null ? (idx === 5 ? fmt(val) : `${units[idx]}${val}`) : '—'}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              <p className="text-xs text-gray-400 pt-1">低毛利判斷：毛利率 &lt; 20%，總獲利 = 毛利 × 已售件數</p>
+            </div>
+          )
+        }
+      </SectionCard>
+
+      {/* 庫存周轉率 */}
+      <SectionCard title="⏱️ 庫存周轉率分析">
+        <p className="text-xs text-gray-400 mb-3">依近 30 天销售速度估算，判斷庫存可維持天數</p>
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {[{k:'dead',l:'零销售',c:'bg-gray-100 text-gray-500'},{k:'slow',l:'滞銷 >90天',c:'bg-red-100 text-red-600'},{k:'urgent',l:'即將售罄 <14天',c:'bg-orange-100 text-orange-600'},{k:'normal',l:'正常',c:'bg-emerald-100 text-emerald-600'}].map(({k,l,c}) => (
+            <span key={k} className={`text-xs px-2.5 py-1 rounded-full font-medium ${c}`}>{l}</span>
+          ))}
+        </div>
+        {turnoverStats.length === 0
+          ? <p className="text-sm text-gray-400 text-center py-6">尚無 A用品/B食品庫存資料</p>
+          : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-[1fr_60px_60px_60px_80px] gap-2 text-xs font-medium text-gray-400 px-4">
+                <span>品項</span>
+                <span className="text-right">庫存</span>
+                <span className="text-right">30天销量</span>
+                <span className="text-right">90天销量</span>
+                <span className="text-right">可維持</span>
+              </div>
+              {turnoverStats.map(item => {
+                const riskStyle = {
+                  dead:   'bg-gray-50 border-l-4 border-gray-300',
+                  slow:   'bg-red-50/60 border-l-4 border-red-400',
+                  urgent: 'bg-orange-50 border-l-4 border-orange-400',
+                  normal: 'bg-gray-50',
+                }[item.risk]
+                const riskLabel = {
+                  dead:   { text: '零销售', cls: 'text-gray-400' },
+                  slow:   { text: '滞銷', cls: 'text-red-500' },
+                  urgent: { text: '即將售罄', cls: 'text-orange-500' },
+                  normal: { text: null, cls: '' },
+                }[item.risk]
+                return (
+                  <div key={item.id} className={`grid grid-cols-[1fr_60px_60px_60px_80px] gap-2 items-center rounded-xl px-4 py-3 ${riskStyle}`}>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{item.itemName}</p>
+                      {riskLabel.text && <span className={`text-xs font-medium ${riskLabel.cls}`}>{riskLabel.text}</span>}
+                    </div>
+                    <span className="text-xs text-right text-gray-700 font-medium">{item.currentQty} {item.unit}</span>
+                    <span className={`text-xs text-right font-medium ${item.qty30 > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>{item.qty30}</span>
+                    <span className={`text-xs text-right font-medium ${item.qty90 > 0 ? 'text-blue-500' : 'text-gray-300'}`}>{item.qty90}</span>
+                    <span className={`text-sm text-right font-bold ${
+                      item.daysLeft === null ? 'text-gray-300' :
+                      item.daysLeft < 14 ? 'text-orange-500' :
+                      item.daysLeft > 90 ? 'text-red-500' : 'text-emerald-600'
+                    }`}>
+                      {item.daysLeft !== null ? `${item.daysLeft} 天` : item.currentQty > 0 ? '—' : '缺貨'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        }
+      </SectionCard>
+
+      {/* 品項销售分析 */}
+      <SectionCard title="📊 品項销售分析">
+        {/* 通路切換 */}
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit mb-4">
+          {[{k:'ec',l:'電商平台'},{k:'market',l:'市集'},{k:'offline',l:'實體通路'}].map(({k,l}) => (
+            <button key={k} onClick={() => setItemTab(k)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                itemTab === k ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>{l}</button>
+          ))}
+        </div>
+
+        {/* 電商平台 */}
+        {itemTab === 'ec' && (
+          ecItemStats.length === 0
+            ? <p className="text-sm text-gray-400 text-center py-6">尚無電商訂單品項資料</p>
+            : (
+              <div className="space-y-2">
+                {ecItemStats.map((item, i) => (
+                  <div key={item.name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                    <span className="text-xs font-bold text-gray-400 w-5">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {Object.entries(item.platforms).map(([p, q]) => `${p} ${q}件`).join('、')}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-orange-500">{item.qty} 件</p>
+                      <p className="text-xs text-gray-400">{fmt(item.amount)}</p>
+                    </div>
+                    <div className="w-20">
+                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-orange-400 rounded-full"
+                          style={{ width: `${ecItemStats[0].qty > 0 ? item.qty / ecItemStats[0].qty * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+        )}
+
+        {/* 市集 */}
+        {itemTab === 'market' && (
+          marketItemStats.length === 0
+            ? <p className="text-sm text-gray-400 text-center py-6">尚無市集品項資料（需市集現場收款時選擇品項）</p>
+            : (
+              <div className="space-y-2">
+                {marketItemStats.map((item, i) => (
+                  <div key={item.name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                    <span className="text-xs font-bold text-gray-400 w-5">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-emerald-500">{item.qty} 件</p>
+                      <p className="text-xs text-gray-400">{fmt(item.amount)}</p>
+                    </div>
+                    <div className="w-20">
+                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-400 rounded-full"
+                          style={{ width: `${marketItemStats[0].qty > 0 ? item.qty / marketItemStats[0].qty * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+        )}
+
+        {/* 實體通路 */}
+        {itemTab === 'offline' && (
+          offlineItemStats.length === 0
+            ? <p className="text-sm text-gray-400 text-center py-6">尚無實體通路品項資料</p>
+            : (
+              <div className="space-y-2">
+                {offlineItemStats.map((item, i) => (
+                  <div key={item.name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                    <span className="text-xs font-bold text-gray-400 w-5">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {Object.entries(item.platforms).map(([p, q]) => `${p} ${q}件`).join('、')}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-purple-500">{item.qty} 件</p>
+                      <p className="text-xs text-gray-400">{fmt(item.amount)}</p>
+                    </div>
+                    <div className="w-20">
+                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-purple-400 rounded-full"
+                          style={{ width: `${offlineItemStats[0].qty > 0 ? item.qty / offlineItemStats[0].qty * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+        )}
       </SectionCard>
     </div>
   )
