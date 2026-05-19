@@ -70,6 +70,13 @@ export default function App() {
     [bizData.revenues, bizData.expenses]
   )
 
+  // Firebase Auth 狀態載入中
+  if (currentUser === undefined) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#722927', borderTopColor: 'transparent' }} />
+    </div>
+  )
+
   // 未登入則顯示登入頁（必須在所有 hooks 之後）
   if (!currentUser) return <Login onLogin={auth.login} />
 

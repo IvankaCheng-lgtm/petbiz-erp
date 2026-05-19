@@ -14,7 +14,7 @@ export default function Login({ onLogin }) {
     setError('')
     setLoading(true)
     await new Promise(r => setTimeout(r, 400))
-    const ok = onLogin(username.trim(), password)
+    const ok = await onLogin(username.trim(), password)
     if (!ok) setError('帳號或密碼錯誤，請重新輸入。')
     setLoading(false)
   }
