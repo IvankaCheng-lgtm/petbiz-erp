@@ -542,6 +542,7 @@ export default function Performance({ data }) {
         {turnoverStats.length === 0
           ? <p className="text-sm text-gray-400 text-center py-6">尚無 A用品/B食品庫存資料</p>
           : (
+            <>
             <div className="space-y-2">
               <div className="grid grid-cols-[1fr_60px_60px_60px_80px] gap-2 text-xs font-medium text-gray-400 px-4">
                 <span>品項</span>
@@ -583,7 +584,8 @@ export default function Performance({ data }) {
                 )
               })}
             </div>
-              <Pagination page={pageTurnover} setPage={setPageTurnover} total={turnoverStats.length} />
+            <Pagination page={pageTurnover} setPage={setPageTurnover} total={turnoverStats.length} />
+            </>
           )
         }
       </SectionCard>
