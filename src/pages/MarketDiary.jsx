@@ -931,7 +931,7 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
       const days      = Math.max(1, Math.ceil((new Date(ev.endDate) - new Date(ev.startDate)) / 86400000) + 1)
       const avgDaily  = totalRev / days
       const roi       = boothFee > 0 ? ((netProfit / boothFee) * 100) : null
-      return { id: ev.id, name: ev.name, totalRev, boothFee, netProfit, goodsCost, trueProfit, avgDaily, roi, days }
+      return { id: ev.id, name: ev.name, startDate: ev.startDate, totalRev, boothFee, netProfit, goodsCost, trueProfit, avgDaily, roi, days }
     }).filter(s => {
       // 只分析已開始的市集（startDate ≤ 今天）
       const ev = marketEvents.find(e => e.id === s.id)
@@ -963,21 +963,26 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
 
   const displayStats = groupMode === 'venue' ? venueStats : stats
 
-  // 圓餅圖資料：各市集累計營收佔比
+  // 圓餅圖固定依場地合併（場次太多圓餅圖會太亂）
   const pieData = useMemo(() => {
-    const total = displayStats.reduce((s, e) => s + e.totalRev, 0)
-    return displayStats
+    const total = venueStats.reduce((s, e) => s + e.totalRev, 0)
+    return venueStats
       .filter(e => e.totalRev > 0)
       .map(e => ({ name: e.name, value: e.totalRev, pct: total > 0 ? (e.totalRev / total * 100).toFixed(1) : 0 }))
-  }, [displayStats])
+  }, [venueStats])
 
-  // 長條圖資料：各場次營收 vs 攤位費
+  // 長條圖：依場次時 X 軸顯示「名稱縮寫 + 月/日」，超過 8 場改折線圖
   const barData = useMemo(() =>
-    displayStats.map(e => ({ name: e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name, '營收': e.totalRev, '攤位費': e.boothFee, '純利': e.netProfit, '淨利': e.trueProfit }))
-  , [displayStats])
+    displayStats.map(e => ({
+      name: groupMode === 'event' && e.startDate
+        ? e.name.slice(0, 4) + ' ' + e.startDate.slice(5)
+        : (e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name),
+      '營收': e.totalRev, '攤位費': e.boothFee, '純利': e.netProfit, '淨利': e.trueProfit
+    }))
+  , [displayStats, groupMode])
 
   async function handleAI() {
-    if (stats.length === 0) return
+    if (displayStats.length === 0) return
     setAiLoading(true)
     setAiError('')
     setAiText('')
@@ -1049,15 +1054,18 @@ ${context}
           <table className="w-full text-sm min-w-[520px]">
             <thead>
               <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
-                {['市集名稱','累計營收','攤位費','純利','商品成本','淨利','平均日營','ROI'].map(h => (
+                {['市集名稱', groupMode === 'event' ? '日期' : '場次數', '累計營收','攤位費','純利','商品成本','淨利','平均日營','ROI'].map(h => (
                   <th key={h} className="pb-3 text-left">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {displayStats.map(e => (
-                <tr key={e.id} className="hover:bg-gray-50">
+                <tr key={e.id ?? e.name} className="hover:bg-gray-50">
                   <td className="py-2.5 font-medium text-gray-800">{e.name}</td>
+                  <td className="py-2.5 text-xs text-gray-400">
+                    {groupMode === 'event' ? (e.startDate || '—') : `${e.count} 場`}
+                  </td>
                   <td className="py-2.5 text-emerald-600 font-semibold">{fmt(e.totalRev)}</td>
                   <td className="py-2.5 text-orange-500">{fmt(e.boothFee)}</td>
                   <td className={`py-2.5 font-semibold ${e.netProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(e.netProfit)}</td>
@@ -1078,7 +1086,7 @@ ${context}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* 圓餅圖 */}
-        <SectionCard title="營收佔比（圓餅圖）">
+        <SectionCard title="營收佔比（依場地）">
           {pieData.length === 0
             ? <p className="text-sm text-gray-400 text-center py-6">尚無營收資料</p>
             : (
