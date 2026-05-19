@@ -17,6 +17,34 @@ export default function Performance({ data }) {
   const [expandedItem, setExpandedItem] = useState(null)
   const [expandedMarginItem, setExpandedMarginItem] = useState(null)
   const [selectedMarketEvent, setSelectedMarketEvent] = useState('all')
+  const [pageAll, setPageAll] = useState(1)
+  const [pageMargin, setPageMargin] = useState(1)
+  const [pageTurnover, setPageTurnover] = useState(1)
+  const [pageChannel, setPageChannel] = useState(1)
+  const [pageMarket, setPageMarket] = useState(1)
+  const PAGE_SIZE = 10
+
+  function Pagination({ page, setPage, total }) {
+    const pages = Math.ceil(total / PAGE_SIZE)
+    if (pages <= 1) return null
+    return (
+      <div className="flex items-center justify-between pt-3 border-t border-gray-100 mt-2">
+        <span className="text-xs text-gray-400">共 {total} 筆，第 {page} / {pages} 頁</span>
+        <div className="flex gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">上一頁</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)}
+              className={`w-7 h-7 text-xs rounded-lg border transition-colors ${
+                p === page ? 'bg-orange-400 text-white border-orange-400' : 'border-gray-200 hover:bg-gray-50'
+              }`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages}
+            className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">下一頁</button>
+        </div>
+      </div>
+    )
+  }
 
   // 市集品項表現
   const marketItemPerEvent = useMemo(() => {
@@ -364,8 +392,8 @@ export default function Performance({ data }) {
                 <span className="text-right">總計</span>
                 <span className="text-right">销售額</span>
               </div>
-              {allItemStats.map((item, i) => {
-                const isTop = i === 0
+              {allItemStats.slice((pageAll-1)*PAGE_SIZE, pageAll*PAGE_SIZE).map((item, i) => {
+                const isTop = i === 0 && pageAll === 1
                 const isSlow = item.turnover !== null && item.turnover < 20
                 const isExpanded = expandedItem === item.name
                 const maxQty = Math.max(...Object.values(item.byPlatform))
@@ -420,6 +448,7 @@ export default function Performance({ data }) {
                 )
               })}
               <p className="text-xs text-gray-400 pt-1">滞銷判斷：销售量 / （销售量 + 庫存）&lt; 20%</p>
+              <Pagination page={pageAll} setPage={setPageAll} total={allItemStats.length} />
             </div>
           )
         }
@@ -439,9 +468,9 @@ export default function Performance({ data }) {
                 <span className="text-right">毛利率</span>
                 <span className="text-right">總獲利</span>
               </div>
-              {itemMarginStats.map((item, i) => {
+              {itemMarginStats.slice((pageMargin-1)*PAGE_SIZE, pageMargin*PAGE_SIZE).map((item, i) => {
                 const isExpanded = expandedMarginItem === item.name
-                const isTop = i === 0
+                const isTop = i === 0 && pageMargin === 1
                 const isLow = item.marginRate !== null && item.marginRate < 20
                 return (
                   <div key={item.name}>
@@ -496,6 +525,7 @@ export default function Performance({ data }) {
                 )
               })}
               <p className="text-xs text-gray-400 pt-1">低毛利判斷：毛利率 &lt; 20%，總獲利 = 毛利 × 已售件數</p>
+              <Pagination page={pageMargin} setPage={setPageMargin} total={itemMarginStats.length} />
             </div>
           )
         }
@@ -520,7 +550,7 @@ export default function Performance({ data }) {
                 <span className="text-right">90天销量</span>
                 <span className="text-right">可維持</span>
               </div>
-              {turnoverStats.map(item => {
+              {turnoverStats.slice((pageTurnover-1)*PAGE_SIZE, pageTurnover*PAGE_SIZE).map(item => {
                 const riskStyle = {
                   dead:   'bg-gray-50 border-l-4 border-gray-300',
                   slow:   'bg-red-50/60 border-l-4 border-red-400',
@@ -553,6 +583,7 @@ export default function Performance({ data }) {
                 )
               })}
             </div>
+              <Pagination page={pageTurnover} setPage={setPageTurnover} total={turnoverStats.length} />
           )
         }
       </SectionCard>
@@ -562,7 +593,7 @@ export default function Performance({ data }) {
         {/* 通路切換 */}
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit mb-4">
           {[{k:'ec',l:'電商平台'},{k:'market',l:'市集'},{k:'offline',l:'實體通路'}].map(({k,l}) => (
-            <button key={k} onClick={() => setItemTab(k)}
+            <button key={k} onClick={() => { setItemTab(k); setPageChannel(1) }}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 itemTab === k ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}>{l}</button>
@@ -575,7 +606,7 @@ export default function Performance({ data }) {
             ? <p className="text-sm text-gray-400 text-center py-6">尚無電商訂單品項資料</p>
             : (
               <div className="space-y-2">
-                {ecItemStats.map((item, i) => (
+                {ecItemStats.slice((pageChannel-1)*PAGE_SIZE, pageChannel*PAGE_SIZE).map((item, i) => (
                   <div key={item.name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
                     <span className="text-xs font-bold text-gray-400 w-5">{i + 1}</span>
                     <div className="flex-1 min-w-0">
@@ -606,7 +637,7 @@ export default function Performance({ data }) {
             ? <p className="text-sm text-gray-400 text-center py-6">尚無市集品項資料（需市集現場收款時選擇品項）</p>
             : (
               <div className="space-y-2">
-                {marketItemStats.map((item, i) => (
+                {marketItemStats.slice((pageChannel-1)*PAGE_SIZE, pageChannel*PAGE_SIZE).map((item, i) => (
                   <div key={item.name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
                     <span className="text-xs font-bold text-gray-400 w-5">{i + 1}</span>
                     <div className="flex-1 min-w-0">
@@ -634,7 +665,7 @@ export default function Performance({ data }) {
             ? <p className="text-sm text-gray-400 text-center py-6">尚無實體通路品項資料</p>
             : (
               <div className="space-y-2">
-                {offlineItemStats.map((item, i) => (
+                {offlineItemStats.slice((pageChannel-1)*PAGE_SIZE, pageChannel*PAGE_SIZE).map((item, i) => (
                   <div key={item.name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
                     <span className="text-xs font-bold text-gray-400 w-5">{i + 1}</span>
                     <div className="flex-1 min-w-0">
@@ -683,8 +714,11 @@ export default function Performance({ data }) {
               </div>
               {(() => {
                 const items = selectedMarketEvent === 'all'
-                  ? marketItemPerEvent.allItems
-                  : Object.values(marketItemPerEvent.byEvent[selectedMarketEvent] || {}).sort((a, b) => b.qty - a.qty)
+                  ? marketItemPerEvent.allItems.slice((pageMarket-1)*PAGE_SIZE, pageMarket*PAGE_SIZE)
+                  : Object.values(marketItemPerEvent.byEvent[selectedMarketEvent] || {}).sort((a, b) => b.qty - a.qty).slice((pageMarket-1)*PAGE_SIZE, pageMarket*PAGE_SIZE)
+                const totalItems = selectedMarketEvent === 'all'
+                  ? marketItemPerEvent.allItems.length
+                  : Object.keys(marketItemPerEvent.byEvent[selectedMarketEvent] || {}).length
                 if (items.length === 0) return <p className="text-sm text-gray-400 text-center py-4">此場次無品項資料</p>
                 const maxQty = items[0]?.qty || 1
                 return (

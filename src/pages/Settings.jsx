@@ -124,6 +124,8 @@ export default function Settings({ data }) {
     setEditPwdVal('')
   }, [setEditPwdId, setEditPwdVal])
 
+  const handleFileClick = useCallback(() => fileRef.current.click(), [])
+
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold text-gray-800">系統設置</h1>
@@ -194,7 +196,7 @@ export default function Settings({ data }) {
             <Download size={18} /> 下載備份 JSON
           </button>
 
-          <button onClick={() => fileRef.current.click()}
+          <button onClick={handleFileClick}
             className="flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium px-4 py-3 rounded-xl transition-colors">
             <Upload size={18} /> 匯入備份 JSON
           </button>

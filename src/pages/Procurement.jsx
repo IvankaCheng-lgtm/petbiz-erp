@@ -561,7 +561,14 @@ export default function Procurement({ data }) {
         return
       }
       const wb  = new ExcelJS.Workbook()
-      await wb.xlsx.load(buf)
+      try {
+        await wb.xlsx.load(buf)
+      } catch {
+        setImportMsg('❌ 檔案解析失敗，請確認為正確的 Excel 檔案')
+        setTimeout(() => setImportMsg(''), 5000)
+        e.target.value = ''
+        return
+      }
       if (!wb.worksheets || wb.worksheets.length === 0) {
         setImportMsg('❌ Excel 檔案中找不到工作表')
         setTimeout(() => setImportMsg(''), 5000)
@@ -569,6 +576,13 @@ export default function Procurement({ data }) {
         return
       }
       const ws  = wb.worksheets[0]
+      const MAX_ROWS = 5000
+      if (ws.rowCount > MAX_ROWS + 1) {
+        setImportMsg(`❌ 資料筆數超過上限（${MAX_ROWS} 筆），請分批匙入`)
+        setTimeout(() => setImportMsg(''), 5000)
+        e.target.value = ''
+        return
+      }
       const headers = ws.getRow(1).values.slice(1) // index 0 是空的
       const VALID_CATS = ['A用品', 'B食品', 'C食材', 'D包材']
       const items = []
