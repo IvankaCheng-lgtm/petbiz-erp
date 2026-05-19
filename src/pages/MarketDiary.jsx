@@ -892,6 +892,7 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
   const [rangeMode,    setRangeMode]    = useState('3m')
   const [customStart,  setCustomStart]  = useState('')
   const [customEnd,    setCustomEnd]    = useState('')
+  const [groupMode,    setGroupMode]    = useState('event') // 'event' | 'venue'
 
   const filteredEvents = useMemo(() => {
     const todayStr = today()
@@ -938,18 +939,42 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
     })
   }, [filteredEvents, revenues, inventory])
 
+  // 依場地合併統計
+  const venueStats = useMemo(() => {
+    const map = {}
+    stats.forEach(e => {
+      const ev = marketEvents.find(m => m.id === e.id)
+      const venue = ev?.supplierName || '未指定場地'
+      if (!map[venue]) map[venue] = { name: venue, totalRev: 0, boothFee: 0, netProfit: 0, goodsCost: 0, trueProfit: 0, avgDaily: 0, roi: null, days: 0, count: 0 }
+      map[venue].totalRev   += e.totalRev
+      map[venue].boothFee   += e.boothFee
+      map[venue].goodsCost  += e.goodsCost
+      map[venue].days       += e.days
+      map[venue].count      += 1
+    })
+    return Object.values(map).map(v => ({
+      ...v,
+      netProfit:  v.totalRev - v.boothFee,
+      trueProfit: v.totalRev - v.boothFee - v.goodsCost,
+      avgDaily:   v.days > 0 ? v.totalRev / v.days : 0,
+      roi:        v.boothFee > 0 ? ((v.totalRev - v.boothFee) / v.boothFee * 100) : null,
+    })).sort((a, b) => b.totalRev - a.totalRev)
+  }, [stats, marketEvents])
+
+  const displayStats = groupMode === 'venue' ? venueStats : stats
+
   // 圓餅圖資料：各市集累計營收佔比
   const pieData = useMemo(() => {
-    const total = stats.reduce((s, e) => s + e.totalRev, 0)
-    return stats
+    const total = displayStats.reduce((s, e) => s + e.totalRev, 0)
+    return displayStats
       .filter(e => e.totalRev > 0)
       .map(e => ({ name: e.name, value: e.totalRev, pct: total > 0 ? (e.totalRev / total * 100).toFixed(1) : 0 }))
-  }, [stats])
+  }, [displayStats])
 
   // 長條圖資料：各場次營收 vs 攤位費
   const barData = useMemo(() =>
-    stats.map(e => ({ name: e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name, '營收': e.totalRev, '攤位費': e.boothFee, '純利': e.netProfit, '淨利': e.trueProfit }))
-  , [stats])
+    displayStats.map(e => ({ name: e.name.length > 8 ? e.name.slice(0, 8) + '…' : e.name, '營收': e.totalRev, '攤位費': e.boothFee, '純利': e.netProfit, '淨利': e.trueProfit }))
+  , [displayStats])
 
   async function handleAI() {
     if (stats.length === 0) return
@@ -957,7 +982,7 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
     setAiError('')
     setAiText('')
 
-    const context = stats.map(e => {
+    const context = displayStats.map(e => {
       const roiStr = e.roi !== null ? `${e.roi.toFixed(1)}%` : '無攤位費'
       return `「${e.name}」：累計營收 ${fmt(e.totalRev)}、攤位費 ${fmt(e.boothFee)}、純利 ${fmt(e.netProfit)}、平均日營 ${fmt(Math.round(e.avgDaily))}、ROI ${roiStr}`
     }).join('\n')
@@ -1011,6 +1036,14 @@ ${context}
           </>
         )}
       </div>
+      <div className="flex gap-1.5">
+        {[['event','依場次'],['venue','依場地']].map(([val,label]) => (
+          <button key={val} onClick={() => setGroupMode(val)}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+              groupMode === val ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
+            }`}>{label}</button>
+        ))}
+      </div>
       <SectionCard title="各市集績效概覽">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[520px]">
@@ -1022,7 +1055,7 @@ ${context}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {stats.map(e => (
+              {displayStats.map(e => (
                 <tr key={e.id} className="hover:bg-gray-50">
                   <td className="py-2.5 font-medium text-gray-800">{e.name}</td>
                   <td className="py-2.5 text-emerald-600 font-semibold">{fmt(e.totalRev)}</td>

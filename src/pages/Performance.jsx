@@ -20,6 +20,7 @@ export default function Performance({ data }) {
   const [pageAll, setPageAll] = useState(1)
   const [pageMargin, setPageMargin] = useState(1)
   const [pageTurnover, setPageTurnover] = useState(1)
+  const [riskFilter, setRiskFilter] = useState('all')
   const [pageChannel, setPageChannel] = useState(1)
   const [pageMarket, setPageMarket] = useState(1)
   const PAGE_SIZE = 10
@@ -535,8 +536,11 @@ export default function Performance({ data }) {
       <SectionCard title="⏱️ 庫存周轉率分析">
         <p className="text-xs text-gray-400 mb-3">依近 30 天销售速度估算，判斷庫存可維持天數</p>
         <div className="flex gap-2 mb-3 flex-wrap">
-          {[{k:'dead',l:'零销售',c:'bg-gray-100 text-gray-500'},{k:'slow',l:'滞銷 >90天',c:'bg-red-100 text-red-600'},{k:'urgent',l:'即將售罄 <14天',c:'bg-orange-100 text-orange-600'},{k:'normal',l:'正常',c:'bg-emerald-100 text-emerald-600'}].map(({k,l,c}) => (
-            <span key={k} className={`text-xs px-2.5 py-1 rounded-full font-medium ${c}`}>{l}</span>
+          {[{k:'all',l:'全部',c:'bg-gray-200 text-gray-600'},{k:'dead',l:'零销售',c:'bg-gray-100 text-gray-500'},{k:'slow',l:'滞銷 >90天',c:'bg-red-100 text-red-600'},{k:'urgent',l:'即將售罄 <14天',c:'bg-orange-100 text-orange-600'},{k:'normal',l:'正常',c:'bg-emerald-100 text-emerald-600'}].map(({k,l,c}) => (
+            <button key={k} onClick={() => { setRiskFilter(k); setPageTurnover(1) }}
+              className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                riskFilter === k ? 'ring-2 ring-offset-1 ring-gray-400 ' + c : c + ' opacity-60 hover:opacity-100'
+              }`}>{l}</button>
           ))}
         </div>
         {turnoverStats.length === 0
@@ -551,7 +555,13 @@ export default function Performance({ data }) {
                 <span className="text-right">90天销量</span>
                 <span className="text-right">可維持</span>
               </div>
-              {turnoverStats.slice((pageTurnover-1)*PAGE_SIZE, pageTurnover*PAGE_SIZE).map(item => {
+              {(() => {
+                const filtered = riskFilter === 'all' ? turnoverStats : turnoverStats.filter(i => i.risk === riskFilter)
+                const paged = filtered.slice((pageTurnover-1)*PAGE_SIZE, pageTurnover*PAGE_SIZE)
+                if (filtered.length === 0) return <p className="text-sm text-gray-400 text-center py-6">此類別目前無品項</p>
+                return (
+                  <>
+                    {paged.map(item => {
                 const riskStyle = {
                   dead:   'bg-gray-50 border-l-4 border-gray-300',
                   slow:   'bg-red-50/60 border-l-4 border-red-400',
@@ -583,8 +593,11 @@ export default function Performance({ data }) {
                   </div>
                 )
               })}
+                  </>
+                )
+              })()}
             </div>
-            <Pagination page={pageTurnover} setPage={setPageTurnover} total={turnoverStats.length} />
+            <Pagination page={pageTurnover} setPage={setPageTurnover} total={riskFilter === 'all' ? turnoverStats.length : turnoverStats.filter(i => i.risk === riskFilter).length} />
             </>
           )
         }
