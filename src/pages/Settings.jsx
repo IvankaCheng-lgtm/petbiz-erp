@@ -1,77 +1,13 @@
 import { useState, useRef, useCallback } from 'react'
-import { Download, Trash2, Upload, Save, RefreshCw, UserPlus, Key } from 'lucide-react'
-import { SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
-
-function UserRow({ u, editPwdId, editPwdVal, setEditPwdVal, onTogglePwd, onChangePwd, onDelete }) {
-  const handleToggle = useCallback(() => onTogglePwd(u.id), [u.id, onTogglePwd])
-  const handleDelete = useCallback(() => onDelete(u.id),    [u.id, onDelete])
-  const handleSave   = useCallback(() => onChangePwd(u.id), [u.id, onChangePwd])
-  return (
-    <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
-            style={{ backgroundColor: '#722927' }}>
-            {u.username[0].toUpperCase()}
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-800">{u.username}</p>
-            <p className="text-xs text-gray-400">{u.role === 'admin' ? '管理員' : '一般使用者'} · 建立 {u.createdAt}</p>
-          </div>
-        </div>
-        <div className="flex gap-1">
-          <button onClick={handleToggle}
-            className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors">
-            <Key size={14} />
-          </button>
-          {u.role !== 'admin' && (
-            <button onClick={handleDelete} className={btnDanger}>
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-      {editPwdId === u.id && (
-        <div className="flex gap-2 pt-1">
-          <input type="password" className={inputCls + ' text-sm'} placeholder="輸入新密碼"
-            value={editPwdVal} onChange={e => setEditPwdVal(e.target.value)} />
-          <button onClick={handleSave} className={btnPrimary + ' shrink-0 text-sm'}>儲存</button>
-        </div>
-      )}
-    </div>
-  )
-}
+import { Download, Trash2, Upload, Save, RefreshCw } from 'lucide-react'
+import { SectionCard, FormRow, inputCls, btnPrimary, btnSecondary } from '../components/ui'
 
 export default function Settings({ data }) {
   const { inventory, updateInventoryItem, clearAllData, exportData, importData, resetInventoryToSeed, auth } = data
-  const { users, addUser, deleteUser, changePassword, currentUser } = auth
+  const { currentUser } = auth
   const fileRef = useRef()
   const [importMsg, setImportMsg] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
-
-  // 使用者管理
-  const [newUsername, setNewUsername] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [userMsg,     setUserMsg]     = useState('')
-  const [editPwdId,   setEditPwdId]   = useState(null)
-  const [editPwdVal,  setEditPwdVal]  = useState('')
-
-  function handleAddUser(e) {
-    e.preventDefault()
-    if (!newUsername.trim() || !newPassword.trim()) return
-    const ok = addUser(newUsername.trim(), newPassword.trim())
-    setUserMsg(ok ? '✅ 使用者新增成功' : '❌ 帳號已存在')
-    if (ok) { setNewUsername(''); setNewPassword('') }
-    setTimeout(() => setUserMsg(''), 3000)
-  }
-
-  const handleChangePwd = useCallback((id) => {
-    if (!editPwdVal.trim()) return
-    changePassword(id, editPwdVal.trim())
-    setEditPwdId(null); setEditPwdVal('')
-    setUserMsg('✅ 密碼已更新')
-    setTimeout(() => setUserMsg(''), 3000)
-  }, [editPwdVal, changePassword])
 
   // 電費參數（存 localStorage）
   const [elecParams, setElecParams] = useState(() => {
@@ -119,10 +55,7 @@ export default function Settings({ data }) {
   const cItems = inventory.filter(i => i.category === 'C食材')
   void cItems // 保留相容，安全水位已改用內部過濾
 
-  const handleTogglePwd = useCallback((id) => {
-    setEditPwdId(prev => prev === id ? null : id)
-    setEditPwdVal('')
-  }, [setEditPwdId, setEditPwdVal])
+  const handleTogglePwd = useCallback(() => {}, [])
 
   const handleFileClick = useCallback(() => fileRef.current.click(), [])
 
@@ -226,38 +159,18 @@ export default function Settings({ data }) {
 
       {/* 使用者管理 */}
       <SectionCard title="👤 使用者管理">
-        {/* 新增表單 */}
-        <form onSubmit={handleAddUser} className="flex flex-col sm:flex-row gap-2 mb-4">
-          <input type="text" className={inputCls} placeholder="新帳號" value={newUsername}
-            onChange={e => setNewUsername(e.target.value)} required />
-          <input type="password" className={inputCls} placeholder="新密碼" value={newPassword}
-            onChange={e => setNewPassword(e.target.value)} required />
-          <button type="submit" className={btnPrimary + ' flex items-center gap-1 shrink-0'}>
-            <UserPlus size={15} /> 新增使用者
-          </button>
-        </form>
-
-        {userMsg && (
-          <div className={`mb-3 px-4 py-2 rounded-xl text-sm font-medium
-            ${userMsg.startsWith('✅') ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-            {userMsg}
-          </div>
-        )}
-
-        {/* 使用者列表 */}
-        <div className="space-y-2">
-          {users.map(u => (
-            <UserRow
-              key={u.id}
-              u={u}
-              editPwdId={editPwdId}
-              editPwdVal={editPwdVal}
-              setEditPwdVal={setEditPwdVal}
-              onTogglePwd={handleTogglePwd}
-              onChangePwd={handleChangePwd}
-              onDelete={deleteUser}
-            />
-          ))}
+        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-4 space-y-3">
+          <p className="text-sm text-blue-800">
+            目前使用 <span className="font-semibold">Firebase Authentication</span> 管理帳號。
+          </p>
+          <p className="text-xs text-blue-600">目前登入：{currentUser?.username}</p>
+          <a
+            href="https://console.firebase.google.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors">
+            前往 Firebase Console 管理帳號 →
+          </a>
         </div>
       </SectionCard>
 
