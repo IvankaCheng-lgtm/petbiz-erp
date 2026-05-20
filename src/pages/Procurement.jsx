@@ -1278,7 +1278,7 @@ export default function Procurement({ data }) {
             </FormRow>
             <FormRow label="進貨數量">
               <input type="number"
-                min="0.1"
+                min={purchaseForm.category==='C食材'?'0.1':'1'}
                 step={purchaseForm.category === 'C食材' ? '0.1' : '1'}
                 className={inputCls} placeholder="0" value={purchaseForm.qty}
                 onChange={e => setPurchaseForm(p => ({ ...p, qty: e.target.value }))} required />
