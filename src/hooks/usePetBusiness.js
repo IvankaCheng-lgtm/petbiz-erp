@@ -766,13 +766,6 @@ export default function usePetBusiness() {
         revenueId: revenueItem.id,
       })),
     ];
-    // 贈品成本記入支出
-    const giftCost = giftItems.reduce((s, it) => s + (it.cost || 0) * it.qty, 0);
-    const giftExpense = giftCost > 0 ? {
-      id: uid(), date: today, type: '行銷',
-      note: `市集贈品成本：${giftItems.map(i => i?.itemName || '').join('、')}`,
-      amount: giftCost, isProductionCost: false, isReported: false,
-    } : null;
     // LINE Pay 加 isPending:true，不計入收支管理，但結算統計可見
     const finalRevenue = paymentMethod === 'LINE Pay'
       ? { ...revenueItem, isPending: true }
@@ -780,11 +773,9 @@ export default function usePetBusiness() {
     setRevenues(prev => [...prev, finalRevenue]);
     setInventory(applyInv);
     setInventoryLogs(prev => [...prev, ...logs]);
-    if (giftExpense) setExpenses(prev => [...prev, giftExpense]);
     await cloudUpdate("revenues",      list => [...list, finalRevenue]);
     await cloudUpdate("inventory",     applyInv);
     await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
-    if (giftExpense) await cloudUpdate("expenses", list => [...list, giftExpense]);
   }, [cloudUpdate]);
 
   // ── 系統 ──────────────────────────────────────────────────────
