@@ -258,6 +258,7 @@ export default function SalesOrder({ data }) {
   function printShippingSlip(o) {
     const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice, 0)
     const discountAmt = subtotalAmt - (o.total ?? o.totalAmount ?? subtotalAmt)
+    const gifts = o.giftItems ?? []
 
     // 將 LOGO 轉成 base64 嵌入 HTML
     const logoUrl = new URL('../assets/LOGO.png', import.meta.url).href
@@ -268,8 +269,7 @@ export default function SalesOrder({ data }) {
       canvas.width = img.naturalWidth
       canvas.height = img.naturalHeight
       canvas.getContext('2d').drawImage(img, 0, 0)
-      const base64 = canvas.toDataURL('image/png')
-      openPrint(base64)
+      openPrint(canvas.toDataURL('image/png'))
     }
     img.onerror = () => openPrint(null)
 
@@ -286,6 +286,8 @@ export default function SalesOrder({ data }) {
           th { background: #f3f4f6; text-align: left; padding: 8px 10px; font-size: 12px; }
           td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
           .right { text-align: right; }
+          .gift td { color: #be185d; background: #fdf2f8; }
+          .gift td { color: #be185d; background: #fdf2f8; }
           .total-row td { font-weight: bold; font-size: 15px; border-top: 2px solid #111; border-bottom: none; }
           .note { background: #f9fafb; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #555; margin-top: 8px; }
           .footer { margin-top: 32px; font-size: 11px; color: #aaa; text-align: center; }
@@ -299,6 +301,7 @@ export default function SalesOrder({ data }) {
           <thead><tr><th>品名</th><th class="right">單價</th><th class="right">數量</th><th class="right">小計</th></tr></thead>
           <tbody>
             ${(o.items ?? []).map(i => `<tr><td>${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td><td class="right">$${i.qty * i.unitPrice}</td></tr>`).join('')}
+            ${gifts.map(i => `<tr class="gift"><td>🎁 ${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td><td class="right">贈品</td></tr>`).join('')}
           </tbody>
         </table>
         <table style="width:260px;margin-left:auto">
