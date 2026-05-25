@@ -118,15 +118,6 @@ export default function SalesOrder({ data }) {
 
   const subtotal = useMemo(() => cart.reduce((s, c) => s + c.qty * c.unitPrice, 0), [cart]);
 
-  // 訂單毛利 = 折後金額 - 商品成本
-  const orderGrossProfit = useMemo(() => {
-    const cogs = cart.reduce((s, c) => {
-      const inv = inventory.find(i => i.id === c.itemId);
-      return s + c.qty * (inv?.cost ?? 0);
-    }, 0);
-    return totalAmount - cogs;
-  }, [cart, totalAmount, inventory]);
-
   const totalAmount = useMemo(() => {
     let t = subtotal;
     const pct = parseFloat(discountPct);
@@ -143,6 +134,15 @@ export default function SalesOrder({ data }) {
   }, [selectedConsignee, totalAmount]);
 
   const netAfterConsignment = totalAmount - consignmentFee;
+
+  // 訂單毛利 = 折後金額 - 商品成本
+  const orderGrossProfit = useMemo(() => {
+    const cogs = cart.reduce((s, c) => {
+      const inv = inventory.find(i => i.id === c.itemId);
+      return s + c.qty * (inv?.cost ?? 0);
+    }, 0);
+    return totalAmount - cogs;
+  }, [cart, totalAmount, inventory]);
 
   // 寄賣點模式下手動修改品項金額
   function updateUnitPrice(itemId, price) {
