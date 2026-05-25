@@ -244,12 +244,15 @@ export default function usePetBusiness() {
       }
       return [...list, { id: uid(), category, itemName, currentQty: qty, safetyQty: 0, unit: '個' }];
     };
-    if (newExp) setExpenses(prev => [...prev, newExp]);
-    setInventory(applyInv);
     const log = { id: uid(), date, itemId, itemName, change: +qty, reason: `進貨${note ? `（${note}）` : ''}` };
+    if (newExp) setExpenses(prev => [...prev, newExp]);
+    setInventory(prev => {
+      const updated = applyInv(prev);
+      cloudUpdate("inventory", () => updated);
+      return updated;
+    });
     setInventoryLogs(prev => [...prev, log]);
     if (newExp) await cloudUpdate("expenses", list => [...list, newExp]);
-    await cloudUpdate("inventory", applyInv);
     await cloudUpdate("inventoryLogs", list => [...list, log]);
   }, [cloudUpdate]);
 
@@ -350,10 +353,12 @@ export default function usePetBusiness() {
       return next;
     };
     setProduction(prev => [...prev, newBatch]);
-    setInventory(applyInv);
     await cloudUpdate("production", list => [...list, newBatch]);
-    await cloudUpdate("inventory",  applyInv);
-    // 對 targetItemId 寫入庫存異動紀錄
+    setInventory(prev => {
+      const updated = applyInv(prev);
+      cloudUpdate("inventory", () => updated);
+      return updated;
+    });
     if (targetItemId && resultQty) {
       const targetItemName = params.targetItemName ?? note ?? ''
       const log = {
@@ -404,8 +409,11 @@ export default function usePetBusiness() {
           }
           return next;
         };
-        setInventory(restoreInv);
-        cloudUpdate('inventory', restoreInv);
+        setInventory(prev => {
+          const updated = restoreInv(prev);
+          cloudUpdate('inventory', () => updated);
+          return updated;
+        });
         if (batch.targetItemId && batch.resultQty) {
           const log = {
             id: uid(), date: new Date().toISOString().slice(0, 10),
@@ -463,8 +471,11 @@ export default function usePetBusiness() {
       return next;
     };
 
-    setInventory(restoreInv);
-    cloudUpdate('inventory', restoreInv);
+    setInventory(prev => {
+      const updated = restoreInv(prev);
+      cloudUpdate('inventory', () => updated);
+      return updated;
+    });
 
     // 寫入異動紀錄
     const date = new Date().toISOString().slice(0, 10);
@@ -539,13 +550,18 @@ export default function usePetBusiness() {
   const adjustInventory = useCallback((itemId, itemName, change, reason) => {
     const date = new Date().toISOString().slice(0, 10);
     const log = { id: uid(), date, itemId, itemName, change, reason: reason || '庫存盤點' };
-    const newQty = (prev) => {
+    setInventory(prev => {
       const item = prev.find(i => i.id === itemId);
-      const raw = (item?.currentQty ?? 0) + change;
-      return Math.round(Math.max(0, raw) * 10) / 10;
-    };
-    setInventory(prev => prev.map(i => i.id === itemId ? { ...i, currentQty: newQty(prev) } : i));
-    cloudUpdate('inventory', list => list.map(i => i.id === itemId ? { ...i, currentQty: newQty(list) } : i));
+      const raw = Math.round(Math.max(0, (item?.currentQty ?? 0) + change) * 10) / 10;
+      let updated;
+      if (change < 0) {
+        updated = prev.map(i => i.id === itemId ? deductFIFO(i, -change) : i);
+      } else {
+        updated = prev.map(i => i.id === itemId ? { ...i, currentQty: raw } : i);
+      }
+      cloudUpdate('inventory', () => updated);
+      return updated;
+    });
     setInventoryLogs(prev => [...prev, log]);
     cloudUpdate('inventoryLogs', list => [...list, log]);
   }, [cloudUpdate]);
@@ -568,14 +584,7 @@ export default function usePetBusiness() {
             const idx = next.findIndex(i => i.id === itemId);
             if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
           });
-          return next;
-        });
-        cloudUpdate("inventory", list => {
-          const next = [...list];
-          order.items.forEach(({ itemId, qty }) => {
-            const idx = next.findIndex(i => i.id === itemId);
-            if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
-          });
+          cloudUpdate("inventory", () => next);
           return next;
         });
       }
@@ -632,11 +641,14 @@ export default function usePetBusiness() {
     } : null;
 
     setOrders(prev => [...prev, order]);
-    setInventory(applyInv);
+    setInventory(prev => {
+      const updated = applyInv(prev);
+      cloudUpdate("inventory", () => updated);
+      return updated;
+    });
     setInventoryLogs(prev => [...prev, ...logs]);
     if (costExp) setExpenses(prev => [...prev, costExp]);
     await cloudUpdate("orders",        list => [...list, order]);
-    await cloudUpdate("inventory",     applyInv);
     await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
     if (costExp) await cloudUpdate("expenses", list => [...list, costExp]);
 
@@ -771,14 +783,44 @@ export default function usePetBusiness() {
       ? { ...revenueItem, isPending: true }
       : revenueItem;
     setRevenues(prev => [...prev, finalRevenue]);
-    setInventory(applyInv);
+    setInventory(prev => {
+      const updated = applyInv(prev);
+      cloudUpdate("inventory", () => updated);
+      return updated;
+    });
     setInventoryLogs(prev => [...prev, ...logs]);
     await cloudUpdate("revenues",      list => [...list, finalRevenue]);
-    await cloudUpdate("inventory",     applyInv);
     await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
   }, [cloudUpdate]);
 
-  // ── 系統 ──────────────────────────────────────────────────────
+  const shipOrder = useCallback(async (orderId) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order || order.shipped) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const applyInv = (list) => {
+      let next = [...list];
+      (order.items ?? []).forEach(({ itemId, qty }) => {
+        const idx = next.findIndex(i => i.id === itemId);
+        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
+      });
+      return next;
+    };
+    const logs = (order.items ?? []).map(it => ({
+      id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
+      change: -it.qty, reason: `出貨（${order.platform}）`,
+    }));
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, shipped: true, status: '已出貨', shippedAt: today } : o));
+    setInventory(prev => {
+      const updated = applyInv(prev);
+      cloudUpdate('inventory', () => updated);
+      return updated;
+    });
+    setInventoryLogs(prev => [...prev, ...logs]);
+    await cloudUpdate('orders', list => list.map(o => o.id === orderId ? { ...o, shipped: true, status: '已出貨', shippedAt: today } : o));
+    await cloudUpdate('inventoryLogs', list => [...list, ...logs]);
+  }, [cloudUpdate, orders]);
+
+  // ── 系統 ──────────────────────────────────────────────────────────────
   const clearAllData = useCallback(async () => {
     if (!window.confirm("確定要清空所有雲端帳務資料嗎？此動作無法復原。")) return;
     const empty = { revenues: [], expenses: [], inventory: [], production: [], savedFormulas: [], marketEvents: [], orders: [], inventoryLogs: [], isInitialized: true };
@@ -836,7 +878,7 @@ export default function usePetBusiness() {
     saveFormula, deleteFormula,
     addSupplier, updateSupplier, deleteSupplier,
     addMarketEvent, updateMarketEvent, deleteMarketEvent, deleteMarketSale,
-    processMarketSale, processOrder, updateOrder, deleteOrder, addInventoryLog, adjustInventory,
+    processMarketSale, processOrder, shipOrder, updateOrder, deleteOrder, addInventoryLog, adjustInventory,
     addIngredient, updateIngredient, deleteIngredient,
     clearAllData, exportData, importData,
   };
