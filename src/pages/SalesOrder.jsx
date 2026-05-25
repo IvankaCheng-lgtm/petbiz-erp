@@ -309,7 +309,7 @@ export default function SalesOrder({ data }) {
           ${discountAmt > 0 ? `<tr><td>折扣</td><td class="right" style="color:#16a34a">−$${discountAmt}</td></tr>` : ''}
           <tr class="total-row"><td>合計</td><td class="right">$${o.total ?? o.totalAmount}</td></tr>
         </table>
-        ${o.note ? `<div class="note">📝 備註：${o.note}</div>` : ''}
+        ${o.note ? `<div class="note">📝 備註：${o.note.replace(/\n/g, '<br>')}</div>` : ''}
         <div class="footer">萌獸探險隊 &copy; ${new Date().getFullYear()}</div>
         </body></html>`
       const w = window.open('', '_blank', 'width=700,height=600')
