@@ -567,10 +567,10 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   const deleteOrder = useCallback((id) => {
-    // 找到訂單，補回庫存並刪除對應手續費支出
     setOrders(prev => {
       const order = prev.find(o => o.id === id);
-      if (order?.items) {
+      // 只有已出貨的訂單才補回庫存
+      if (order?.items && order.shipped) {
         const date = new Date().toISOString().slice(0, 10);
         const logs = order.items.map(it => ({
           id: uid(), date, itemId: it.itemId, itemName: it.itemName,
@@ -593,12 +593,11 @@ export default function usePetBusiness() {
     cloudUpdate("orders", list => list.filter(o => o.id !== id));
     setRevenues(prev => prev.filter(r => r.orderId !== id));
     cloudUpdate("revenues", list => list.filter(r => r.orderId !== id));
-    // 刪除對應的手續費支出（orderId 相同）
     setExpenses(prev => prev.filter(e => e.orderId !== id));
     cloudUpdate("expenses", list => list.filter(e => e.orderId !== id));
   }, [cloudUpdate]);
 
-  const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, note = '' }) => {
+  const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, note = '', withShipment = true }) => {
     const today = new Date().toISOString().slice(0, 10);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const discount = subtotal - totalAmount;
@@ -606,7 +605,9 @@ export default function usePetBusiness() {
 
     const order = {
       id: uid(), platform, items, subtotal, discount, total: totalAmount,
-      orderDate: today, status: "已完成",
+      orderDate: today,
+      status: withShipment ? "已完成" : "待出貨",
+      shipped: withShipment,
       discountType: discountType ?? null,
       discountValue: discountValue ?? null,
       platformCost: cost,
@@ -615,52 +616,50 @@ export default function usePetBusiness() {
       note: note || '',
     };
 
-    const applyInv = (list) => {
-      let next = [...list];
-      items.forEach(({ itemId, qty }) => {
-        const idx = next.findIndex(i => i.id === itemId);
-        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
-      });
-      return next;
-    };
-
-    const logs = items.map(it => ({
-      id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
-      change: -it.qty, reason: `銷售訂單（${platform}）`,
-    }));
-
-    // 寄賣點抽成 or 一般平台手續費 → 記入支出
-    const costExp = cost > 0 ? {
-      id: uid(), date: today,
-      type: supplierId ? '寄賣抽成' : '行銷',
-      note: supplierId
-        ? `寄賣點抽成：${platform}（訂單 ${order.id.slice(-4)}）`
-        : `平台手續費：${platform}（訂單 ${order.id.slice(-4)}）`,
-      amount: cost, isProductionCost: false, isReported: false,
-      orderId: order.id, supplierId: supplierId || null,
-    } : null;
-
     setOrders(prev => [...prev, order]);
-    setInventory(prev => {
-      const updated = applyInv(prev);
-      cloudUpdate("inventory", () => updated);
-      return updated;
-    });
-    setInventoryLogs(prev => [...prev, ...logs]);
-    if (costExp) setExpenses(prev => [...prev, costExp]);
-    await cloudUpdate("orders",        list => [...list, order]);
-    await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
-    if (costExp) await cloudUpdate("expenses", list => [...list, costExp]);
+    await cloudUpdate("orders", list => [...list, order]);
 
-    // skipRevenue = true 時只扣庫存，不寫入收入
-    if (!skipRevenue) {
-      const revenueItem = {
-        id: uid(), date: today, channel: platform, category: "電商銷售",
-        amount: totalAmount, isReported: false, orderId: order.id, items,
-        platformCost: cost, supplierId: supplierId || null,
+    if (withShipment) {
+      // 立即出貨：扣庫存、記收入、記手續費
+      const applyInv = (list) => {
+        let next = [...list];
+        items.forEach(({ itemId, qty }) => {
+          const idx = next.findIndex(i => i.id === itemId);
+          if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
+        });
+        return next;
       };
-      setRevenues(prev => [...prev, revenueItem]);
-      await cloudUpdate("revenues", list => [...list, revenueItem]);
+      const logs = items.map(it => ({
+        id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
+        change: -it.qty, reason: `銷售訂單（${platform}）`,
+      }));
+      const costExp = cost > 0 ? {
+        id: uid(), date: today,
+        type: supplierId ? '寄賣抽成' : '行銷',
+        note: supplierId
+          ? `寄賣點抽成：${platform}（訂單 ${order.id.slice(-4)}）`
+          : `平台手續費：${platform}（訂單 ${order.id.slice(-4)}）`,
+        amount: cost, isProductionCost: false, isReported: false,
+        orderId: order.id, supplierId: supplierId || null,
+      } : null;
+      setInventory(prev => {
+        const updated = applyInv(prev);
+        cloudUpdate("inventory", () => updated);
+        return updated;
+      });
+      setInventoryLogs(prev => [...prev, ...logs]);
+      if (costExp) setExpenses(prev => [...prev, costExp]);
+      await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
+      if (costExp) await cloudUpdate("expenses", list => [...list, costExp]);
+      if (!skipRevenue) {
+        const revenueItem = {
+          id: uid(), date: today, channel: platform, category: "電商銷售",
+          amount: totalAmount, isReported: false, orderId: order.id, items,
+          platformCost: cost, supplierId: supplierId || null,
+        };
+        setRevenues(prev => [...prev, revenueItem]);
+        await cloudUpdate("revenues", list => [...list, revenueItem]);
+      }
     }
   }, [cloudUpdate]);
 
@@ -797,6 +796,7 @@ export default function usePetBusiness() {
     const order = orders.find(o => o.id === orderId);
     if (!order || order.shipped) return;
     const today = new Date().toISOString().slice(0, 10);
+    const cost = order.platformCost || 0;
     const applyInv = (list) => {
       let next = [...list];
       (order.items ?? []).forEach(({ itemId, qty }) => {
@@ -809,6 +809,15 @@ export default function usePetBusiness() {
       id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
       change: -it.qty, reason: `出貨（${order.platform}）`,
     }));
+    const costExp = cost > 0 ? {
+      id: uid(), date: today,
+      type: order.supplierId ? '寄賣抽成' : '行銷',
+      note: order.supplierId
+        ? `寄賣點抽成：${order.platform}（訂單 ${orderId.slice(-4)}）`
+        : `平台手續費：${order.platform}（訂單 ${orderId.slice(-4)}）`,
+      amount: cost, isProductionCost: false, isReported: false,
+      orderId, supplierId: order.supplierId || null,
+    } : null;
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, shipped: true, status: '已出貨', shippedAt: today } : o));
     setInventory(prev => {
       const updated = applyInv(prev);
@@ -816,8 +825,19 @@ export default function usePetBusiness() {
       return updated;
     });
     setInventoryLogs(prev => [...prev, ...logs]);
+    if (costExp) setExpenses(prev => [...prev, costExp]);
     await cloudUpdate('orders', list => list.map(o => o.id === orderId ? { ...o, shipped: true, status: '已出貨', shippedAt: today } : o));
     await cloudUpdate('inventoryLogs', list => [...list, ...logs]);
+    if (costExp) await cloudUpdate('expenses', list => [...list, costExp]);
+    if (!order.skipRevenue) {
+      const revenueItem = {
+        id: uid(), date: today, channel: order.platform, category: "電商銷售",
+        amount: order.total, isReported: false, orderId, items: order.items,
+        platformCost: cost, supplierId: order.supplierId || null,
+      };
+      setRevenues(prev => [...prev, revenueItem]);
+      await cloudUpdate('revenues', list => [...list, revenueItem]);
+    }
   }, [cloudUpdate, orders]);
 
   // ── 系統 ──────────────────────────────────────────────────────────────

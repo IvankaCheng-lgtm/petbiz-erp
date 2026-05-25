@@ -46,6 +46,7 @@ export default function SalesOrder({ data }) {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [itemCat,    setItemCat]    = useState('all');
+  const [withShipment, setWithShipment] = useState(true);
   const [done, setDone] = useState(false);
 
   // 寄賣點廠商清單
@@ -116,6 +117,15 @@ export default function SalesOrder({ data }) {
   }, [isScanning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const subtotal = useMemo(() => cart.reduce((s, c) => s + c.qty * c.unitPrice, 0), [cart]);
+
+  // 訂單毛利 = 折後金額 - 商品成本
+  const orderGrossProfit = useMemo(() => {
+    const cogs = cart.reduce((s, c) => {
+      const inv = inventory.find(i => i.id === c.itemId);
+      return s + c.qty * (inv?.cost ?? 0);
+    }, 0);
+    return totalAmount - cogs;
+  }, [cart, totalAmount, inventory]);
 
   const totalAmount = useMemo(() => {
     let t = subtotal;
@@ -188,6 +198,7 @@ export default function SalesOrder({ data }) {
       supplierId: selectedConsignee?.id ?? null,
       skipRevenue: isConsignment ? consignSkipRevenue : false,
       note,
+      withShipment,
     });
     setDone(true);
     setCart([]);
@@ -531,6 +542,9 @@ export default function SalesOrder({ data }) {
             <div className="flex justify-between text-base font-bold text-gray-800">
               <span>合計</span><span>${totalAmount}</span>
             </div>
+            <div className={`flex justify-between text-sm font-medium ${orderGrossProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              <span>訂單毛利（扣成本）</span><span>${orderGrossProfit}</span>
+            </div>
             {isConsignment && selectedConsignee && (
               <div className="pt-2 border-t border-gray-100 space-y-2">
                 <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm space-y-1">
@@ -562,11 +576,24 @@ export default function SalesOrder({ data }) {
           className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
       </SectionCard>
 
-      {/* 送出 */}
-      <button onClick={handleSubmit} disabled={cart.length === 0}
-        className="w-full py-3 rounded-2xl text-white font-semibold text-sm transition-colors disabled:opacity-40 bg-blue-500 hover:bg-blue-600">
-        {done ? "✅ 訂單已建立" : "建立訂單"}
-      </button>
+      {/* 出貨選項 + 送出 */}
+      <SectionCard>
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <div
+            onClick={() => setWithShipment(v => !v)}
+            className={`relative w-11 h-6 rounded-full transition-colors ${withShipment ? 'bg-blue-500' : 'bg-gray-300'}`}>
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${withShipment ? 'translate-x-5' : ''}`} />
+          </div>
+          <div>
+            <div className="text-sm font-medium text-gray-700">{withShipment ? '立即出貨（扣除庫存）' : '僅建立訂單（不扣庫存）'}</div>
+            <div className="text-xs text-gray-400">{withShipment ? '建立訂單並同時扣除庫存' : '客人確認後再手動出貨'}</div>
+          </div>
+        </label>
+        <button onClick={handleSubmit} disabled={cart.length === 0}
+          className="mt-3 w-full py-3 rounded-2xl text-white font-semibold text-sm transition-colors disabled:opacity-40 bg-blue-500 hover:bg-blue-600">
+          {done ? "✅ 訂單已建立" : withShipment ? "建立訂單並出貨" : "建立訂單（待出貨）"}
+        </button>
+      </SectionCard>
 
       {/* 歷史訂單 */}
       {sortedOrders.length > 0 && (
@@ -580,6 +607,11 @@ export default function SalesOrder({ data }) {
                 </div>
                 <div className="text-xs text-gray-400">{o.orderDate}</div>
                 {o.note && <div className="text-xs text-gray-500 italic">{o.note}</div>}
+                {!o.shipped && (
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 text-xs font-medium">
+                    ⏳ 待出貨
+                  </div>
+                )}
                 {editingId === o.id ? (
                   <div className="pt-2 space-y-2">
                     <input
@@ -611,7 +643,14 @@ export default function SalesOrder({ data }) {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {!o.shipped && data?.shipOrder && (
+                      <button
+                        onClick={() => { if (window.confirm(`確認出貨？將扣除庫存並記入收入。`)) data.shipOrder(o.id); }}
+                        className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 font-medium">
+                        🚚 確認出貨
+                      </button>
+                    )}
                     {updateOrder && (
                       <button onClick={() => startEdit(o)} className="text-xs text-blue-500 hover:underline">編輯</button>
                     )}
