@@ -124,15 +124,15 @@ export default function SalesOrder({ data }) {
     const pct = parseFloat(discountPct);
     const amt = parseFloat(discountAmt);
     // 折扣 % 和折扣金額可同時使用：先套 %，再減金額
-    if (!isNaN(pct) && pct > 0 && pct < 100) t = Math.round(t * (1 - pct / 100));
-    if (!isNaN(amt) && amt > 0) t = Math.round(t - amt);
+    if (!isNaN(pct) && pct > 0 && pct < 100) t = Math.floor(t * (1 - pct / 100));
+    if (!isNaN(amt) && amt > 0) t = Math.floor(t - amt);
     return Math.max(0, t);
   }, [subtotal, discountPct, discountAmt]);
 
   // 寄賣點拆帳金額計算
   const consignmentFee = useMemo(() => {
     if (!selectedConsignee || selectedConsignee.commissionPct == null) return 0;
-    return Math.round(totalAmount * selectedConsignee.commissionPct / 100);
+    return Math.floor(totalAmount * selectedConsignee.commissionPct / 100);
   }, [selectedConsignee, totalAmount]);
 
   const netAfterConsignment = totalAmount - consignmentFee;
@@ -189,7 +189,7 @@ export default function SalesOrder({ data }) {
     if (cart.length === 0) return;
     const computedCost =
       costMode === "pct"
-        ? Math.round((totalAmount * (parseFloat(platformCost) || 0)) / 100)
+        ? Math.floor((totalAmount * (parseFloat(platformCost) || 0)) / 100)
         : parseFloat(platformCost) || 0;
     const effectivePlatform = isConsignment
       ? (selectedConsignee?.name ?? '寄賣點')
@@ -244,7 +244,7 @@ export default function SalesOrder({ data }) {
     let total = subtotal;
     if (!isNaN(pct) && pct > 0) total = total * (1 - pct / 100);
     else if (!isNaN(amt) && amt > 0) total = total - amt;
-    total = Math.max(0, Math.round(total * 100) / 100);
+    total = Math.max(0, Math.floor(total));
     updateOrder(o.id, {
       platform: editForm.platform,
       note: editForm.note,
@@ -434,7 +434,7 @@ export default function SalesOrder({ data }) {
               <p className="text-xs text-gray-400 mt-1">
                 預估手續費：
                 {costMode === "pct"
-                  ? `${Math.round((totalAmount * (parseFloat(platformCost) || 0)) / 100)} 元`
+                  ? `${Math.floor((totalAmount * (parseFloat(platformCost) || 0)) / 100)} 元`
                   : `${parseFloat(platformCost) || 0} 元`}
               </p>
             )}
