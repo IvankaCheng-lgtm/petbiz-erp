@@ -572,7 +572,8 @@ export default function usePetBusiness() {
       // 只有已出貨的訂單才補回庫存
       if (order?.items && order.shipped) {
         const date = new Date().toISOString().slice(0, 10);
-        const logs = order.items.map(it => ({
+        const allItems = [...(order.items ?? []), ...(order.giftItems ?? [])];
+        const logs = allItems.map(it => ({
           id: uid(), date, itemId: it.itemId, itemName: it.itemName,
           change: +it.qty, reason: `刪除銷售訂單（${order.platform} ${order.orderDate}）`,
         }));
@@ -580,7 +581,7 @@ export default function usePetBusiness() {
         cloudUpdate("inventoryLogs", list => [...list, ...logs]);
         setInventory(inv => {
           const next = [...inv];
-          order.items.forEach(({ itemId, qty }) => {
+          allItems.forEach(({ itemId, qty }) => {
             const idx = next.findIndex(i => i.id === itemId);
             if (idx !== -1) next[idx] = { ...next[idx], currentQty: next[idx].currentQty + qty };
           });
@@ -597,14 +598,14 @@ export default function usePetBusiness() {
     cloudUpdate("expenses", list => list.filter(e => e.orderId !== id));
   }, [cloudUpdate]);
 
-  const processOrder = useCallback(async ({ platform, items, discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, note = '', withShipment = true }) => {
+  const processOrder = useCallback(async ({ platform, items, giftItems = [], discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, note = '', withShipment = true }) => {
     const today = new Date().toISOString().slice(0, 10);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const discount = subtotal - totalAmount;
     const cost = parseFloat(platformCost) || 0;
 
     const order = {
-      id: uid(), platform, items, subtotal, discount, total: totalAmount,
+      id: uid(), platform, items, giftItems, subtotal, discount, total: totalAmount,
       orderDate: today,
       status: withShipment ? "已完成" : "待出貨",
       shipped: withShipment,
@@ -620,19 +621,19 @@ export default function usePetBusiness() {
     await cloudUpdate("orders", list => [...list, order]);
 
     if (withShipment) {
-      // 立即出貨：扣庫存、記收入、記手續費
+      const allItems = [...items, ...giftItems];
       const applyInv = (list) => {
         let next = [...list];
-        items.forEach(({ itemId, qty }) => {
+        allItems.forEach(({ itemId, qty }) => {
           const idx = next.findIndex(i => i.id === itemId);
           if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
         });
         return next;
       };
-      const logs = items.map(it => ({
-        id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
-        change: -it.qty, reason: `銷售訂單（${platform}）`,
-      }));
+      const logs = [
+        ...items.map(it => ({ id: uid(), date: today, itemId: it.itemId, itemName: it.itemName, change: -it.qty, reason: `銷售訂單（${platform}）` })),
+        ...giftItems.map(it => ({ id: uid(), date: today, itemId: it.itemId, itemName: it.itemName, change: -it.qty, reason: `贈品（${platform}）` })),
+      ];
       const costExp = cost > 0 ? {
         id: uid(), date: today,
         type: supplierId ? '寄賣抽成' : '行銷',
@@ -797,18 +798,19 @@ export default function usePetBusiness() {
     if (!order || order.shipped) return;
     const today = new Date().toISOString().slice(0, 10);
     const cost = order.platformCost || 0;
+    const allItems = [...(order.items ?? []), ...(order.giftItems ?? [])];
     const applyInv = (list) => {
       let next = [...list];
-      (order.items ?? []).forEach(({ itemId, qty }) => {
+      allItems.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
         if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
       return next;
     };
-    const logs = (order.items ?? []).map(it => ({
-      id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
-      change: -it.qty, reason: `出貨（${order.platform}）`,
-    }));
+    const logs = [
+      ...(order.items ?? []).map(it => ({ id: uid(), date: today, itemId: it.itemId, itemName: it.itemName, change: -it.qty, reason: `出貨（${order.platform}）` })),
+      ...(order.giftItems ?? []).map(it => ({ id: uid(), date: today, itemId: it.itemId, itemName: it.itemName, change: -it.qty, reason: `贈品出貨（${order.platform}）` })),
+    ];
     const costExp = cost > 0 ? {
       id: uid(), date: today,
       type: order.supplierId ? '寄賣抽成' : '行銷',
