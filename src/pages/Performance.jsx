@@ -378,10 +378,43 @@ export default function Performance({ data }) {
 
     // 品項毛利 Top 20
     const marginRows = itemMarginStats.slice(0, 20).map((item, i) =>
-      '<tr style="background:' + (i % 2 === 0 ? '#fff' : '#f9fafb') + '">' +
-      '<td style="padding:7px 10px;color:#9ca3af;font-size:12px">' + (i + 1) + '</td>' +
-      '<td style="padding:7px 10px;font-weight:600">' + item.name + '</td>' +
-      '<td style="padding:7px 10px;text-align:right">
+      `<tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'}"><td style="padding:7px 10px;color:#9ca3af;font-size:12px">${i + 1}</td><td style="padding:7px 10px;font-weight:600">${item.name}</td><td style="padding:7px 10px;text-align:right">$${item.salePrice}</td><td style="padding:7px 10px;text-align:right;color:#9ca3af">$${item.cost}</td><td style="padding:7px 10px;text-align:right;font-weight:600;color:${item.marginRate >= 30 ? '#059669' : item.marginRate >= 20 ? '#f97316' : '#dc2626'}">${item.marginRate !== null ? item.marginRate + '%' : '—'}</td><td style="padding:7px 10px;text-align:right;font-weight:700;color:#059669">${item.totalProfit !== null ? fmt(item.totalProfit) : '—'}</td></tr>`
+    ).join('')
+
+
+    const html = [
+      '<html><head><meta charset="utf-8"><title>通路表現分析 ' + rangeLabel + '</title>',
+      '<style>',
+      'body{font-family:sans-serif;padding:28px;color:#1f2937;font-size:13px}',
+      'h1{font-size:20px;font-weight:900;margin:0 0 4px}',
+      '.sub{font-size:11px;color:#6b7280;margin-bottom:24px}',
+      '.sec{margin-bottom:24px}',
+      '.sec-title{font-size:14px;font-weight:700;border-left:4px solid #f97316;padding-left:9px;margin-bottom:10px;color:#1f2937}',
+      'table{width:100%;border-collapse:collapse;font-size:12px}',
+      'thead tr{background:#f3f4f6}',
+      'th{text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:#374151}',
+      'th:not(:first-child){text-align:right}',
+      'tbody tr{border-bottom:1px solid #f3f4f6}',
+      '.footer{margin-top:32px;font-size:10px;color:#9ca3af;text-align:center;border-top:1px solid #e5e7eb;padding-top:10px}',
+      '@media print{body{padding:12px}@page{size:A4;margin:1.2cm}}',
+      '</style></head><body>',
+      '<h1>萌獸探險隊 · 商品／通路表現分析</h1>',
+      '<div class="sub">報表範圍：' + rangeLabel + '　　列印日期：' + date + '</div>',
+      '<div class="sec"><div class="sec-title">📊 通路毛利對比</div>',
+      '<table><thead><tr><th>通路</th><th>營收</th><th>毛利</th><th>毛利率</th></tr></thead>',
+      '<tbody>' + channelRows + '</tbody></table></div>',
+      allItemStats.length > 0 ? '<div class="sec"><div class="sec-title">🏆 品項全通路銷售總覽（Top 20）</div><table><thead><tr><th>#</th><th>品項</th><th>電商</th><th>市集</th><th>實體</th><th>總計</th><th>銷售額</th></tr></thead><tbody>' + itemRows + '</tbody></table></div>' : '',
+      itemMarginStats.length > 0 ? '<div class="sec"><div class="sec-title">💰 品項毛利分析（Top 20）</div><table><thead><tr><th>#</th><th>品項</th><th>售價</th><th>成本</th><th>毛利率</th><th>總獲利</th></tr></thead><tbody>' + marginRows + '</tbody></table></div>' : '',
+      '<div class="footer">萌獸探險隊 ERP · 商品／通路表現分析 · ' + rangeLabel + '</div>',
+      '</body></html>',
+    ].join('')
+    const win = window.open('', '_blank')
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
+  }
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-800">商品／通路表現</h1>
         <div className="flex items-center gap-2 flex-wrap">
