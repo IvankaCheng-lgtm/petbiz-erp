@@ -1,7 +1,8 @@
 import ExcelJS from 'exceljs'
 
 /**
- * 匯出收支對帳單 XLSX（含樣式）
+ * 匯出收支對帳單 XLSX — 單一工作表，橫式 A4 列印
+ * 版面：左半（A-E）營收明細，右半（G-K）支出明細，底部損益摘要
  */
 export async function exportStatementXLSX({ stmtMonth, revenues, expenses }) {
   const mRevs = revenues.filter(r => r.date.startsWith(stmtMonth)).sort((a, b) => a.date.localeCompare(b.date))
@@ -9,6 +10,7 @@ export async function exportStatementXLSX({ stmtMonth, revenues, expenses }) {
   const totalRev = mRevs.reduce((s, r) => s + r.amount, 0)
   const totalExp = mExps.reduce((s, r) => s + r.amount, 0)
   const netProfit = totalRev - totalExp
+  const profitRate = totalRev > 0 ? (netProfit / totalRev * 100) : 0
   const [y, m] = stmtMonth.split('-')
   const label = y + ' 年 ' + parseInt(m) + ' 月'
 
@@ -16,220 +18,185 @@ export async function exportStatementXLSX({ stmtMonth, revenues, expenses }) {
   wb.creator = '萌獸探險隊 ERP'
   wb.created = new Date()
 
-  // ── 樣式常數 ──────────────────────────────────────────────
   const ORANGE  = 'FFEA580C'
-  const ORANGE_L = 'FFFFF7ED'
   const GREEN   = 'FF059669'
-  const GREEN_L  = 'FFECFDF5'
+  const GREEN_L = 'FFECFDF5'
   const RED     = 'FFDC2626'
-  const RED_L    = 'FFFEF2F2'
+  const RED_L   = 'FFFEF2F2'
   const GRAY_H  = 'FFF3F4F6'
   const GRAY_B  = 'FF6B7280'
   const WHITE   = 'FFFFFFFF'
   const DARK    = 'FF1F2937'
+  const BLUE_H  = 'FFEFF6FF'
 
-  function titleStyle(bgHex, fgHex = WHITE) {
-    return {
-      font: { bold: true, size: 11, color: { argb: fgHex } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: bgHex } },
-      alignment: { vertical: 'middle', horizontal: 'left' },
-      border: {
-        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-      },
-    }
-  }
-  function headerStyle() {
-    return {
-      font: { bold: true, size: 10, color: { argb: DARK } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY_H } },
-      alignment: { vertical: 'middle', horizontal: 'center' },
-      border: {
-        top:    { style: 'thin', color: { argb: 'FFD1D5DB' } },
-        bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
-        left:   { style: 'thin', color: { argb: 'FFD1D5DB' } },
-        right:  { style: 'thin', color: { argb: 'FFD1D5DB' } },
-      },
-    }
-  }
-  function dataStyle(bgHex = WHITE, align = 'left') {
-    return {
-      font: { size: 10, color: { argb: DARK } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: bgHex } },
-      alignment: { vertical: 'middle', horizontal: align },
-      border: {
-        bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
-        left:   { style: 'hair', color: { argb: 'FFE5E7EB' } },
-        right:  { style: 'hair', color: { argb: 'FFE5E7EB' } },
-      },
-    }
-  }
-  function subtotalStyle(bgHex, fgHex = DARK) {
-    return {
-      font: { bold: true, size: 10, color: { argb: fgHex } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: bgHex } },
-      alignment: { vertical: 'middle', horizontal: 'right' },
-      border: {
-        top:    { style: 'thin', color: { argb: 'FFD1D5DB' } },
-        bottom: { style: 'double', color: { argb: 'FFD1D5DB' } },
-      },
-    }
-  }
-
-  function applyRow(row, styles) {
-    row.eachCell({ includeEmpty: true }, (cell, col) => {
-      const s = styles[col - 1]
-      if (!s) return
-      if (s.font)      cell.font      = s.font
-      if (s.fill)      cell.fill      = s.fill
-      if (s.alignment) cell.alignment = s.alignment
-      if (s.border)    cell.border    = s.border
-      if (s.numFmt)    cell.numFmt    = s.numFmt
-    })
-    row.height = 20
-  }
-
-  // ── Sheet 1：營收明細 ──────────────────────────────────────
-  const ws1 = wb.addWorksheet('營收明細')
-  ws1.columns = [
-    { key: 'date',   width: 14 },
-    { key: 'ch',     width: 14 },
-    { key: 'cat',    width: 14 },
-    { key: 'amt',    width: 14 },
-    { key: 'status', width: 12 },
+  // 欄位配置：A-E 營收，F 空白，G-K 支出
+  // A=日期, B=通路, C=類別, D=金額, E=狀態, F=空, G=日期, H=類型, I=備註, J=金額, K=狀態
+  const ws = wb.addWorksheet('收支對帳單')
+  ws.columns = [
+    { width: 13 }, // A 日期
+    { width: 12 }, // B 通路
+    { width: 12 }, // C 類別
+    { width: 12 }, // D 金額
+    { width: 10 }, // E 狀態
+    { width: 2  }, // F 分隔
+    { width: 13 }, // G 日期
+    { width: 10 }, // H 類型
+    { width: 26 }, // I 備註
+    { width: 12 }, // J 金額
+    { width: 10 }, // K 狀態
   ]
 
-  // 標題列
-  const t1 = ws1.addRow(['萌獸探險隊 ' + label + ' 收支對帳單 — 營收明細', '', '', '', ''])
-  ws1.mergeCells(t1.number, 1, t1.number, 5)
-  t1.height = 28
-  t1.getCell(1).font      = { bold: true, size: 13, color: { argb: WHITE } }
-  t1.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: ORANGE } }
-  t1.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' }
+  // 列印設定：橫式 A4，縮放至 1 頁寬
+  ws.pageSetup = {
+    paperSize: 9,          // A4
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
+  }
+  ws.headerFooter = {
+    oddHeader: '&C&B萌獸探險隊 ' + label + ' 收支對帳單',
+    oddFooter: '&C第 &P 頁，共 &N 頁　　產出日期：' + new Date().toLocaleDateString('zh-TW'),
+  }
 
-  const sub1 = ws1.addRow(['產出日期：' + new Date().toLocaleDateString('zh-TW'), '', '', '', ''])
-  ws1.mergeCells(sub1.number, 1, sub1.number, 5)
-  sub1.height = 18
-  sub1.getCell(1).font      = { size: 9, color: { argb: GRAY_B } }
-  sub1.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: ORANGE_L } }
-  sub1.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' }
+  function cell(row, col) { return row.getCell(col) }
 
-  ws1.addRow([])
+  function applyStyle(c, { font, fill, align, border, numFmt } = {}) {
+    if (font)   c.font      = font
+    if (fill)   c.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }
+    if (align)  c.alignment = { vertical: 'middle', horizontal: align, wrapText: true }
+    if (border) c.border    = border
+    if (numFmt) c.numFmt    = numFmt
+  }
 
-  // 欄位標題
-  const h1 = ws1.addRow(['日期', '通路', '類別', '金額', '處理狀態'])
-  applyRow(h1, [headerStyle(), headerStyle(), headerStyle(), headerStyle(), headerStyle()])
+  const thinBorder = (color = 'FFD1D5DB') => ({
+    top:    { style: 'thin', color: { argb: color } },
+    bottom: { style: 'thin', color: { argb: color } },
+    left:   { style: 'thin', color: { argb: color } },
+    right:  { style: 'thin', color: { argb: color } },
+  })
+  const hairBorder = () => ({
+    bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+    left:   { style: 'hair', color: { argb: 'FFE5E7EB' } },
+    right:  { style: 'hair', color: { argb: 'FFE5E7EB' } },
+  })
 
-  // 資料列
-  mRevs.forEach((r, i) => {
+  // ── 第 1 列：大標題 ──────────────────────────────────────
+  const r1 = ws.addRow(['萌獸探險隊 ' + label + ' 收支對帳單', '', '', '', '', '', '', '', '', '', ''])
+  ws.mergeCells(r1.number, 1, r1.number, 11)
+  r1.height = 30
+  applyStyle(cell(r1, 1), { font: { bold: true, size: 14, color: { argb: WHITE } }, fill: ORANGE, align: 'center' })
+
+  // ── 第 2 列：副標 ─────────────────────────────────────────
+  const r2 = ws.addRow(['產出日期：' + new Date().toLocaleDateString('zh-TW'), '', '', '', '', '', '', '', '', '', ''])
+  ws.mergeCells(r2.number, 1, r2.number, 11)
+  r2.height = 18
+  applyStyle(cell(r2, 1), { font: { size: 9, color: { argb: GRAY_B } }, fill: 'FFFFF7ED', align: 'center' })
+
+  ws.addRow([]).height = 6
+
+  // ── 第 4 列：左右區塊標題 ────────────────────────────────
+  const r4 = ws.addRow(['', '', '', '', '', '', '', '', '', '', ''])
+  r4.height = 22
+  ws.mergeCells(r4.number, 1, r4.number, 5)
+  applyStyle(cell(r4, 1), { font: { bold: true, size: 11, color: { argb: WHITE } }, fill: GREEN, align: 'center' })
+  cell(r4, 1).value = '▌ 營收明細'
+  ws.mergeCells(r4.number, 7, r4.number, 11)
+  applyStyle(cell(r4, 7), { font: { bold: true, size: 11, color: { argb: WHITE } }, fill: RED, align: 'center' })
+  cell(r4, 7).value = '▌ 支出明細'
+
+  // ── 第 5 列：欄位標題 ────────────────────────────────────
+  const hStyle = { font: { bold: true, size: 10, color: { argb: DARK } }, fill: GRAY_H, align: 'center', border: thinBorder() }
+  const r5 = ws.addRow(['日期', '通路', '類別', '金額', '狀態', '', '日期', '類型', '備註', '金額', '狀態'])
+  r5.height = 20
+  ;[1,2,3,4,5,7,8,9,10,11].forEach(col => applyStyle(cell(r5, col), hStyle))
+
+  // ── 資料列 ───────────────────────────────────────────────
+  const maxRows = Math.max(mRevs.length, mExps.length)
+  for (let i = 0; i < maxRows; i++) {
     const bg = i % 2 === 0 ? WHITE : 'FFF9FAFB'
-    const row = ws1.addRow([r.date, r.channel || '', r.category || '', r.amount, r.isReported ? '✅ 已處理' : '⬜ 未處理'])
-    const ds = dataStyle(bg)
-    const amtStyle = { ...dataStyle(bg, 'right'), numFmt: '#,##0', font: { size: 10, color: { argb: GREEN } } }
-    const stStyle  = { ...dataStyle(bg, 'center'), font: { size: 10, color: { argb: r.isReported ? GREEN : GRAY_B } } }
-    applyRow(row, [ds, ds, ds, amtStyle, stStyle])
-  })
+    const r = ws.addRow(['', '', '', '', '', '', '', '', '', '', ''])
+    r.height = 19
 
-  // 小計列
-  const st1 = ws1.addRow(['營收小計', '', '', totalRev, ''])
-  ws1.mergeCells(st1.number, 1, st1.number, 3)
-  const stS = subtotalStyle(GREEN_L, GREEN)
-  st1.getCell(1).font      = stS.font
-  st1.getCell(1).fill      = stS.fill
-  st1.getCell(1).alignment = { vertical: 'middle', horizontal: 'right' }
-  st1.getCell(1).border    = stS.border
-  st1.getCell(4).font      = { bold: true, size: 11, color: { argb: GREEN } }
-  st1.getCell(4).fill      = stS.fill
-  st1.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' }
-  st1.getCell(4).numFmt    = '#,##0'
-  st1.getCell(4).border    = stS.border
-  st1.height = 22
+    const rev = mRevs[i]
+    if (rev) {
+      cell(r, 1).value = rev.date
+      cell(r, 2).value = rev.channel || ''
+      cell(r, 3).value = rev.category || ''
+      cell(r, 4).value = rev.amount
+      cell(r, 5).value = rev.isReported ? '✅ 已處理' : '⬜ 未處理'
+      applyStyle(cell(r, 1), { font: { size: 10, color: { argb: DARK } }, fill: bg, align: 'center', border: hairBorder() })
+      applyStyle(cell(r, 2), { font: { size: 10, color: { argb: DARK } }, fill: bg, align: 'center', border: hairBorder() })
+      applyStyle(cell(r, 3), { font: { size: 10, color: { argb: DARK } }, fill: bg, align: 'center', border: hairBorder() })
+      applyStyle(cell(r, 4), { font: { size: 10, color: { argb: GREEN } }, fill: bg, align: 'right', border: hairBorder(), numFmt: '#,##0' })
+      applyStyle(cell(r, 5), { font: { size: 10, color: { argb: rev.isReported ? GREEN : GRAY_B } }, fill: bg, align: 'center', border: hairBorder() })
+    }
 
-  // ── Sheet 2：支出明細 ──────────────────────────────────────
-  const ws2 = wb.addWorksheet('支出明細')
-  ws2.columns = [
-    { key: 'date',   width: 14 },
-    { key: 'type',   width: 12 },
-    { key: 'note',   width: 32 },
-    { key: 'amt',    width: 14 },
-    { key: 'status', width: 12 },
+    const exp = mExps[i]
+    if (exp) {
+      cell(r, 7).value  = exp.date
+      cell(r, 8).value  = exp.type || ''
+      cell(r, 9).value  = exp.note || ''
+      cell(r, 10).value = exp.amount
+      cell(r, 11).value = exp.isReported ? '✅ 已處理' : '⬜ 未處理'
+      applyStyle(cell(r, 7),  { font: { size: 10, color: { argb: DARK } }, fill: bg, align: 'center', border: hairBorder() })
+      applyStyle(cell(r, 8),  { font: { size: 10, color: { argb: DARK } }, fill: bg, align: 'center', border: hairBorder() })
+      applyStyle(cell(r, 9),  { font: { size: 10, color: { argb: DARK } }, fill: bg, align: 'left',   border: hairBorder() })
+      applyStyle(cell(r, 10), { font: { size: 10, color: { argb: RED } },  fill: bg, align: 'right',  border: hairBorder(), numFmt: '#,##0' })
+      applyStyle(cell(r, 11), { font: { size: 10, color: { argb: exp.isReported ? GREEN : GRAY_B } }, fill: bg, align: 'center', border: hairBorder() })
+    }
+  }
+
+  // ── 小計列 ───────────────────────────────────────────────
+  const stRow = ws.addRow(['', '', '', '', '', '', '', '', '', '', ''])
+  stRow.height = 22
+  ws.mergeCells(stRow.number, 1, stRow.number, 3)
+  applyStyle(cell(stRow, 1), { font: { bold: true, size: 10, color: { argb: GREEN } }, fill: GREEN_L, align: 'right', border: { top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, bottom: { style: 'double', color: { argb: GREEN } } } })
+  cell(stRow, 1).value = '營收小計'
+  applyStyle(cell(stRow, 4), { font: { bold: true, size: 11, color: { argb: GREEN } }, fill: GREEN_L, align: 'right', border: { top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, bottom: { style: 'double', color: { argb: GREEN } } }, numFmt: '#,##0' })
+  cell(stRow, 4).value = totalRev
+  applyStyle(cell(stRow, 5), { fill: GREEN_L })
+
+  ws.mergeCells(stRow.number, 7, stRow.number, 9)
+  applyStyle(cell(stRow, 7), { font: { bold: true, size: 10, color: { argb: RED } }, fill: RED_L, align: 'right', border: { top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, bottom: { style: 'double', color: { argb: RED } } } })
+  cell(stRow, 7).value = '支出小計'
+  applyStyle(cell(stRow, 10), { font: { bold: true, size: 11, color: { argb: RED } }, fill: RED_L, align: 'right', border: { top: { style: 'thin', color: { argb: 'FFD1D5DB' } }, bottom: { style: 'double', color: { argb: RED } } }, numFmt: '#,##0' })
+  cell(stRow, 10).value = totalExp
+  applyStyle(cell(stRow, 11), { fill: RED_L })
+
+  // ── 損益摘要區塊 ─────────────────────────────────────────
+  ws.addRow([]).height = 10
+
+  const smTitle = ws.addRow(['', '', '', '', '', '', '', '', '', '', ''])
+  smTitle.height = 22
+  ws.mergeCells(smTitle.number, 1, smTitle.number, 11)
+  applyStyle(cell(smTitle, 1), { font: { bold: true, size: 11, color: { argb: WHITE } }, fill: DARK, align: 'center' })
+  cell(smTitle, 1).value = '▌ 損益摘要'
+
+  const npColor = netProfit >= 0 ? GREEN : RED
+  const npBg    = netProfit >= 0 ? GREEN_L : RED_L
+  const summaryData = [
+    { label: '總營收', value: totalRev,   color: GREEN, bg: GREEN_L, numFmt: '#,##0' },
+    { label: '總支出', value: totalExp,   color: RED,   bg: RED_L,   numFmt: '#,##0' },
+    { label: '淨利',   value: netProfit,  color: npColor, bg: npBg,  numFmt: '#,##0' },
+    { label: '利潤率', value: profitRate / 100, color: npColor, bg: npBg, numFmt: '0.0%' },
   ]
 
-  const t2 = ws2.addRow(['萌獸探險隊 ' + label + ' 收支對帳單 — 支出明細', '', '', '', ''])
-  ws2.mergeCells(t2.number, 1, t2.number, 5)
-  t2.height = 28
-  t2.getCell(1).font      = { bold: true, size: 13, color: { argb: WHITE } }
-  t2.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } }
-  t2.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' }
-
-  const sub2 = ws2.addRow(['產出日期：' + new Date().toLocaleDateString('zh-TW'), '', '', '', ''])
-  ws2.mergeCells(sub2.number, 1, sub2.number, 5)
-  sub2.height = 18
-  sub2.getCell(1).font      = { size: 9, color: { argb: GRAY_B } }
-  sub2.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED_L } }
-  sub2.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' }
-
-  ws2.addRow([])
-
-  const h2 = ws2.addRow(['日期', '類型', '備註', '金額', '處理狀態'])
-  applyRow(h2, [headerStyle(), headerStyle(), headerStyle(), headerStyle(), headerStyle()])
-
-  mExps.forEach((e, i) => {
-    const bg = i % 2 === 0 ? WHITE : 'FFF9FAFB'
-    const row = ws2.addRow([e.date, e.type || '', e.note || '', e.amount, e.isReported ? '✅ 已處理' : '⬜ 未處理'])
-    const ds = dataStyle(bg)
-    const amtStyle = { ...dataStyle(bg, 'right'), numFmt: '#,##0', font: { size: 10, color: { argb: RED } } }
-    const stStyle  = { ...dataStyle(bg, 'center'), font: { size: 10, color: { argb: e.isReported ? GREEN : GRAY_B } } }
-    applyRow(row, [ds, ds, ds, amtStyle, stStyle])
+  summaryData.forEach(({ label: lbl, value, color, bg, numFmt }) => {
+    const sr = ws.addRow(['', '', '', '', '', '', '', '', '', '', ''])
+    sr.height = 24
+    ws.mergeCells(sr.number, 1, sr.number, 5)
+    applyStyle(cell(sr, 1), { font: { bold: true, size: 11, color: { argb: DARK } }, fill: GRAY_H, align: 'right', border: { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } } })
+    cell(sr, 1).value = lbl
+    ws.mergeCells(sr.number, 6, sr.number, 11)
+    applyStyle(cell(sr, 6), { font: { bold: true, size: 13, color: { argb: color } }, fill: bg, align: 'right', border: { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }, numFmt })
+    cell(sr, 6).value = value
   })
 
-  const st2 = ws2.addRow(['支出小計', '', '', totalExp, ''])
-  ws2.mergeCells(st2.number, 1, st2.number, 3)
-  const stS2 = subtotalStyle(RED_L, RED)
-  st2.getCell(1).font      = stS2.font
-  st2.getCell(1).fill      = stS2.fill
-  st2.getCell(1).alignment = { vertical: 'middle', horizontal: 'right' }
-  st2.getCell(1).border    = stS2.border
-  st2.getCell(4).font      = { bold: true, size: 11, color: { argb: RED } }
-  st2.getCell(4).fill      = stS2.fill
-  st2.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' }
-  st2.getCell(4).numFmt    = '#,##0'
-  st2.getCell(4).border    = stS2.border
-  st2.height = 22
-
-  // ── Sheet 3：損益摘要 ──────────────────────────────────────
-  const ws3 = wb.addWorksheet('損益摘要')
-  ws3.columns = [{ width: 22 }, { width: 18 }]
-
-  const t3 = ws3.addRow(['萌獸探險隊 ' + label + ' 損益摘要', ''])
-  ws3.mergeCells(t3.number, 1, t3.number, 2)
-  t3.height = 28
-  t3.getCell(1).font      = { bold: true, size: 13, color: { argb: WHITE } }
-  t3.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }
-  t3.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' }
-
-  ws3.addRow([])
-
-  const summaryRows = [
-    { label: '總營收',  value: totalRev,  fmt: '#,##0', color: GREEN,  bg: GREEN_L },
-    { label: '總支出',  value: totalExp,  fmt: '#,##0', color: RED,    bg: RED_L },
-    { label: '淨利',    value: netProfit, fmt: '#,##0', color: netProfit >= 0 ? GREEN : RED, bg: netProfit >= 0 ? GREEN_L : RED_L },
-    { label: '利潤率',  value: totalRev > 0 ? parseFloat((netProfit / totalRev * 100).toFixed(1)) : 0, fmt: '0.0%', color: netProfit >= 0 ? GREEN : RED, bg: netProfit >= 0 ? GREEN_L : RED_L },
-  ]
-
-  summaryRows.forEach(({ label, value, fmt: nf, color, bg }) => {
-    const isRate = nf === '0.0%'
-    const row = ws3.addRow([label, isRate ? value / 100 : value])
-    row.height = 26
-    row.getCell(1).font      = { bold: true, size: 11, color: { argb: DARK } }
-    row.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY_H } }
-    row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' }
-    row.getCell(1).border    = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
-    row.getCell(2).font      = { bold: true, size: 13, color: { argb: color } }
-    row.getCell(2).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
-    row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' }
-    row.getCell(2).numFmt    = nf
-    row.getCell(2).border    = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
-  })
+  // 設定列印範圍
+  const lastRow = ws.lastRow.number
+  ws.printArea = 'A1:K' + lastRow
 
   // 下載
   const buf = await wb.xlsx.writeBuffer()
