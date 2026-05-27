@@ -235,59 +235,149 @@ export default function PnL({ data }) {
     const npClass     = pnl.netProfit   >= 0 ? 'green' : 'red'
     const gpFmt = pnl.grossProfit < 0 ? '(' + fmt(Math.abs(pnl.grossProfit)) + ')' : fmt(pnl.grossProfit)
     const npFmt = pnl.netProfit   < 0 ? '(' + fmt(Math.abs(pnl.netProfit))   + ')' : fmt(pnl.netProfit)
+    const grossRate = pnl.totalRev > 0 ? (pnl.grossProfit / pnl.totalRev * 100).toFixed(1) : '0.0'
+
+    // 財務儀表板 HTML
+    const dashboardHtml = [
+      '<div class="section-title">📊 財務儀表板 <span class="range-label">(' + rangeLabel + ')</span></div>',
+      '<div class="dashboard-grid">',
+      '<div class="dash-card">',
+      '<div class="dash-label">毛利</div>',
+      '<div class="dash-amount ' + (pnl.grossProfit >= 0 ? 'green' : 'red') + '">' + fmt(pnl.grossProfit) + '</div>',
+      '<div class="dash-sub">毛利率：<strong>' + grossRate + '%</strong></div>',
+      '<div class="dash-sub-note">(營業收入 - 營業成本) / 營業收入</div>',
+      '</div>',
+      '<div class="dash-card">',
+      '<div class="dash-label">營運開銷佔比</div>',
+      [
+        { label: '攞位費', value: financialMetrics.booth },
+        { label: '運費',   value: financialMetrics.shipping },
+        { label: '廣告費', value: financialMetrics.ads },
+      ].map(function(item) {
+        const pct = pnl.totalRev > 0 ? (item.value / pnl.totalRev * 100).toFixed(1) : '0.0'
+        const barW = pnl.totalRev > 0 ? Math.min(item.value / pnl.totalRev * 100, 100) : 0
+        return '<div class="bar-row"><span class="bar-label">' + item.label + '</span>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + barW + '%"></div></div>' +
+          '<span class="bar-pct">' + pct + '%</span></div>'
+      }).join(''),
+      '</div>',
+      '</div>',
+    ].join('')
+
+    // 通路戰情室 HTML
+    const channelHtml = platformROI.length === 0 ? '' : [
+      '<div class="section-title">🎯 通路戰情室</div>',
+      '<div class="channel-best">表現最佳平台（依獲利金額）：<strong>' + platformROI[0].platform + '</strong>',
+      '　獲利：' + fmt(Math.round(platformROI[0].netProfit)) +
+      (platformROI[0].roi !== null ? '　ROI：' + platformROI[0].roi.toFixed(1) + 'x' : '') + '</div>',
+      '<table class="channel-table">',
+      '<thead><tr><th>平台</th><th>營收</th><th>手續費</th><th>ROI</th><th>獲利</th></tr></thead>',
+      '<tbody>',
+      platformROI.map(function(p) {
+        return '<tr>' +
+          '<td>' + p.platform + '</td>' +
+          '<td class="right">' + fmt(p.rev) + '</td>' +
+          '<td class="right">' + fmt(p.platformFees) + '</td>' +
+          '<td class="right">' + (p.roi !== null ? p.roi.toFixed(1) + 'x' : '-') + '</td>' +
+          '<td class="right ' + (p.netProfit >= 0 ? 'green' : 'red') + '">' + fmt(Math.round(p.netProfit)) + '</td>' +
+          '</tr>'
+      }).join(''),
+      '</tbody></table>',
+    ].join('')
+
+    // 市集主辦收益分析 HTML
+    const organizerHtml = organizerAnalysis.length === 0 ? '' : [
+      '<div class="section-title">🏪 市集主辦收益分析 <span class="range-label">(' + rangeLabel + ')</span></div>',
+      '<table class="channel-table">',
+      '<thead><tr><th>主辦單位</th><th>市集營收</th><th>攞位/場地費</th><th>淨利</th></tr></thead>',
+      '<tbody>',
+      organizerAnalysis.map(function(o) {
+        return '<tr>' +
+          '<td>' + o.name + '</td>' +
+          '<td class="right">' + fmt(o.rev) + '</td>' +
+          '<td class="right">(' + fmt(o.boothCost) + ')</td>' +
+          '<td class="right ' + (o.netProfit >= 0 ? 'green' : 'red') + '">' +
+          (o.netProfit >= 0 ? '+' : '') + fmt(Math.round(o.netProfit)) + '</td>' +
+          '</tr>'
+      }).join(''),
+      '</tbody></table>',
+    ].join('')
+
     const printContent = [
       '<html><head><meta charset="utf-8">',
-      '<title>\u640d\u76ca\u8868 ' + date + '</title>',
+      '<title>損益表 ' + date + '</title>',
       '<style>',
       'body { font-family: sans-serif; padding: 32px; color: #1f2937; }',
       'h1 { font-size: 22px; font-weight: bold; margin-bottom: 4px; }',
       '.date { font-size: 12px; color: #6b7280; margin-bottom: 24px; }',
-      'table { width: 100%; border-collapse: collapse; font-size: 14px; }',
+      'table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 8px; }',
       'tr { border-bottom: 1px solid #f3f4f6; }',
       'td { padding: 8px 12px; }',
       'td:last-child { text-align: right; font-weight: 600; }',
       '.bold td { font-weight: bold; font-size: 15px; background: #f9fafb; }',
-      '.green td:last-child { color: #059669; }',
-      '.red td:last-child { color: #dc2626; }',
+      '.green { color: #059669; }',
+      '.red { color: #dc2626; }',
       '.indent1 td:first-child { padding-left: 28px; }',
       '.indent2 td:first-child { padding-left: 48px; }',
       '.section-gap { border-top: 2px solid #e5e7eb !important; }',
-      '.profit-box { margin-top: 24px; padding: 16px; border-radius: 8px; background: ' + bgColor + '; }',
+      '.profit-box { margin-top: 24px; padding: 16px; border-radius: 8px; background: ' + bgColor + '; margin-bottom: 32px; }',
       '.profit-box h2 { font-size: 14px; color: #6b7280; margin: 0 0 4px; }',
       '.profit-box .amount { font-size: 28px; font-weight: 900; color: ' + amountColor + '; }',
       '.profit-box .rate { font-size: 14px; color: #6b7280; margin-top: 4px; }',
+      '.section-title { font-size: 15px; font-weight: bold; color: #1f2937; margin: 28px 0 12px; border-left: 4px solid #f97316; padding-left: 10px; }',
+      '.range-label { font-size: 12px; font-weight: normal; color: #9ca3af; }',
+      '.dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 8px; }',
+      '.dash-card { background: #f9fafb; border-radius: 8px; padding: 14px; }',
+      '.dash-label { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }',
+      '.dash-amount { font-size: 26px; font-weight: 900; }',
+      '.dash-sub { font-size: 13px; color: #6b7280; margin-top: 4px; }',
+      '.dash-sub-note { font-size: 11px; color: #9ca3af; }',
+      '.bar-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }',
+      '.bar-label { font-size: 12px; color: #6b7280; width: 48px; }',
+      '.bar-track { flex: 1; height: 6px; background: #e5e7eb; border-radius: 9999px; overflow: hidden; }',
+      '.bar-fill { height: 100%; background: #fb923c; border-radius: 9999px; }',
+      '.bar-pct { font-size: 12px; color: #6b7280; width: 36px; text-align: right; }',
+      '.channel-best { font-size: 13px; color: #374151; background: #ecfdf5; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }',
+      '.channel-table { width: 100%; border-collapse: collapse; font-size: 13px; }',
+      '.channel-table th { background: #f3f4f6; text-align: left; padding: 7px 10px; font-size: 12px; }',
+      '.channel-table td { padding: 7px 10px; border-bottom: 1px solid #f3f4f6; }',
+      '.channel-table .right { text-align: right; }',
       '@media print { body { padding: 16px; } }',
       '</style></head><body>',
-      '<h1>\u840c\u7378\u63a2\u96aa\u968a \u00b7 \u640d\u76ca\u8868</h1>',
-      '<div class="date">\u5217\u5370\u65e5\u671f\uff1a' + date + '</div>',
+      '<h1>萌獸探險隊 · 損益表</h1>',
+      '<div class="date">列印日期：' + date + '　|　範圍：' + rangeLabel + '</div>',
       '<table>',
-      '<tr class="bold"><td>\u258c \u71df\u696d\u6536\u5165</td><td>' + fmt(pnl.totalRev) + '</td></tr>',
-      '<tr class="indent1"><td>\u96fb\u5546\u901a\u8def</td><td>' + fmt(pnl.ecRev) + '</td></tr>',
-      '<tr class="indent1"><td>\u5e02\u96c6\u901a\u8def</td><td>' + fmt(pnl.mktRev) + '</td></tr>',
-      '<tr class="indent1"><td>\u5176\u4ed6\u901a\u8def</td><td>' + fmt(pnl.otherRev) + '</td></tr>',
-      pnl.byCategory.map(function(c) { return '<tr class="indent2"><td>\u2514 ' + c.cat + '</td><td>' + fmt(c.amount) + '</td></tr>' }).join(''),
-      '<tr class="bold section-gap"><td>\u258c (-) \u71df\u696d\u6210\u672c</td><td>(' + fmt(pnl.cogs) + ')</td></tr>',
-      '<tr class="indent1"><td>\u5546\u54c1\u9032\u8ca8\uff08A\u7528\u54c1/B\u98df\u54c1\uff09</td><td>(' + fmt(pnl.goodsCost) + ')</td></tr>',
-      '<tr class="indent1"><td>\u539f\u6599\u6210\u672c\uff08C\u98df\u6750\uff09</td><td>(' + fmt(pnl.rawMaterialCost) + ')</td></tr>',
-      '<tr class="indent1"><td>\u5305\u88dd\u6210\u672c\uff08D\u5305\u6750\uff09</td><td>(' + fmt(pnl.packagingCost) + ')</td></tr>',
-      '<tr class="bold section-gap ' + gpClass + '"><td>\u258c \u6bdb\u5229</td><td>' + gpFmt + '</td></tr>',
-      '<tr class="bold section-gap"><td>\u258c (-) \u71df\u696d\u8cbb\u7528</td><td>(' + fmt(pnl.totalOpExp) + ')</td></tr>',
-      '<tr class="indent1"><td>\u79df\u91d1</td><td>(' + fmt(pnl.opExpenses.rent) + ')</td></tr>',
-      '<tr class="indent1"><td>\u96fb\u8cbb</td><td>(' + fmt(pnl.opExpenses.electric) + ')</td></tr>',
-      '<tr class="indent1"><td>\u4eba\u4e8b</td><td>(' + fmt(pnl.opExpenses.labor) + ')</td></tr>',
-      '<tr class="indent1"><td>\u6524\u4f4d\u8cbb</td><td>(' + fmt(pnl.opExpenses.booth) + ')</td></tr>',
-      '<tr class="indent1"><td>\u884c\u92b7\u8cbb</td><td>(' + fmt(pnl.opExpenses.marketing) + ')</td></tr>',
-      '<tr class="indent1"><td>\u8017\u6750</td><td>(' + fmt(pnl.opExpenses.material) + ')</td></tr>',
-      '<tr class="indent1"><td>\u8a2d\u5099</td><td>(' + fmt(pnl.opExpenses.equipment) + ')</td></tr>',
-      '<tr class="indent1"><td>\u904b\u8cbb</td><td>(' + fmt(pnl.opExpenses.shipping) + ')</td></tr>',
-      '<tr class="indent1"><td>\u96dc\u9805</td><td>(' + fmt(pnl.opExpenses.misc) + ')</td></tr>',
-      '<tr class="bold section-gap ' + npClass + '"><td>\u258c \u7a05\u524d\u6de8\u5229</td><td>' + npFmt + '</td></tr>',
+      '<tr class="bold"><td>▌ 營業收入</td><td>' + fmt(pnl.totalRev) + '</td></tr>',
+      '<tr class="indent1"><td>電商通路</td><td>' + fmt(pnl.ecRev) + '</td></tr>',
+      '<tr class="indent1"><td>市集通路</td><td>' + fmt(pnl.mktRev) + '</td></tr>',
+      '<tr class="indent1"><td>其他通路</td><td>' + fmt(pnl.otherRev) + '</td></tr>',
+      pnl.byCategory.map(function(c) { return '<tr class="indent2"><td>└ ' + c.cat + '</td><td>' + fmt(c.amount) + '</td></tr>' }).join(''),
+      '<tr class="bold section-gap"><td>▌ (-) 營業成本</td><td>(' + fmt(pnl.cogs) + ')</td></tr>',
+      '<tr class="indent1"><td>商品進貨（A用品/B食品）</td><td>(' + fmt(pnl.goodsCost) + ')</td></tr>',
+      '<tr class="indent1"><td>原料成本（C食材）</td><td>(' + fmt(pnl.rawMaterialCost) + ')</td></tr>',
+      '<tr class="indent1"><td>包裝成本（D包材）</td><td>(' + fmt(pnl.packagingCost) + ')</td></tr>',
+      '<tr class="bold section-gap ' + gpClass + '"><td>▌ 毛利</td><td>' + gpFmt + '</td></tr>',
+      '<tr class="bold section-gap"><td>▌ (-) 營業費用</td><td>(' + fmt(pnl.totalOpExp) + ')</td></tr>',
+      '<tr class="indent1"><td>租金</td><td>(' + fmt(pnl.opExpenses.rent) + ')</td></tr>',
+      '<tr class="indent1"><td>電費</td><td>(' + fmt(pnl.opExpenses.electric) + ')</td></tr>',
+      '<tr class="indent1"><td>人事</td><td>(' + fmt(pnl.opExpenses.labor) + ')</td></tr>',
+      '<tr class="indent1"><td>攞位費</td><td>(' + fmt(pnl.opExpenses.booth) + ')</td></tr>',
+      '<tr class="indent1"><td>行銷費</td><td>(' + fmt(pnl.opExpenses.marketing) + ')</td></tr>',
+      '<tr class="indent1"><td>耗材</td><td>(' + fmt(pnl.opExpenses.material) + ')</td></tr>',
+      '<tr class="indent1"><td>設備</td><td>(' + fmt(pnl.opExpenses.equipment) + ')</td></tr>',
+      '<tr class="indent1"><td>運費</td><td>(' + fmt(pnl.opExpenses.shipping) + ')</td></tr>',
+      '<tr class="indent1"><td>雜項</td><td>(' + fmt(pnl.opExpenses.misc) + ')</td></tr>',
+      '<tr class="bold section-gap ' + npClass + '"><td>▌ 稅前淨利</td><td>' + npFmt + '</td></tr>',
       '</table>',
       '<div class="profit-box">',
-      '<h2>\u7a05\u524d\u6de8\u5229</h2>',
+      '<h2>稅前淨利</h2>',
       '<div class="amount">' + npFmt + '</div>',
-      '<div class="rate">\u5229\u6f64\u7387\uff1a' + profitRate.toFixed(1) + '%\u3000\uff5c\u3000\u7e3d\u6536\u5165\uff1a' + fmt(pnl.totalRev) + '</div>',
-      '</div></body></html>',
+      '<div class="rate">利潤率：' + profitRate.toFixed(1) + '%　｜　總收入：' + fmt(pnl.totalRev) + '</div>',
+      '</div>',
+      dashboardHtml,
+      channelHtml,
+      organizerHtml,
+      '</body></html>',
     ].join('')
     const win = window.open('', '_blank')
     win.document.write(printContent)

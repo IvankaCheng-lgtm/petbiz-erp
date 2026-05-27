@@ -220,7 +220,7 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   const addPurchase = useCallback(async ({ date, itemId, itemName, category, qty, unitPrice, note, supplierId = null, supplierName = '', expiryBatch = null, recordExpense = true }) => {
-    const amount = qty * unitPrice;
+    const amount = Math.ceil(qty * unitPrice);
     const resolvedSupplierId = supplierId || null;
     const newExp = recordExpense ? {
       id: uid(), date, type: "進貨",

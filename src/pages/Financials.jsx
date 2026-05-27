@@ -3,7 +3,7 @@ import { Plus, Trash2, CheckCircle, Circle, Filter, Sparkles, X, Download } from
 import { Modal, Badge, SectionCard, FormRow, inputCls, btnPrimary, btnSecondary, btnDanger } from '../components/ui'
 import { fmt, EXPENSE_TYPE_COLOR } from '../utils/format'
 import { askGemini } from '../services/geminiService'
-import { exportToCSV } from '../utils/exportReport'
+import { exportToCSV, exportStatementXLSX } from '../utils/exportReport'
 
 // 簡易 Markdown 渲染（支援 ## ### ** * - ）
 function MdText({ text }) {
@@ -317,39 +317,7 @@ export default function Financials({ data }) {
   }, [revenues, expenses])
 
   function handleExportStatement() {
-    const mRevs = revenues.filter(r => r.date.startsWith(stmtMonth)).sort((a, b) => a.date.localeCompare(b.date))
-    const mExps = expenses.filter(e => e.date.startsWith(stmtMonth)).sort((a, b) => a.date.localeCompare(b.date))
-    const totalRev = mRevs.reduce((s, r) => s + r.amount, 0)
-    const totalExp = mExps.reduce((s, e) => s + e.amount, 0)
-    const netProfit = totalRev - totalExp
-    const [y, m] = stmtMonth.split('-')
-    const label = y + '年' + parseInt(m) + '月'
-
-    const rows = [
-      ['萌獸探險隊 ' + label + ' 收支對帳單'],
-      ['產出日期：' + new Date().toLocaleDateString('zh-TW')],
-      [],
-      // 營收明細
-      ['《營收明細》'],
-      ['日期', '通路', '類別', '金額', '處理狀態'],
-      ...mRevs.map(r => [r.date, r.channel || '', r.category || '', r.amount, r.isReported ? '已處理' : '未處理']),
-      ['營收小計', '', '', totalRev, ''],
-      [],
-      // 支出明細
-      ['《支出明細》'],
-      ['日期', '類型', '備註', '金額', '處理狀態'],
-      ...mExps.map(e => [e.date, e.type || '', e.note || '', e.amount, e.isReported ? '已處理' : '未處理']),
-      ['支出小計', '', '', totalExp, ''],
-      [],
-      // 損益摘要
-      ['《損益摘要》'],
-      ['項目', '金額'],
-      ['總營收', totalRev],
-      ['總支出', totalExp],
-      ['淨利', netProfit],
-      ['利潤率', totalRev > 0 ? (netProfit / totalRev * 100).toFixed(1) + '%' : '0.0%'],
-    ]
-    exportToCSV(rows, '萌獸探險隊_對帳單_' + stmtMonth + '.csv')
+    exportStatementXLSX({ stmtMonth, revenues, expenses })
   }
 
   const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '', supplierId: null, customSupplierName: '' })
