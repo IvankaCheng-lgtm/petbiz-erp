@@ -227,6 +227,161 @@ export default function PnL({ data }) {
     }
   }
 
+  function handleChannelPrint() {
+    const date = new Date().toLocaleDateString('zh-TW')
+
+    // 前期範圍標籤（用於對比）
+    let prevLabel = ''
+    let prevRevenues = []
+    if (rangeType === 'month') {
+      const prevDate = new Date(rangeYear, rangeMonth - 2, 1)
+      const py = prevDate.getFullYear()
+      const pm = prevDate.getMonth() + 1
+      prevLabel = py + ' 年 ' + pm + ' 月'
+      const prefix = py + '-' + String(pm).padStart(2, '0')
+      prevRevenues = revenues.filter(r => r.date.startsWith(prefix))
+    } else if (rangeType === 'quarter') {
+      const prevQ = rangeQ === 1 ? 4 : rangeQ - 1
+      const prevY = rangeQ === 1 ? rangeYear - 1 : rangeYear
+      prevLabel = prevY + ' 年 Q' + prevQ
+      prevRevenues = revenues.filter(r => {
+        const d = r.date; const m = parseInt(d.slice(5, 7))
+        return d.startsWith(String(prevY)) && Math.ceil(m / 3) === prevQ
+      })
+    }
+
+    // 計算前期各平台營收（用於對比）
+    const prevRevByPlatform = {}
+    prevRevenues.forEach(r => {
+      if (r.channel) prevRevByPlatform[r.channel] = (prevRevByPlatform[r.channel] || 0) + r.amount
+    })
+
+    // 通路分析資料（使用已篩選的 filteredRevenues + orders）
+    const adsByPlatform = {}
+    expenses.filter(e => e.type === '行銷' && e.note).forEach(e => {
+      platformROI.forEach(p => {
+        if (e.note.includes(p.platform)) adsByPlatform[p.platform] = (adsByPlatform[p.platform] || 0) + e.amount
+      })
+    })
+
+    const totalRev = platformROI.reduce((s, p) => s + p.rev, 0)
+
+    const platformRows = platformROI.map(function(p) {
+      const share = totalRev > 0 ? (p.rev / totalRev * 100).toFixed(1) : '0.0'
+      const prev = prevRevByPlatform[p.platform] || 0
+      const change = prev > 0 ? ((p.rev - prev) / prev * 100).toFixed(1) : null
+      const changeHtml = change !== null
+        ? '<span style="color:' + (parseFloat(change) >= 0 ? '#059669' : '#dc2626') + ';font-size:11px;margin-left:4px">' +
+          (parseFloat(change) >= 0 ? '▲' : '▼') + Math.abs(change) + '%</span>'
+        : '<span style="color:#9ca3af;font-size:11px;margin-left:4px">—</span>'
+      const barW = Math.min(parseFloat(share), 100)
+      const npColor = p.netProfit >= 0 ? '#059669' : '#dc2626'
+      return [
+        '<tr>',
+        '<td style="font-weight:600;padding:10px 12px">' + p.platform + '</td>',
+        '<td style="text-align:right;padding:10px 12px">' + fmt(p.rev) + changeHtml + '</td>',
+        '<td style="text-align:right;padding:10px 12px">' + share + '%' +
+          '<div style="margin-top:3px;height:4px;background:#e5e7eb;border-radius:9999px;overflow:hidden">' +
+          '<div style="height:100%;width:' + barW + '%;background:#3b82f6;border-radius:9999px"></div></div></td>',
+        '<td style="text-align:right;padding:10px 12px">' + fmt(p.platformFees) + '</td>',
+        '<td style="text-align:right;padding:10px 12px">' + (p.roi !== null ? p.roi.toFixed(1) + 'x' : '—') + '</td>',
+        '<td style="text-align:right;padding:10px 12px;font-weight:700;color:' + npColor + '">' + fmt(Math.round(p.netProfit)) + '</td>',
+        '</tr>',
+      ].join('')
+    }).join('')
+
+    // 市集主辦分析
+    const organizerRows = organizerAnalysis.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:16px">本期無市集資料</td></tr>' :
+      organizerAnalysis.map(function(o) {
+        const npColor = o.netProfit >= 0 ? '#059669' : '#dc2626'
+        const barW = o.rev > 0 ? Math.min(Math.abs(o.netProfit) / o.rev * 100, 100) : 0
+        return '<tr>' +
+          '<td style="font-weight:600;padding:10px 12px">' + o.name + '</td>' +
+          '<td style="text-align:right;padding:10px 12px">' + fmt(o.rev) + '</td>' +
+          '<td style="text-align:right;padding:10px 12px;color:#dc2626">(' + fmt(o.boothCost) + ')</td>' +
+          '<td style="text-align:right;padding:10px 12px;font-weight:700;color:' + npColor + '">' +
+          (o.netProfit >= 0 ? '+' : '') + fmt(Math.round(o.netProfit)) +
+          '<div style="margin-top:3px;height:4px;background:#e5e7eb;border-radius:9999px;overflow:hidden">' +
+          '<div style="height:100%;width:' + barW + '%;background:' + npColor + ';border-radius:9999px"></div></div>' +
+          '</td></tr>'
+      }).join('')
+
+    // 最佳/最差平台摘要
+    const best  = platformROI[0]
+    const worst = platformROI[platformROI.length - 1]
+    const summaryHtml = platformROI.length === 0 ? '' : [
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">',
+      '<div style="background:#ecfdf5;border-radius:10px;padding:16px">',
+      '<div style="font-size:11px;color:#6b7280;margin-bottom:4px">🏆 獲利最高平台</div>',
+      '<div style="font-size:22px;font-weight:900;color:#059669">' + best.platform + '</div>',
+      '<div style="font-size:13px;color:#374151;margin-top:4px">獲利 ' + fmt(Math.round(best.netProfit)) +
+      (best.roi !== null ? '　ROI ' + best.roi.toFixed(1) + 'x' : '') + '</div>',
+      '<div style="font-size:12px;color:#6b7280;margin-top:2px">營收 ' + fmt(best.rev) + '　手續費 ' + fmt(best.platformFees) + '</div>',
+      '</div>',
+      platformROI.length > 1 ? [
+        '<div style="background:#fef2f2;border-radius:10px;padding:16px">',
+        '<div style="font-size:11px;color:#6b7280;margin-bottom:4px">⚠️ 獲利最低平台</div>',
+        '<div style="font-size:22px;font-weight:900;color:' + (worst.netProfit >= 0 ? '#059669' : '#dc2626') + '">' + worst.platform + '</div>',
+        '<div style="font-size:13px;color:#374151;margin-top:4px">獲利 ' + fmt(Math.round(worst.netProfit)) +
+        (worst.roi !== null ? '　ROI ' + worst.roi.toFixed(1) + 'x' : '') + '</div>',
+        '<div style="font-size:12px;color:#6b7280;margin-top:2px">營收 ' + fmt(worst.rev) + '　手續費 ' + fmt(worst.platformFees) + '</div>',
+        '</div>',
+      ].join('') : '<div></div>',
+      '</div>',
+    ].join('')
+
+    const prevNote = prevLabel ? '<span style="font-size:12px;color:#9ca3af;margin-left:8px">（對比：' + prevLabel + '）</span>' : ''
+
+    const html = [
+      '<html><head><meta charset="utf-8"><title>通路分析報表 ' + rangeLabel + '</title>',
+      '<style>',
+      'body{font-family:sans-serif;padding:32px;color:#1f2937;font-size:14px}',
+      'h1{font-size:22px;font-weight:900;margin:0 0 4px}',
+      '.sub{font-size:12px;color:#6b7280;margin-bottom:28px}',
+      '.section{margin-bottom:28px}',
+      '.section-title{font-size:15px;font-weight:700;border-left:4px solid #f97316;padding-left:10px;margin-bottom:14px}',
+      'table{width:100%;border-collapse:collapse}',
+      'thead tr{background:#f3f4f6}',
+      'th{text-align:left;padding:9px 12px;font-size:12px;font-weight:600;color:#374151}',
+      'th:not(:first-child){text-align:right}',
+      'tbody tr{border-bottom:1px solid #f3f4f6}',
+      'tbody tr:hover{background:#f9fafb}',
+      '.footer{margin-top:40px;font-size:11px;color:#9ca3af;text-align:center;border-top:1px solid #e5e7eb;padding-top:12px}',
+      '@media print{body{padding:16px}@page{size:A4;margin:1.5cm}}',
+      '</style></head><body>',
+      '<h1>萌獸探險隊 · 通路表現分析報表</h1>',
+      '<div class="sub">報表範圍：' + rangeLabel + prevNote + '　　列印日期：' + date + '</div>',
+
+      '<div class="section">',
+      '<div class="section-title">🎯 通路績效摘要</div>',
+      summaryHtml,
+      '</div>',
+
+      '<div class="section">',
+      '<div class="section-title">📊 各平台詳細分析' + prevNote + '</div>',
+      platformROI.length === 0
+        ? '<p style="color:#9ca3af">本期無訂單資料</p>'
+        : '<table><thead><tr><th>平台</th><th>營收</th><th>營收佔比</th><th>手續費</th><th>ROI</th><th>獲利</th></tr></thead><tbody>' + platformRows + '</tbody></table>',
+      '</div>',
+
+      organizerAnalysis.length > 0 ? [
+        '<div class="section">',
+        '<div class="section-title">🏪 市集主辦收益分析</div>',
+        '<table><thead><tr><th>主辦單位</th><th>市集營收</th><th>攤位/場地費</th><th>淨利</th></tr></thead><tbody>' + organizerRows + '</tbody></table>',
+        '</div>',
+      ].join('') : '',
+
+      '<div class="footer">萌獸探險隊 ERP · 通路分析報表 · ' + rangeLabel + '</div>',
+      '</body></html>',
+    ].join('')
+
+    const win = window.open('', '_blank')
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
+  }
+
   function handlePrint() {
     const date = new Date().toLocaleDateString('zh-TW')
     const bgColor     = pnl.netProfit >= 0 ? '#ecfdf5' : '#fef2f2'
@@ -428,6 +583,10 @@ export default function PnL({ data }) {
           <button onClick={handlePrint}
             className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
             <Download size={15} /> 匯出 PDF
+          </button>
+          <button onClick={handleChannelPrint}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
+            <Download size={15} /> 通路分析 PDF
           </button>
         </div>
       </div>
