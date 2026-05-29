@@ -13,7 +13,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 // ── 行事曆分頁 ────────────────────────────────────────────────
 function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMarketEvent, addExpense, suppliers, addSupplier }) {
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', addToExpense: false, supplierId: '', newSupplierName: '' })
+  const [form, setForm] = useState({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', note: '', addToExpense: false, supplierId: '', newSupplierName: '' })
   const [editId, setEditId] = useState(null)
 
   // 市集類供應商（寄賣點）
@@ -25,13 +25,13 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
   const sorted = useMemo(() => [...marketEvents].sort((a, b) => b.startDate.localeCompare(a.startDate)), [marketEvents])
 
   function openAdd() {
-    setForm({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', addToExpense: false, supplierId: '', newSupplierName: '' })
+    setForm({ name: '', startDate: today(), endDate: today(), status: '待報名', boothFee: '', note: '', addToExpense: false, supplierId: '', newSupplierName: '' })
     setEditId(null)
     setModal(true)
   }
 
   function openEdit(ev) {
-    setForm({ name: ev.name, startDate: ev.startDate, endDate: ev.endDate, status: ev.status, boothFee: ev.boothFee ?? '', addToExpense: false, supplierId: ev.supplierId || '', newSupplierName: '' })
+    setForm({ name: ev.name, startDate: ev.startDate, endDate: ev.endDate, status: ev.status, boothFee: ev.boothFee ?? '', note: ev.note || '', addToExpense: false, supplierId: ev.supplierId || '', newSupplierName: '' })
     setEditId(ev.id)
     setModal(true)
   }
@@ -48,7 +48,7 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
     const supplierName = form.supplierId === '__new__'
       ? form.newSupplierName.trim()
       : (marketSuppliers.find(s => s.id === form.supplierId)?.name || '')
-    const data = { name: form.name, startDate: form.startDate, endDate: form.endDate, status: form.status, boothFee: fee, supplierId: resolvedSupplierId, supplierName }
+    const data = { name: form.name, startDate: form.startDate, endDate: form.endDate, status: form.status, boothFee: fee, note: form.note || '', supplierId: resolvedSupplierId, supplierName }
     if (editId) updateMarketEvent(editId, data)
     else addMarketEvent(data)
     if (form.addToExpense && fee > 0) {
@@ -159,6 +159,7 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
                   {ev.startDate} {ev.endDate !== ev.startDate ? `～ ${ev.endDate}` : ''}
                   {ev.boothFee > 0 && ` · 攤位費 ${fmt(ev.boothFee)}`}
                 </p>
+                {ev.note && <p className="text-xs text-gray-400 mt-0.5 truncate">{ev.note}</p>}
               </div>
               <div className="flex gap-1 shrink-0">
                 <button onClick={() => openEdit(ev)} className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors text-xs">編輯</button>
@@ -195,6 +196,10 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
             <FormRow label="攤位費用（元）">
               <input type="number" min="0" className={inputCls} placeholder="0" value={form.boothFee}
                 onChange={e => setForm(p => ({ ...p, boothFee: e.target.value }))} />
+            </FormRow>
+            <FormRow label="備註（選填）">
+              <input type="text" className={inputCls} placeholder="備註說明" value={form.note}
+                onChange={e => setForm(p => ({ ...p, note: e.target.value }))} />
             </FormRow>
             <FormRow label="市集場地（選填）">
               <select className={inputCls} value={form.supplierId}

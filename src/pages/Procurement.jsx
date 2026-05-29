@@ -95,6 +95,10 @@ function EditModal({ editForm, setEditForm, editTarget, inventory, onSubmit, onC
           <input type="text" className={inputCls} placeholder="選填" value={editForm.supplier}
             onChange={e => setEditForm(p => ({ ...p, supplier: e.target.value }))} />
         </FormRow>
+        <FormRow label="備註（選填）">
+          <input type="text" className={inputCls} placeholder="備註說明" value={editForm.note || ''}
+            onChange={e => setEditForm(p => ({ ...p, note: e.target.value }))} />
+        </FormRow>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="現有數量">
             <input ref={currentQtyRef} type="number" min="0"
@@ -309,7 +313,7 @@ const emptyRow = () => ({
   _key: Math.random().toString(36).slice(2),
   barcode: '', itemName: '', currentQty: '', safetyQty: '', unit: '個', supplier: '',
   listPrice: '', salePrice: '', cost: '', unitPrice: '',
-  shelfDays: '', fridgeDays: '', frozenDays: '',
+  shelfDays: '', fridgeDays: '', frozenDays: '', note: '',
 })
 
 export default function Procurement({ data }) {
@@ -353,6 +357,7 @@ export default function Procurement({ data }) {
       unit:       row.unit || '個',
       supplier:   row.supplier.trim(),
       barcode:    row.barcode?.trim() || '',
+      note:       row.note?.trim() || '',
       listPrice:  parseFloat(row.listPrice)  || 0,
       salePrice:  parseFloat(row.salePrice)  || 0,
       cost:       parseFloat(row.cost)       || 0,
@@ -392,6 +397,7 @@ export default function Procurement({ data }) {
       supplier:   item.supplier   || '',
       barcode:    item.barcode    || '',
       sku:        item.sku        || '',
+      note:       item.note       || '',
       prodDate:   '',
       shelfDays:  item.shelfDays  ?? '',
       fridgeDays: item.fridgeDays ?? '',
@@ -411,6 +417,7 @@ export default function Procurement({ data }) {
     e.preventDefault()
     updateInventoryItem(editTarget.id, {
       ...editForm,
+      note:       editForm.note?.trim() || '',
       currentQty: parseFloat(editForm.currentQty),
       safetyQty:  parseFloat(editForm.safetyQty),
       supplier:   editForm.supplier.trim(),
@@ -655,7 +662,7 @@ export default function Procurement({ data }) {
     return ((item.salePrice - item.cost) / item.salePrice * 100).toFixed(1)
   }
 
-  const colSpan = isAB ? 11 : 9
+  const colSpan = isAB ? 12 : 10
 
   // 新增 Modal 的欄位是否為 CD 類
   const addIsCD = addCategory === 'C食材' || addCategory === 'D包材'
@@ -733,6 +740,7 @@ export default function Procurement({ data }) {
                 <th className="pb-3 text-left">品項名稱</th>
                 <th className="pb-3 text-left">貨號</th>
                 <th className="pb-3 text-left">供應商</th>
+                <th className="pb-3 text-left">備註</th>
                 <th className="pb-3 text-right">庫存</th>
                 <th className="pb-3 text-right">安全水位</th>
                 <th className="pb-3 text-center">單位</th>
@@ -769,6 +777,7 @@ export default function Procurement({ data }) {
                     </td>
                     <td className="py-3 text-xs text-gray-500">{item.sku || '—'}</td>
                     <td className="py-3 text-gray-500 text-xs">{item.supplier || '—'}</td>
+                    <td className="py-3 text-gray-400 text-xs max-w-[100px] truncate">{item.note || '—'}</td>
                     <td className={`py-3 text-right font-bold ${item.currentQty < item.safetyQty ? 'text-red-600' : 'text-gray-800'}`}>
                       {item.category === 'C食材'
                         ? (Math.round(item.currentQty * 10) / 10).toFixed(1)
@@ -871,7 +880,7 @@ export default function Procurement({ data }) {
 
             {/* 欄位標題 */}
             {!addIsCD ? (
-              <div className="grid grid-cols-[1.2fr_60px_60px_44px_72px_68px_68px_68px_24px] gap-1 text-xs font-medium text-gray-500 px-1">
+              <div className="grid grid-cols-[1.2fr_60px_60px_44px_72px_68px_68px_68px_80px_24px] gap-1 text-xs font-medium text-gray-500 px-1">
                 <span>品項名稱 *</span>
                 <span className="text-right">庫存</span>
                 <span className="text-right">安全值</span>
@@ -880,16 +889,18 @@ export default function Procurement({ data }) {
                 <span className="text-right">定價</span>
                 <span className="text-right">售價</span>
                 <span className="text-right">成本</span>
+                <span>備註</span>
                 <span />
               </div>
             ) : (
-              <div className="grid grid-cols-[1.2fr_60px_60px_44px_80px_68px_24px] gap-1 text-xs font-medium text-gray-500 px-1">
+              <div className="grid grid-cols-[1.2fr_60px_60px_44px_80px_68px_80px_24px] gap-1 text-xs font-medium text-gray-500 px-1">
                 <span>品項名稱 *</span>
                 <span className="text-right">庫存</span>
                 <span className="text-right">安全值</span>
                 <span className="text-center">單位</span>
                 <span>供應商</span>
                 <span className="text-right">單價(元)</span>
+                <span>備註</span>
                 <span />
               </div>
             )}
@@ -899,7 +910,7 @@ export default function Procurement({ data }) {
               {rows.map((row, idx) => (
                 <div key={row._key} className="space-y-1">
                   {!addIsCD ? (
-                    <div className="grid grid-cols-[1.2fr_60px_60px_44px_72px_68px_68px_68px_24px] gap-1 items-center">
+                    <div className="grid grid-cols-[1.2fr_60px_60px_44px_72px_68px_68px_68px_80px_24px] gap-1 items-center">
                       <input type="text" placeholder={`品項 ${idx + 1}`} className={inputCls + ' text-xs'} value={row.itemName}
                         onChange={e => updateRow(row._key, 'itemName', e.target.value)} required={idx === 0} />
                       <input type="number" min="0" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.currentQty}
@@ -916,13 +927,15 @@ export default function Procurement({ data }) {
                         onChange={e => updateRow(row._key, 'salePrice', e.target.value)} />
                       <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.cost}
                         onChange={e => updateRow(row._key, 'cost', e.target.value)} />
+                      <input type="text" placeholder="備註" className={inputCls + ' text-xs'} value={row.note}
+                        onChange={e => updateRow(row._key, 'note', e.target.value)} />
                       <button type="button" onClick={() => removeRow(row._key)} disabled={rows.length === 1}
                         className="text-gray-300 hover:text-red-400 disabled:opacity-20 transition-colors flex items-center justify-center">
                         <X size={15} />
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-[1.2fr_60px_60px_44px_80px_68px_24px] gap-1 items-center">
+                    <div className="grid grid-cols-[1.2fr_60px_60px_44px_80px_68px_80px_24px] gap-1 items-center">
                       <input type="text" placeholder={`品項 ${idx + 1}`} className={inputCls + ' text-xs'} value={row.itemName}
                         onChange={e => updateRow(row._key, 'itemName', e.target.value)} required={idx === 0} />
                       <input type="number" min="0" step={addCategory === 'C食材' ? '0.1' : '1'} placeholder="0" className={inputCls + ' text-xs text-right'} value={row.currentQty}
@@ -935,6 +948,8 @@ export default function Procurement({ data }) {
                         onChange={e => updateRow(row._key, 'supplier', e.target.value)} />
                       <input type="number" min="0" step="0.01" placeholder="0" className={inputCls + ' text-xs text-right'} value={row.unitPrice}
                         onChange={e => updateRow(row._key, 'unitPrice', e.target.value)} />
+                      <input type="text" placeholder="備註" className={inputCls + ' text-xs'} value={row.note}
+                        onChange={e => updateRow(row._key, 'note', e.target.value)} />
                       <button type="button" onClick={() => removeRow(row._key)} disabled={rows.length === 1}
                         className="text-gray-300 hover:text-red-400 disabled:opacity-20 transition-colors flex items-center justify-center">
                         <X size={15} />

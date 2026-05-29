@@ -31,6 +31,7 @@ function MdText({ text }) {
 const CHANNELS = [
   { group: '線上', options: ['電商', '社群'] },
   { group: '線下', options: ['市集', '寄賣點銷售'] },
+  { group: '撥款', options: ['平台撥款', 'LINE Pay 撥款'] },
   { group: '其他', options: ['大宗/B2B', '其他營收'] },
 ]
 const CHANNELS_FLAT = CHANNELS.flatMap(g => g.options)
@@ -320,7 +321,7 @@ export default function Financials({ data }) {
     exportStatementXLSX({ stmtMonth, revenues, expenses })
   }
 
-  const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '', supplierId: null, customSupplierName: '' })
+  const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '', note: '', supplierId: null, customSupplierName: '' })
   const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
 
   const sortedRevenues = useMemo(() => [...revenues].filter(r => !r.isPending).sort((a, b) => b.date.localeCompare(a.date)), [revenues])
@@ -347,7 +348,7 @@ export default function Financials({ data }) {
       : revForm.customSupplierName.trim()
     addRevenue({ ...revForm, amount: parseFloat(revForm.amount), supplierName })
     setModal(null)
-    setRevForm({ date: today(), channel: '電商', category: '食品', amount: '', supplierId: null, customSupplierName: '' })
+    setRevForm({ date: today(), channel: '電商', category: '食品', amount: '', note: '', supplierId: null, customSupplierName: '' })
   }
 
   function submitExpense(e) {
@@ -364,6 +365,7 @@ export default function Financials({ data }) {
   const channelColor = {
     '電商': 'orange', '社群': 'orange',
     '市集': 'green',  '寄賣點銷售': 'green',
+    '平台撥款': 'blue', 'LINE Pay 撥款': 'blue',
     '大宗/B2B': 'blue', '其他營收': 'gray',
   }
   const catColor     = { '食品': 'orange', '烘焙': 'green', '蛋糕': 'purple', '用品': 'blue' }
@@ -444,6 +446,7 @@ export default function Financials({ data }) {
                   <>
                     <th className="pb-3 text-left">通路</th>
                     <th className="pb-3 text-left">類別</th>
+                    <th className="pb-3 text-left">備註</th>
                   </>
                 ) : (
                   <>
@@ -465,6 +468,7 @@ export default function Financials({ data }) {
                     <>
                       <td className="py-3"><Badge color={channelColor[item.channel]}>{item.channel}</Badge></td>
                       <td className="py-3"><Badge color={catColor[item.category]}>{item.category}</Badge></td>
+                      <td className="py-3 text-gray-500 text-xs max-w-[120px] truncate">{item.note || '—'}</td>
                     </>
                   ) : (
                     <>
@@ -493,7 +497,7 @@ export default function Financials({ data }) {
               ))}
               {paged.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-gray-400">
+                  <td colSpan={7} className="py-10 text-center text-gray-400">
                     {onlyUnreported ? '所有項目皆已處理 ✅' : '尚無資料'}
                   </td>
                 </tr>
@@ -545,6 +549,10 @@ export default function Financials({ data }) {
             <FormRow label="金額（元）">
               <input type="number" min="0" className={inputCls} placeholder="0" value={revForm.amount}
                 onChange={e => setRevForm(p => ({ ...p, amount: e.target.value }))} required />
+            </FormRow>
+            <FormRow label="備註（選填）">
+              <input type="text" className={inputCls} placeholder="備註說明" value={revForm.note}
+                onChange={e => setRevForm(p => ({ ...p, note: e.target.value }))} />
             </FormRow>
             <FormRow label="供應商/合作對象（選填）">
               <SupplierCombobox
