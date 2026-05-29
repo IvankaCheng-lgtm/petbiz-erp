@@ -47,6 +47,8 @@ export default function SalesOrder({ data }) {
   const [itemSearch, setItemSearch] = useState("");
   const [itemCat,    setItemCat]    = useState('all');
   const [withShipment, setWithShipment] = useState(true);
+  // 'immediate' | 'pending_payout' | 'skip'
+  const [revenueMode, setRevenueMode] = useState('immediate');
   const [done, setDone] = useState(false);
 
   // 寄賣點廠商清單
@@ -196,6 +198,8 @@ export default function SalesOrder({ data }) {
       : platform;
     const saleItems = cart.filter(c => !c.isGift);
     const giftItems = cart.filter(c => c.isGift);
+    const skipRevenue = isConsignment ? consignSkipRevenue : revenueMode === 'skip';
+    const pendingRevenue = !isConsignment && revenueMode === 'pending_payout';
     await processOrder?.({
       platform: effectivePlatform,
       items: saleItems,
@@ -207,7 +211,8 @@ export default function SalesOrder({ data }) {
       totalAmount,
       platformCost: isConsignment ? consignmentFee : computedCost,
       supplierId: selectedConsignee?.id ?? null,
-      skipRevenue: isConsignment ? consignSkipRevenue : false,
+      skipRevenue,
+      pendingRevenue,
       note,
       withShipment,
     });
@@ -219,6 +224,7 @@ export default function SalesOrder({ data }) {
     setNote("");
     setConsignSkipRevenue(false);
     setConsigneeId('');
+    setRevenueMode('immediate');
     setTimeout(() => setDone(false), 3000);
   }
 
@@ -600,8 +606,9 @@ export default function SalesOrder({ data }) {
           className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
       </SectionCard>
 
-      {/* 出貨選項 + 送出 */}
+      {/* 出貨選項 + 收款方式 + 送出 */}
       <SectionCard>
+        {/* 出貨 toggle */}
         <label className="flex items-center gap-3 cursor-pointer select-none">
           <div
             onClick={() => setWithShipment(v => !v)}
@@ -613,9 +620,41 @@ export default function SalesOrder({ data }) {
             <div className="text-xs text-gray-400">{withShipment ? '建立訂單並同時扣除庫存' : '客人確認後再手動出貨'}</div>
           </div>
         </label>
+
+        {/* 收款方式（非寄賣點才顯示） */}
+        {!isConsignment && (
+          <div className="mt-4 space-y-2">
+            <p className="text-xs font-medium text-gray-500">收款方式</p>
+            <div className="space-y-2">
+              {[
+                { value: 'immediate', label: '立即收款', desc: '現金／刷卡／轉帳，直接計入收入', color: 'blue' },
+                { value: 'pending_payout', label: '等待平台撥款', desc: '電商平台月結，撥款時再到收支管理新增「平台撥款」', color: 'amber' },
+                { value: 'skip', label: '只扣庫存，不計收入', desc: '樣品、自用、換貨等不產生收入的出貨', color: 'gray' },
+              ].map(opt => (
+                <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                  revenueMode === opt.value
+                    ? opt.color === 'blue' ? 'bg-blue-50 border-blue-300'
+                    : opt.color === 'amber' ? 'bg-amber-50 border-amber-300'
+                    : 'bg-gray-100 border-gray-300'
+                    : 'bg-white border-gray-200 hover:border-gray-300'
+                }`}>
+                  <input type="radio" name="revenueMode" value={opt.value}
+                    checked={revenueMode === opt.value}
+                    onChange={() => setRevenueMode(opt.value)}
+                    className="mt-0.5 accent-blue-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">{opt.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         <button onClick={handleSubmit} disabled={cart.length === 0}
-          className="mt-3 w-full py-3 rounded-2xl text-white font-semibold text-sm transition-colors disabled:opacity-40 bg-blue-500 hover:bg-blue-600">
-          {done ? "✅ 訂單已建立" : withShipment ? "建立訂單並出貨" : "建立訂單（待出貨）"}
+          className="mt-4 w-full py-3 rounded-2xl text-white font-semibold text-sm transition-colors disabled:opacity-40 bg-blue-500 hover:bg-blue-600">
+          {done ? '✅ 訂單已建立' : withShipment ? '建立訂單並出貨' : '建立訂單（待出貨）'}
         </button>
       </SectionCard>
 
@@ -631,11 +670,23 @@ export default function SalesOrder({ data }) {
                 </div>
                 <div className="text-xs text-gray-400">{o.orderDate}</div>
                 {o.note && <div className="text-xs text-gray-500 italic">{o.note}</div>}
-                {!o.shipped && (
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 text-xs font-medium">
-                    ⏳ 待出貨
-                  </div>
-                )}
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {!o.shipped && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 text-xs font-medium">
+                      ⏳ 待出貨
+                    </span>
+                  )}
+                  {o.pendingRevenue && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-600 text-xs font-medium">
+                      💳 待平台撥款
+                    </span>
+                  )}
+                  {o.skipRevenue && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-gray-500 text-xs font-medium">
+                      不計收入
+                    </span>
+                  )}
+                </div>
                 {editingId === o.id ? (
                   <div className="pt-2 space-y-2">
                     <input

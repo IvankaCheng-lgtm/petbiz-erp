@@ -231,6 +231,7 @@ export default function Production({ data }) {
   const [showForm, setShowForm] = useState(false);
   const [date, setDate] = useState(today());
   const [note, setNote] = useState("");
+  const [details, setDetails] = useState("");
 
   // 步驟一：食材 [{ itemId, qty }]
   const [ingredients, setIngredients] = useState([]);
@@ -432,6 +433,7 @@ export default function Production({ data }) {
     const first = batches[0];
     setDate(first.date);
     setNote(first.note?.split(' - ')[0] || '');
+    setDetails(first.details || '');
     setIngredients(
       (first.usedIngredients ?? []).map(i => ({ itemId: i.itemId, qty: String(i.qty) }))
     );
@@ -465,6 +467,7 @@ export default function Production({ data }) {
     setStep(0);
     setDate(today());
     setNote("");
+    setDetails("");
     setIngredients([]);
     setOutputs([]);
     setOutputUnit("克");
@@ -535,6 +538,7 @@ export default function Production({ data }) {
         batchGroupId,
         date,
         note: `${note}${output.batchNote ? ` - ${output.batchNote}` : ''}`,
+        details,
         machines,
         machineWatt: machines.reduce((s, m) => s + (parseFloat(m.watt) || 0), 0),
         hours: machines[0]?.hours ?? 0,
@@ -670,6 +674,15 @@ export default function Production({ data }) {
                 />
               </FormRow>
             </div>
+            <FormRow label="生產細節（選填）">
+              <textarea
+                className={inputCls + ' resize-none'}
+                rows={3}
+                placeholder="例：大烘乾機 62度 16小時；步驟1 先醃製30分鐘…"
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+              />
+            </FormRow>
           </div>
 
           <div className="p-6 space-y-6">
@@ -1659,6 +1672,16 @@ export default function Production({ data }) {
             onClose={() => setDetailBatch(null)}
           >
             <div className="space-y-4 text-sm">
+
+              {/* 生產細節 */}
+              {first.details && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">生產細節</p>
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+                    {first.details}
+                  </div>
+                </div>
+              )}
 
               {/* 食材投入（共用，取第一筆） */}
               {first.usedIngredients?.length > 0 && (

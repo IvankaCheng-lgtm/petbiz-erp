@@ -598,7 +598,7 @@ export default function usePetBusiness() {
     cloudUpdate("expenses", list => list.filter(e => e.orderId !== id));
   }, [cloudUpdate]);
 
-  const processOrder = useCallback(async ({ platform, items, giftItems = [], discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, note = '', withShipment = true }) => {
+  const processOrder = useCallback(async ({ platform, items, giftItems = [], discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, pendingRevenue = false, note = '', withShipment = true }) => {
     const today = new Date().toISOString().slice(0, 10);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const discount = subtotal - totalAmount;
@@ -614,6 +614,7 @@ export default function usePetBusiness() {
       platformCost: cost,
       supplierId: supplierId || null,
       skipRevenue,
+      pendingRevenue,
       note: note || '',
     };
 
@@ -657,6 +658,7 @@ export default function usePetBusiness() {
           id: uid(), date: today, channel: platform, category: "電商銷售",
           amount: totalAmount, isReported: false, orderId: order.id, items,
           platformCost: cost, supplierId: supplierId || null,
+          isPending: pendingRevenue,
         };
         setRevenues(prev => [...prev, revenueItem]);
         await cloudUpdate("revenues", list => [...list, revenueItem]);

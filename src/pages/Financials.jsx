@@ -297,6 +297,7 @@ export default function Financials({ data }) {
 
   const [tab,            setTab]            = useState('營收')
   const [modal,          setModal]          = useState(null)
+  const [detailItem,     setDetailItem]     = useState(null)
   const [page,           setPage]           = useState(1)
   const [onlyUnreported, setOnlyUnreported] = useState(false)
   const [showAI,         setShowAI]         = useState(false)
@@ -322,6 +323,8 @@ export default function Financials({ data }) {
   }
 
   const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '', note: '', supplierId: null, customSupplierName: '' })
+
+  const PAYOUT_CHANNELS = ['平台撥款', 'LINE Pay 撥款']
   const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
 
   const sortedRevenues = useMemo(() => [...revenues].filter(r => !r.isPending).sort((a, b) => b.date.localeCompare(a.date)), [revenues])
@@ -346,7 +349,8 @@ export default function Financials({ data }) {
     const supplierName = revForm.supplierId
       ? suppliers.find(s => s.id === revForm.supplierId)?.name || ''
       : revForm.customSupplierName.trim()
-    addRevenue({ ...revForm, amount: parseFloat(revForm.amount), supplierName })
+    const isPayout = PAYOUT_CHANNELS.includes(revForm.channel)
+    addRevenue({ ...revForm, amount: parseFloat(revForm.amount), supplierName, category: isPayout ? null : revForm.category })
     setModal(null)
     setRevForm({ date: today(), channel: '電商', category: '食品', amount: '', note: '', supplierId: null, customSupplierName: '' })
   }
@@ -462,12 +466,13 @@ export default function Financials({ data }) {
             <tbody className="divide-y divide-gray-50">
               {paged.map(item => (
                 <tr key={item.id}
-                  className={`hover:bg-gray-50 transition-colors ${!item.isReported ? 'bg-orange-50/30' : ''}`}>
+                  onClick={() => setDetailItem({ ...item, _tab: tab })}
+                  className={`hover:bg-gray-50 transition-colors cursor-pointer ${!item.isReported ? 'bg-orange-50/30' : ''}`}>
                   <td className="py-3 text-gray-500 whitespace-nowrap">{item.date}</td>
                   {tab === '營收' ? (
                     <>
                       <td className="py-3"><Badge color={channelColor[item.channel]}>{item.channel}</Badge></td>
-                      <td className="py-3"><Badge color={catColor[item.category]}>{item.category}</Badge></td>
+                      <td className="py-3"><Badge color={catColor[item.category] || 'gray'}>{item.category || '—'}</Badge></td>
                       <td className="py-3 text-gray-500 text-xs max-w-[120px] truncate">{item.note || '—'}</td>
                     </>
                   ) : (
@@ -479,7 +484,7 @@ export default function Financials({ data }) {
                   <td className="py-3 text-right font-semibold text-gray-800 whitespace-nowrap">{fmt(item.amount)}</td>
                   <td className="py-3 text-center">
                     <button
-                      onClick={() => tab === '營收' ? toggleRevenueReported(item.id) : toggleExpenseReported(item.id)}
+                      onClick={e => { e.stopPropagation(); tab === '營收' ? toggleRevenueReported(item.id) : toggleExpenseReported(item.id) }}
                       className="text-gray-300 hover:text-emerald-500 transition-colors"
                       title={item.isReported ? '已處理，點擊取消' : '標記為已處理'}>
                       {item.isReported
@@ -488,7 +493,7 @@ export default function Financials({ data }) {
                     </button>
                   </td>
                   <td className="py-3 text-center">
-                    <button onClick={() => tab === '營收' ? deleteRevenue(item.id) : deleteExpense(item.id)}
+                    <button onClick={e => { e.stopPropagation(); tab === '營收' ? deleteRevenue(item.id) : deleteExpense(item.id) }}
                       className={btnDanger}>
                       <Trash2 size={14} />
                     </button>
@@ -540,12 +545,14 @@ export default function Financials({ data }) {
                 ))}
               </select>
             </FormRow>
-            <FormRow label="商品類別">
-              <select className={inputCls} value={revForm.category}
-                onChange={e => setRevForm(p => ({ ...p, category: e.target.value }))}>
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
-            </FormRow>
+            {!PAYOUT_CHANNELS.includes(revForm.channel) && (
+              <FormRow label="商品類別">
+                <select className={inputCls} value={revForm.category}
+                  onChange={e => setRevForm(p => ({ ...p, category: e.target.value }))}>
+                  {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </FormRow>
+            )}
             <FormRow label="金額（元）">
               <input type="number" min="0" className={inputCls} placeholder="0" value={revForm.amount}
                 onChange={e => setRevForm(p => ({ ...p, amount: e.target.value }))} required />
@@ -631,6 +638,99 @@ export default function Financials({ data }) {
               <button type="button" onClick={() => setModal(null)} className={btnSecondary}>取消</button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* 明細 Modal */}
+      {detailItem && (
+        <Modal title={detailItem._tab === '營收' ? '營收明細' : '支出明細'} size="sm" onClose={() => setDetailItem(null)}>
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-1">日期</p>
+                <p className="font-semibold text-gray-800">{detailItem.date}</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-1">金額</p>
+                <p className="font-bold text-lg text-gray-800">{fmt(detailItem.amount)}</p>
+              </div>
+            </div>
+
+            {detailItem._tab === '營收' ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-xl px-4 py-3">
+                    <p className="text-xs text-gray-400 mb-1">通路</p>
+                    <Badge color={channelColor[detailItem.channel]}>{detailItem.channel}</Badge>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl px-4 py-3">
+                    <p className="text-xs text-gray-400 mb-1">類別</p>
+                    {detailItem.category
+                      ? <Badge color={catColor[detailItem.category]}>{detailItem.category}</Badge>
+                      : <span className="text-xs text-gray-400">撥款，無商品類別</span>}
+                  </div>
+                </div>
+                {detailItem.items?.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl px-4 py-3">
+                    <p className="text-xs text-gray-400 mb-2">商品明細</p>
+                    <div className="space-y-1">
+                      {detailItem.items.map((it, i) => (
+                        <div key={i} className="flex justify-between text-xs text-gray-600">
+                          <span>{it.itemName} × {it.qty}</span>
+                          <span>{fmt(it.qty * it.unitPrice)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-xl px-4 py-3">
+                  <p className="text-xs text-gray-400 mb-1">費用類型</p>
+                  <Badge color={EXPENSE_TYPE_COLOR[detailItem.type] || 'gray'}>{detailItem.type}</Badge>
+                </div>
+                {detailItem.isProductionCost && (
+                  <div className="bg-orange-50 rounded-xl px-4 py-3">
+                    <p className="text-xs text-orange-400 mb-1">標記</p>
+                    <p className="text-xs font-semibold text-orange-600">計入生產成本</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {detailItem.note && (
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-1">備註</p>
+                <p className="text-gray-700">{detailItem.note}</p>
+              </div>
+            )}
+
+            {(detailItem.supplierName || detailItem.customSupplierName) && (
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-1">供應商／合作對象</p>
+                <p className="text-gray-700">{detailItem.supplierName || detailItem.customSupplierName}</p>
+              </div>
+            )}
+
+            {detailItem.paymentMethod && (
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-1">付款方式</p>
+                <p className="text-gray-700">{detailItem.paymentMethod}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+              <p className="text-xs text-gray-400">處理狀態</p>
+              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                detailItem.isReported ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'
+              }`}>
+                {detailItem.isReported ? '✅ 已處理' : '⏳ 未處理'}
+              </span>
+            </div>
+
+            <button onClick={() => setDetailItem(null)} className={btnSecondary + ' w-full'}>關閉</button>
+          </div>
         </Modal>
       )}
 
