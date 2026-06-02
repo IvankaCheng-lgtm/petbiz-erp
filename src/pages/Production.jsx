@@ -210,7 +210,7 @@ function StepBar({ current }) {
 
 // ── 主組件 ───────────────────────────────────────────────────
 export default function Production({ data }) {
-  const { inventory, production, addProductionBatch, deleteProduction, deleteProductionGroup, addInventoryItem, updateInventoryItem } = data;
+  const { inventory, production, addProductionBatch, addProductionBatches, deleteProduction, deleteProductionGroup, addInventoryItem, updateInventoryItem } = data;
 
   // ── 庫存篩選 ─────────────────────────────────────────────
   const cItems = useMemo(
@@ -528,13 +528,13 @@ export default function Production({ data }) {
         };
       });
 
-    // 為每個規格建立生產批次記錄
+    // 為每個規格建立生產批次記錄，一次送出避免 state 競爭
     const batchGroupId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    for (const output of resolvedOutputs) {
+    const batchParamsList = resolvedOutputs.map((output, outputIdx) => {
       const targetItem = output.resolvedId ? bItems.find(i => i.id === output.resolvedId) : null;
       const itemName = targetItem?.itemName || output.newItemName?.trim() || '';
-      
-      await addProductionBatch({
+      const isFirst = outputIdx === 0;
+      return {
         batchGroupId,
         date,
         note: `${note}${output.batchNote ? ` - ${output.batchNote}` : ''}`,
@@ -543,8 +543,8 @@ export default function Production({ data }) {
         machineWatt: machines.reduce((s, m) => s + (parseFloat(m.watt) || 0), 0),
         hours: machines[0]?.hours ?? 0,
         elecRatio: parseFloat(elecRatio),
-        usedIngredients,
-        usedPackaging,
+        usedIngredients: isFirst ? usedIngredients : [],
+        usedPackaging: isFirst ? usedPackaging : [],
         outputQty: parseFloat(totalOutputQty) || output.weight,
         outputUnit,
         packSize: parseFloat(output.packSize),
@@ -565,8 +565,9 @@ export default function Production({ data }) {
           fridgeExpiry: output.fridgeExpiry || null,
           frozenExpiry: output.frozenExpiry || null,
         } : null,
-      });
-    }
+      };
+    });
+    await addProductionBatches(batchParamsList);
 
     resetForm();
   }

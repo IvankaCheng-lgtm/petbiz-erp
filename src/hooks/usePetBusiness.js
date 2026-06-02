@@ -127,7 +127,20 @@ export default function usePetBusiness() {
           setInventory(d.inventory     ?? []);
           setProduction(d.production   ?? []);
           setSavedFormulas(d.savedFormulas ?? []);
-          setMarketEvents(d.marketEvents   ?? []);
+          const loadedEvents = d.marketEvents ?? [];
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const expiredIds = loadedEvents
+            .filter(e => e.status === '已報名' && e.endDate < todayStr)
+            .map(e => e.id);
+          if (expiredIds.length > 0) {
+            const updated = loadedEvents.map(e =>
+              expiredIds.includes(e.id) ? { ...e, status: '已結束' } : e
+            );
+            setMarketEvents(updated);
+            setDoc(ERP_DOC_REF, { marketEvents: updated }, { merge: true });
+          } else {
+            setMarketEvents(loadedEvents);
+          }
           setOrders(d.orders               ?? []);
           setInventoryLogs(d.inventoryLogs ?? []);
           setIngredientLibrary(d.ingredientLibrary ?? []);
@@ -309,76 +322,92 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   // ── 生產 ──────────────────────────────────────────────────────
-  // expiryData: { normalExp, fridgeExp, freezerExp } — 選填，有值才寫入 expiryBatches
-  const addProductionBatch = useCallback(async (params) => {
-    const { date, note, hours, usedIngredients, usedPackaging, resultQty, targetItemId, electricCost,
-      expiryData, expiryBatch, overwriteCost, costPerPack } = params;
-    // 支援兩種命名，統一處理
-    const batchExpiry = expiryBatch || expiryData || null;
-    const expiryBatchId = batchExpiry ? uid() : null;
-    const newBatch = { id: uid(), ...params, expiryBatchId };
+  // 多規格批次一次入庫，避免多次 setInventory 造成 state 競爭
+  const addProductionBatches = useCallback(async (batchParamsList) => {
+    if (!batchParamsList || batchParamsList.length === 0) return;
+
+    // 為每筆建立 newBatch 物件（含 expiryBatchId）
+    const newBatches = batchParamsList.map(params => {
+      const batchExpiry = params.expiryBatch || params.expiryData || null;
+      const expiryBatchId = batchExpiry ? uid() : null;
+      return { newBatch: { id: uid(), ...params, expiryBatchId }, batchExpiry, expiryBatchId };
+    });
+
+    // 一次性計算所有庫存變更（含成本覆寫）
     const applyInv = (list) => {
       let next = [...list];
-      // 食材和包材扣除也使用 FIFO
-      usedIngredients.forEach(({ itemId, qty }) => {
+      // 第一筆才有食材/包材（Production.jsx 已確保只有 index=0 傳入真實清單）
+      const first = batchParamsList[0];
+      (first.usedIngredients ?? []).forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
         if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
-      usedPackaging.forEach(({ itemId, qty }) => {
+      (first.usedPackaging ?? []).forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
         if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
-      if (targetItemId) {
+      // 每個規格的 B食品產出 + 成本覆寫
+      newBatches.forEach(({ newBatch: nb, batchExpiry, expiryBatchId }) => {
+        const { targetItemId, resultQty, date, overwriteCost, costPerPack } = nb;
+        if (!targetItemId) return;
         const idx = next.findIndex(i => i.id === targetItemId);
-        if (idx !== -1) {
-          const prevBatches = next[idx].expiryBatches ?? [];
-          // expiryBatches 格式：[{ batchId, normalExp, fridgeExp, freezerExp, qty }]
-          const newBatches = batchExpiry
-            ? [...prevBatches, normalizeBatch({
-                batchId:    expiryBatchId,
-                normalExp:  batchExpiry.normalExp  || batchExpiry.shelfExpiry  || null,
-                fridgeExp:  batchExpiry.fridgeExp  || batchExpiry.fridgeExpiry || null,
-                freezerExp: batchExpiry.freezerExp || batchExpiry.frozenExpiry || null,
-                productionDate: batchExpiry.productionDate || date,
-                qty: resultQty,
-              })]
-            : prevBatches;
-          next[idx] = {
-            ...next[idx],
-            currentQty:    next[idx].currentQty + resultQty,
-            expiryBatches: newBatches,
-          };
-        }
-      }
+        if (idx === -1) return;
+        const prevBatches = next[idx].expiryBatches ?? [];
+        const updatedBatches = batchExpiry
+          ? [...prevBatches, normalizeBatch({
+              batchId:    expiryBatchId,
+              normalExp:  batchExpiry.normalExp  || batchExpiry.shelfExpiry  || null,
+              fridgeExp:  batchExpiry.fridgeExp  || batchExpiry.fridgeExpiry || null,
+              freezerExp: batchExpiry.freezerExp || batchExpiry.frozenExpiry || null,
+              productionDate: batchExpiry.productionDate || date,
+              qty: resultQty,
+            })]
+          : prevBatches;
+        next[idx] = {
+          ...next[idx],
+          currentQty: next[idx].currentQty + resultQty,
+          expiryBatches: updatedBatches,
+          ...(overwriteCost && costPerPack ? { cost: costPerPack } : {}),
+        };
+      });
       return next;
     };
-    setProduction(prev => [...prev, newBatch]);
-    await cloudUpdate("production", list => [...list, newBatch]);
+
+    // 寫入 production
+    const batchDocs = newBatches.map(b => b.newBatch);
+    setProduction(prev => [...prev, ...batchDocs]);
+    await cloudUpdate('production', list => [...list, ...batchDocs]);
+
+    // 一次更新庫存（含成本覆寫）
     setInventory(prev => {
       const updated = applyInv(prev);
-      cloudUpdate("inventory", () => updated);
+      cloudUpdate('inventory', () => updated);
       return updated;
     });
-    if (targetItemId && resultQty) {
-      const targetItemName = params.targetItemName ?? note ?? ''
-      const log = {
-        id: uid(), date, itemId: targetItemId,
-        itemName: targetItemName,
-        change: +resultQty,
-        reason: `生產入庫（${note || '批次生產'}）`,
-      };
-      setInventoryLogs(prev => [...prev, log]);
-      cloudUpdate('inventoryLogs', list => [...list, log]);
-      // 覆寫成本到庫存表
-      if (overwriteCost && costPerPack) {
-        const costUpdate = (list) => list.map(i =>
-          i.id === targetItemId ? { ...i, cost: costPerPack } : i
-        );
-        setInventory(costUpdate);
-        cloudUpdate('inventory', costUpdate);
+
+    // 寫入異動紀錄
+    const logs = [];
+    for (const { newBatch: nb } of newBatches) {
+      const { date, note, targetItemId, resultQty, targetItemName } = nb;
+      if (targetItemId && resultQty) {
+        logs.push({
+          id: uid(), date, itemId: targetItemId,
+          itemName: targetItemName ?? note ?? '',
+          change: +resultQty,
+          reason: `生產入庫（${note || '批次生產'}）`,
+        });
       }
     }
+    if (logs.length > 0) {
+      setInventoryLogs(prev => [...prev, ...logs]);
+      cloudUpdate('inventoryLogs', list => [...list, ...logs]);
+    }
   }, [cloudUpdate]);
+
+  // 保留單筆版本供其他地方使用（內部委派給 addProductionBatches）
+  const addProductionBatch = useCallback(async (params) => {
+    await addProductionBatches([params]);
+  }, [addProductionBatches]);
 
   const deleteProduction = useCallback((id) => {
     setProduction(prev => {
@@ -898,7 +927,7 @@ export default function usePetBusiness() {
     addExpense, deleteExpense, toggleExpenseReported,
     addPurchase,
     addInventoryItem, addInventoryItems, updateInventoryItem, deleteInventoryItem, resetInventoryToSeed, importInventoryItems,
-    addProductionBatch, deleteProduction, deleteProductionGroup,
+    addProductionBatch, addProductionBatches, deleteProduction, deleteProductionGroup,
     saveFormula, deleteFormula,
     addSupplier, updateSupplier, deleteSupplier,
     addMarketEvent, updateMarketEvent, deleteMarketEvent, deleteMarketSale,

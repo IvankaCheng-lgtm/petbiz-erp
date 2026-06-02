@@ -162,6 +162,24 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
                 {ev.note && <p className="text-xs text-gray-400 mt-0.5 truncate">{ev.note}</p>}
               </div>
               <div className="flex gap-1 shrink-0">
+                {ev.status === '待報名' && (
+                  <button
+                    onClick={() => {
+                      updateMarketEvent(ev.id, { ...ev, status: '已報名' })
+                      if (ev.boothFee > 0) {
+                        addExpense({
+                          date: ev.startDate,
+                          type: '攤位',
+                          note: `市集費用：${ev.name}`,
+                          amount: ev.boothFee,
+                          isProductionCost: false,
+                        })
+                      }
+                    }}
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-2 py-1.5 rounded-lg transition-colors text-xs font-medium whitespace-nowrap">
+                    ✅ 確認出攤
+                  </button>
+                )}
                 <button onClick={() => openEdit(ev)} className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors text-xs">編輯</button>
                 <button onClick={() => deleteMarketEvent(ev.id)} className={btnDanger}><Trash2 size={13} /></button>
               </div>
