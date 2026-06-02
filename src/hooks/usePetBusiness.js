@@ -336,13 +336,26 @@ export default function usePetBusiness() {
     // 一次性計算所有庫存變更（含成本覆寫）
     const applyInv = (list) => {
       let next = [...list];
-      // 第一筆才有食材/包材（Production.jsx 已確保只有 index=0 傳入真實清單）
       const first = batchParamsList[0];
-      (first.usedIngredients ?? []).forEach(({ itemId, qty }) => {
-        const idx = next.findIndex(i => i.id === itemId);
-        if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
+      const allIngredients = first.usedIngredients ?? [];
+      const allPackaging   = first.usedPackaging   ?? [];
+
+      // 共用食材（outputIdx === null）一次扣除
+      allIngredients.filter(r => r.outputIdx === null || r.outputIdx === undefined)
+        .forEach(({ itemId, qty }) => {
+          const idx = next.findIndex(i => i.id === itemId);
+          if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
+        });
+      // 指定規格的食材，依規格 index 扣除
+      batchParamsList.forEach((_, oi) => {
+        allIngredients.filter(r => r.outputIdx === oi)
+          .forEach(({ itemId, qty }) => {
+            const idx = next.findIndex(i => i.id === itemId);
+            if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
+          });
       });
-      (first.usedPackaging ?? []).forEach(({ itemId, qty }) => {
+      // 包材一次扣除（共用 + 指定）
+      allPackaging.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
         if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });

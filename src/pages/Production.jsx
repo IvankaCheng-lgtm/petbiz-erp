@@ -233,7 +233,7 @@ export default function Production({ data }) {
   const [note, setNote] = useState("");
   const [details, setDetails] = useState("");
 
-  // 步驟一：食材 [{ itemId, qty }]
+  // 步驟一：食材 [{ itemId, qty, outputIdx }]  outputIdx=null 為共用
   const [ingredients, setIngredients] = useState([]);
 
   // 步驟二：產出（多規格）[{ targetItemId, newItemName, packSize, packQty, batchNote, shelfExpiry, fridgeExpiry, frozenExpiry }]
@@ -266,15 +266,31 @@ export default function Production({ data }) {
   }, [outputs]);
 
   const ingredientCost = useMemo(
-    () =>
-      ingredients.reduce((s, row) => {
-        const item = cItems.find((i) => i.id === row.itemId);
-        return (
-          s + (item ? (item.unitPrice || 0) * (parseFloat(row.qty) || 0) : 0)
-        );
-      }, 0),
+    () => ingredients.reduce((s, r) => {
+      const item = cItems.find(i => i.id === r.itemId);
+      return s + (item ? (item.unitPrice || 0) * (parseFloat(r.qty) || 0) : 0);
+    }, 0),
     [ingredients, cItems],
   );
+
+  // 食材成本：分「指定規格」和「共用（按重量平攤）」，與包材設計相同
+  const ingredientCostByOutput = useMemo(() => {
+    const direct = outputs.map((_, oi) =>
+      ingredients
+        .filter(r => r.outputIdx === oi)
+        .reduce((s, r) => {
+          const item = cItems.find(i => i.id === r.itemId);
+          return s + (item ? (item.unitPrice || 0) * (parseFloat(r.qty) || 0) : 0);
+        }, 0)
+    );
+    const shared = ingredients
+      .filter(r => r.outputIdx === null || r.outputIdx === undefined)
+      .reduce((s, r) => {
+        const item = cItems.find(i => i.id === r.itemId);
+        return s + (item ? (item.unitPrice || 0) * (parseFloat(r.qty) || 0) : 0);
+      }, 0);
+    return { direct, shared };
+  }, [ingredients, outputs, cItems]);
 
   const electricCostFull = useMemo(
     () => machines.reduce((s, m) => s + calcElectricityCost(parseFloat(m.watt) || 0, parseFloat(m.hours) || 0, date), 0),
@@ -323,7 +339,7 @@ export default function Production({ data }) {
     return { direct, shared };
   }, [packaging, outputs, dItems]);
 
-  // 各規格成本（食材+電費按重量比例，包材依指定/共用分別計算）
+  // 各規格成本（食材指定+共用平攤+電費按重量比例，包材依指定/共用分別計算）
   const outputsWithCost = useMemo(() => {
     if (totalOutputWeight === 0) return outputs.map(o => ({ ...o, cost: 0, costPerPack: 0, ratio: 0, weight: 0 }));
     return outputs.map((row, oi) => {
@@ -331,15 +347,17 @@ export default function Production({ data }) {
       const pq = parseFloat(row.packQty) || 0;
       const weight = ps * pq;
       const ratio = weight / totalOutputWeight;
-      // 食材 + 電費 按重量比例
-      const ingElecCost = (ingredientCost + electricCost) * ratio;
+      // 食材：直接指定 + 共用按比例
+      const ingCost = ingredientCostByOutput.direct[oi] + ingredientCostByOutput.shared * ratio;
+      // 電費按重量比例
+      const elecCost = electricCost * ratio;
       // 包材：直接指定 + 共用按比例
       const pkgCost = packagingCostByOutput.direct[oi] + packagingCostByOutput.shared * ratio;
-      const cost = ingElecCost + pkgCost;
+      const cost = ingCost + elecCost + pkgCost;
       const costPerPack = pq > 0 ? Math.round((cost / pq) * 10000) / 10000 : 0;
-      return { ...row, cost, costPerPack, weight, ratio, pkgCost };
+      return { ...row, cost, costPerPack, weight, ratio, ingCost, elecCost, pkgCost };
     });
-  }, [outputs, totalOutputWeight, ingredientCost, electricCost, packagingCostByOutput]);
+  }, [outputs, totalOutputWeight, ingredientCostByOutput, electricCost, packagingCostByOutput]);
 
   const rate = useMemo(() => getElectricRate(date), [date]);
   const isSummer = rate === 6.24;
@@ -395,7 +413,7 @@ export default function Production({ data }) {
 
   // ── 食材操作 ─────────────────────────────────────────────
   function addIngredientRow() {
-    setIngredients((p) => [...p, { itemId: "", qty: "" }]);
+    setIngredients((p) => [...p, { itemId: "", qty: "", outputIdx: null }]);
   }
   function removeIngredientRow(idx) {
     setIngredients((p) => p.filter((_, i) => i !== idx));
@@ -435,7 +453,7 @@ export default function Production({ data }) {
     setNote(first.note?.split(' - ')[0] || '');
     setDetails(first.details || '');
     setIngredients(
-      (first.usedIngredients ?? []).map(i => ({ itemId: i.itemId, qty: String(i.qty) }))
+      (first.usedIngredients ?? []).map(i => ({ itemId: i.itemId, qty: String(i.qty), outputIdx: i.outputIdx ?? null }))
     );
     setOutputUnit(first.outputUnit || '克');
     setTotalOutputQty(String(first.outputQty || ''));
@@ -512,6 +530,7 @@ export default function Production({ data }) {
           qty: parseFloat(r.qty),
           unitPrice: item?.unitPrice || 0,
           cost: (item?.unitPrice || 0) * parseFloat(r.qty),
+          outputIdx: r.outputIdx ?? null,
         };
       });
 
@@ -702,6 +721,11 @@ export default function Production({ data }) {
 
                 {/* 食材列表 */}
                 <div className="space-y-2">
+                  {outputs.length > 1 && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 text-xs text-blue-700">
+                      💡 可為每項食材指定歸屬規格，未指定則按產出重量比例自動平攤
+                    </div>
+                  )}
                   {ingredients.map((row, idx) => {
                     const item = cItems.find((i) => i.id === row.itemId);
                     const rowCost = item
@@ -712,55 +736,76 @@ export default function Production({ data }) {
                     return (
                       <div
                         key={idx}
-                        className={`grid grid-cols-[1fr_120px_100px_80px_32px] gap-2 items-center p-3 rounded-xl border ${isOver ? "border-red-200 bg-red-50/40" : "border-gray-100 bg-gray-50"}`}
+                        className={`p-3 rounded-xl border space-y-2 ${isOver ? "border-red-200 bg-red-50/40" : "border-gray-100 bg-gray-50"}`}
                       >
-                        {/* 食材選擇 */}
-                        <div>
-                          <SearchableSelect
-                            value={row.itemId}
-                            onChange={v => updateIngredient(idx, 'itemId', v)}
-                            placeholder="選擇食材"
-                            options={cItems.map(i => ({
-                              value: i.id,
-                              label: `${i.itemName}（庫存 ${i.currentQty}${i.unit}）`
-                            }))}
-                          />
+                        <div className="grid grid-cols-[1fr_120px_100px_80px_32px] gap-2 items-center">
+                          {/* 食材選擇 */}
+                          <div>
+                            <SearchableSelect
+                              value={row.itemId}
+                              onChange={v => updateIngredient(idx, 'itemId', v)}
+                              placeholder="選擇食材"
+                              options={cItems.map(i => ({
+                                value: i.id,
+                                label: `${i.itemName}（庫存 ${i.currentQty}${i.unit}）`
+                              }))}
+                            />
+                          </div>
+                          {/* 用量 */}
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="用量"
+                              className={
+                                inputCls + (isOver ? " border-red-300" : "")
+                              }
+                              value={row.qty}
+                              onChange={(e) =>
+                                updateIngredient(idx, "qty", e.target.value)
+                              }
+                            />
+                            <span className="text-xs text-gray-400 shrink-0">
+                              {item?.unit || ""}
+                            </span>
+                          </div>
+                          {/* 單價 */}
+                          <div className="text-xs text-gray-500 text-right">
+                            {item ? `${fmtPrice(item.unitPrice || 0)}/${item.unit}` : "—"}
+                          </div>
+                          {/* 小計 */}
+                          <div
+                            className={`text-sm font-semibold text-right ${isOver ? "text-red-500" : "text-emerald-600"}`}
+                          >
+                            {rowCost > 0 ? fmtPrice(rowCost) : "—"}
+                          </div>
+                          <button
+                            onClick={() => removeIngredientRow(idx)}
+                            className="text-gray-300 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </div>
-                        {/* 用量 */}
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="用量"
-                            className={
-                              inputCls + (isOver ? " border-red-300" : "")
-                            }
-                            value={row.qty}
-                            onChange={(e) =>
-                              updateIngredient(idx, "qty", e.target.value)
-                            }
-                          />
-                          <span className="text-xs text-gray-400 shrink-0">
-                            {item?.unit || ""}
-                          </span>
-                        </div>
-                        {/* 單價 */}
-                        <div className="text-xs text-gray-500 text-right">
-                          {item ? `${fmtPrice(item.unitPrice || 0)}/${item.unit}` : "—"}
-                        </div>
-                        {/* 小計 */}
-                        <div
-                          className={`text-sm font-semibold text-right ${isOver ? "text-red-500" : "text-emerald-600"}`}
-                        >
-                          {rowCost > 0 ? fmtPrice(rowCost) : "—"}
-                        </div>
-                        <button
-                          onClick={() => removeIngredientRow(idx)}
-                          className="text-gray-300 hover:text-red-400 transition-colors"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {/* 歸屬規格（有多規格時才顯示） */}
+                        {outputs.length > 1 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400 shrink-0">歸屬規格：</span>
+                            <select
+                              className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
+                              value={row.outputIdx === null || row.outputIdx === undefined ? '' : String(row.outputIdx)}
+                              onChange={e => updateIngredient(idx, 'outputIdx', e.target.value === '' ? null : parseInt(e.target.value))}
+                            >
+                              <option value="">共用（按重量比例平攤）</option>
+                              {outputLabels.map((label, oi) => (
+                                <option key={oi} value={String(oi)}>{label || `規格 ${oi + 1}`}</option>
+                              ))}
+                            </select>
+                            {(row.outputIdx !== null && row.outputIdx !== undefined) && (
+                              <span className="text-xs font-medium text-orange-600 shrink-0">→ 直接計入</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1331,8 +1376,12 @@ export default function Production({ data }) {
                           </div>
                           <div className="text-xs text-gray-400 space-y-0.5 pl-1">
                             <div className="flex justify-between">
-                              <span>食材+電費（按重量{(row.ratio * 100).toFixed(1)}%）</span>
-                              <span>{fmt((ingredientCost + electricCost) * row.ratio)}</span>
+                              <span>食材（{ingredientCostByOutput.direct[idx] > 0 ? '指定+' : ''}共用{(row.ratio * 100).toFixed(1)}%）</span>
+                              <span>{fmt(row.ingCost ?? 0)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>電費（按重量{(row.ratio * 100).toFixed(1)}%）</span>
+                              <span>{fmt(row.elecCost ?? 0)}</span>
                             </div>
                             {directPkg > 0 && (
                               <div className="flex justify-between text-orange-500">
