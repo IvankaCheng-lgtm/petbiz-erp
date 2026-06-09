@@ -36,7 +36,11 @@ export default function Nutrition({ data }) {
   const [showLibrary, setShowLibrary] = useState(false)
   const [libForm,     setLibForm]     = useState(null)
   const [fiberConvert, setFiberConvert] = useState(false)
-  const emptyLibForm = () => ({ name: '', protein: '', fat: '', fiber: '', moisture: '', ash: '' })
+  const emptyLibForm = () => ({
+    name: '',
+    protein: '', fat: '', fiber: '', moisture: '', ash: '',
+    satFat: '', transFat: '', carb: '', sugar: '', sodium: '',
+  })
 
   // ── 烘乾換算器 ─────────────────────────────────────────────────
   const [dryBefore,  setDryBefore]  = useState('')
@@ -63,7 +67,14 @@ export default function Nutrition({ data }) {
 
   // ── 食材庫操作 ───────────────────────────────────────────
   function addFromLibrary(item) {
-    const newRow = { ...emptyIngredient(), name: item.name, protein: item.protein, fat: item.fat, fiber: item.fiber, moisture: item.moisture, ash: item.ash }
+    const newRow = {
+      ...emptyIngredient(),
+      name: item.name,
+      protein: item.protein, fat: item.fat,
+      fiber: item.fiber, moisture: item.moisture, ash: item.ash,
+      satFat: item.satFat || '', transFat: item.transFat || '',
+      carb: item.carb || '', sugar: item.sugar || '', sodium: item.sodium || '',
+    }
     setIngredients(prev => {
       const last = prev[prev.length - 1]
       const isEmpty = !last.name && !last.amount && !last.protein
@@ -267,7 +278,12 @@ export default function Nutrition({ data }) {
               <div key={item.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-2.5 gap-2">
                 <div className="flex-1 min-w-0">
                   <span className="text-sm font-semibold text-gray-800">{item.name}</span>
-                  <span className="ml-2 text-xs text-gray-400">蛋白{item.protein} 脂肪{item.fat} 纖維{item.fiber} 水分{item.moisture} 灰分{item.ash}</span>
+                  <div className="flex flex-wrap gap-x-3 mt-0.5">
+                    <span className="text-xs text-gray-400">蛋白 {item.protein||'—'} 脂肪 {item.fat||'—'} 纖維 {item.fiber||'—'} 水分 {item.moisture||'—'} 灰分 {item.ash||'—'}</span>
+                    {(item.carb || item.sugar || item.sodium || item.satFat || item.transFat) && (
+                      <span className="text-xs text-blue-400">碳水 {item.carb||'—'} 糖 {item.sugar||'—'} 鈉 {item.sodium||'—'} 飽和脂 {item.satFat||'—'} 反式脂 {item.transFat||'—'}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <button onClick={() => addFromLibrary(item)} className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-3 py-1.5 rounded-lg transition-colors">加入配方</button>
@@ -283,14 +299,26 @@ export default function Nutrition({ data }) {
                 <Plus size={14} /> 新增食材
               </button>
             ) : (
-              <div className="border border-orange-200 rounded-xl p-3 space-y-2 bg-orange-50/30">
+              <div className="border border-orange-200 rounded-xl p-3 space-y-3 bg-orange-50/30">
                 <input type="text" placeholder="食材名稱" value={libForm.name || ''}
                   onChange={e => setLibForm(f => ({ ...f, name: e.target.value }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-300" />
+                <p className="text-xs font-semibold text-gray-500">AAFCO / 寵物鮮食欄位</p>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {[['protein','粗蛋白'],['fat','粗脂肪'],['fiber','纖維'],['moisture','水分'],['ash','灰分']].map(([key, label]) => (
                     <div key={key}>
                       <label className="text-xs text-gray-500 mb-1 block">{label} (g/100g)</label>
+                      <input type="number" min="0" step="0.01" value={libForm[key] || ''}
+                        onChange={e => setLibForm(f => ({ ...f, [key]: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-orange-300" />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs font-semibold text-gray-500">一般營養標示欄位（選填）</p>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {[['satFat','飽和脂肪'],['transFat','反式脂肪'],['carb','碳水'],['sugar','糖'],['sodium','鈉(mg)']].map(([key, label]) => (
+                    <div key={key}>
+                      <label className="text-xs text-gray-500 mb-1 block">{label}</label>
                       <input type="number" min="0" step="0.01" value={libForm[key] || ''}
                         onChange={e => setLibForm(f => ({ ...f, [key]: e.target.value }))}
                         className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-orange-300" />
@@ -637,54 +665,78 @@ export default function Nutrition({ data }) {
               </div>
             )}
           </div>
-          {dryCalc && mode === 'aafco' && result && (
+          {dryCalc && result && (
             <div className="mt-2 border border-purple-100 rounded-xl overflow-hidden">
               <div className="bg-purple-50 px-4 py-2 text-xs font-semibold text-purple-700">
-                📊 AAFCO 烘乾後校正百分比（原始 × {dryCalc.concFactor}x）
+                📊 烘乾後校正百分比（原始 × {dryCalc.concFactor}x）
               </div>
               <div className="divide-y divide-gray-100">
-                {[
-                  ['粗蛋白', result.protein],
-                  ['粗脂肪', result.fat],
-                  ['粗纖維', result.fiber],
-                  ['灰分',   result.ash],
-                  ['碳水化合物(NFE)', result.carb],
-                ].map(([label, val]) => (
-                  <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="text-gray-600">{label}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-gray-400 text-xs">{val}%</span>
-                      <span className="text-gray-400 text-xs">→</span>
-                      <span className="font-bold text-purple-700">{dryCalc.adjust(val)}%</span>
-                    </div>
-                  </div>
-                ))}
+                {result.mode === 'general' ? (
+                  [['蛋白質', result.protein], ['脂肪', result.fat], ['碳水化合物', result.carb],
+                   ['飽和脂肪', result.satFat], ['反式脂肪', result.transFat], ['糖', result.sugar]]
+                    .filter(([, val]) => val > 0)
+                    .map(([label, val]) => (
+                      <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
+                        <span className="text-gray-600">{label}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-gray-400 text-xs">{val}g</span>
+                          <span className="text-gray-400 text-xs">→</span>
+                          <span className="font-bold text-purple-700">{Math.round(val * dryCalc.concFactor * 100) / 100}g</span>
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  [['粗蛋白', result.protein], ['粗脂肪', result.fat],
+                   ['粗纖維', result.fiber], ['灰分', result.ash], ['碳水化合物(NFE)', result.carb]]
+                    .map(([label, val]) => (
+                      <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
+                        <span className="text-gray-600">{label}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-gray-400 text-xs">{val}%</span>
+                          <span className="text-gray-400 text-xs">→</span>
+                          <span className="font-bold text-purple-700">{dryCalc.adjust(val)}%</span>
+                        </div>
+                      </div>
+                    ))
+                )}
                 <div className="flex items-center justify-between px-4 py-2 text-sm bg-blue-50">
                   <span className="text-gray-600">水分（烘乾後估算）</span>
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-400 text-xs">{result.moisture}%</span>
+                    <span className="text-gray-400 text-xs">{result.moisture}{result.mode === 'general' ? '%' : '%'}</span>
                     <span className="text-gray-400 text-xs">→</span>
                     <span className="font-bold text-blue-600">
                       {Math.max(0, Math.round((result.moisture - dryCalc.lossRatio) * 10) / 10)}%
                     </span>
                   </div>
                 </div>
-                {/* 烘乾後熱量（絕對克數法） */}
+                {/* 烘乾後熱量 */}
                 <div className="flex items-center justify-between px-4 py-2 text-sm bg-orange-50">
                   <div>
                     <span className="text-orange-700 font-semibold">烘乾後每 100g 熱量</span>
-                    <p className="text-xs text-gray-400 mt-0.5">總熱量 {Math.round(result.proteinG * 3.5 + result.fatG * 8.5 + result.nfeG * 3.5)} kcal ÷ 烘乾後 {parseFloat(dryAfter)}g × 100</p>
+                    {result.mode === 'aafco' && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        總熱量 {Math.round(result.proteinG * 3.5 + result.fatG * 8.5 + result.nfeG * 3.5)} kcal ÷ 烘乾後 {parseFloat(dryAfter)}g × 100
+                      </p>
+                    )}
+                    {result.mode === 'general' && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        總熱量 {result.calcCal} kcal ÷ 烘乾後 {parseFloat(dryAfter)}g × 100
+                      </p>
+                    )}
                   </div>
                   <span className="text-2xl font-black text-orange-600">
-                    {Math.round((result.proteinG * 3.5 + result.fatG * 8.5 + result.nfeG * 3.5) / parseFloat(dryAfter) * 100)} kcal
+                    {result.mode === 'aafco'
+                      ? Math.round((result.proteinG * 3.5 + result.fatG * 8.5 + result.nfeG * 3.5) / parseFloat(dryAfter) * 100)
+                      : Math.round(result.calcCal / parseFloat(dryAfter) * 100)
+                    } kcal
                   </span>
                 </div>
               </div>
             </div>
           )}
-          {dryCalc && mode === 'aafco' && !result && (
+          {dryCalc && !result && (
             <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-              ⚠️ 請先輸入食材並點擊「計算」，才能顯示 AAFCO 校正結果。
+              ⚠️ 請先輸入食材並點擊「計算」，才能顯示校正結果。
             </p>
           )}
         </div>
