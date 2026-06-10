@@ -673,24 +673,28 @@ export default function Nutrition({ data }) {
               <div className="divide-y divide-gray-100">
                 {result.mode === 'general' ? (
                   [
-                    ['蛋白質', result.protein / result.totalAmount * 100],
-                    ['脂肪',     result.fat     / result.totalAmount * 100],
-                    ['飽和脂肪', result.satFat  / result.totalAmount * 100],
-                    ['反式脂肪', result.transFat/ result.totalAmount * 100],
-                    ['碳水化合物', result.carb   / result.totalAmount * 100],
-                    ['糖',       result.sugar   / result.totalAmount * 100],
+                    ['蛋白質', result.protein / result.totalAmount * 100, 'g'],
+                    ['脂肪',     result.fat     / result.totalAmount * 100, 'g'],
+                    ['飽和脂肪', result.satFat  / result.totalAmount * 100, 'g'],
+                    ['反式脂肪', result.transFat/ result.totalAmount * 100, 'g'],
+                    ['碳水化合物', result.carb   / result.totalAmount * 100, 'g'],
+                    ['糖',       result.sugar   / result.totalAmount * 100, 'g'],
+                    ['鈉',       result.sodium  / result.totalAmount * 100, 'mg'],
                   ]
-                    .filter(([, pct]) => pct > 0)
-                    .map(([label, pct]) => (
-                      <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
-                        <span className="text-gray-600">{label}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-gray-400 text-xs">{Math.round(pct * 100) / 100}%</span>
-                          <span className="text-gray-400 text-xs">→</span>
-                          <span className="font-bold text-purple-700">{Math.min(100, Math.round(pct * dryCalc.concFactor * 100) / 100)}%</span>
+                    .filter(([, per100g]) => per100g > 0)
+                    .map(([label, per100g, unit]) => {
+                      const adjusted = Math.round(per100g * dryCalc.concFactor * 100) / 100
+                      return (
+                        <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
+                          <span className="text-gray-600">{label}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-400 text-xs">{Math.round(per100g * 100) / 100}{unit}/100g</span>
+                            <span className="text-gray-400 text-xs">→</span>
+                            <span className="font-bold text-purple-700">{adjusted}{unit}/100g</span>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      )
+                    })
                 ) : (
                   [['粗蛋白', result.protein], ['粗脂肪', result.fat],
                    ['粗纖維', result.fiber], ['灰分', result.ash], ['碳水化合物(NFE)', result.carb]]
