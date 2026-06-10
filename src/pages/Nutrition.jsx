@@ -316,7 +316,7 @@ export default function Nutrition({ data }) {
                 </div>
                 <p className="text-xs font-semibold text-gray-500">一般營養標示欄位（選填）</p>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                  {[['satFat','飽和脂肪'],['transFat','反式脂肪'],['carb','碳水'],['sugar','糖'],['sodium','鈉(mg)']].map(([key, label]) => (
+                  {[['satFat','飽和脂肪(g)'],['transFat','反式脂肪(g)'],['carb','碳水(g)'],['sugar','糖(g)'],['sodium','鈉(mg)']].map(([key, label]) => (
                     <div key={key}>
                       <label className="text-xs text-gray-500 mb-1 block">{label}</label>
                       <input type="number" min="0" step="0.01" value={libForm[key] || ''}
@@ -672,16 +672,22 @@ export default function Nutrition({ data }) {
               </div>
               <div className="divide-y divide-gray-100">
                 {result.mode === 'general' ? (
-                  [['蛋白質', result.protein], ['脂肪', result.fat], ['碳水化合物', result.carb],
-                   ['飽和脂肪', result.satFat], ['反式脂肪', result.transFat], ['糖', result.sugar]]
-                    .filter(([, val]) => val > 0)
-                    .map(([label, val]) => (
+                  [
+                    ['蛋白質', result.protein / result.totalAmount * 100],
+                    ['脂肪',     result.fat     / result.totalAmount * 100],
+                    ['飽和脂肪', result.satFat  / result.totalAmount * 100],
+                    ['反式脂肪', result.transFat/ result.totalAmount * 100],
+                    ['碳水化合物', result.carb   / result.totalAmount * 100],
+                    ['糖',       result.sugar   / result.totalAmount * 100],
+                  ]
+                    .filter(([, pct]) => pct > 0)
+                    .map(([label, pct]) => (
                       <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
                         <span className="text-gray-600">{label}</span>
                         <div className="flex items-center gap-3">
-                          <span className="text-gray-400 text-xs">{val}g</span>
+                          <span className="text-gray-400 text-xs">{Math.round(pct * 100) / 100}%</span>
                           <span className="text-gray-400 text-xs">→</span>
-                          <span className="font-bold text-purple-700">{Math.round(val * dryCalc.concFactor * 100) / 100}g</span>
+                          <span className="font-bold text-purple-700">{Math.min(100, Math.round(pct * dryCalc.concFactor * 100) / 100)}%</span>
                         </div>
                       </div>
                     ))
