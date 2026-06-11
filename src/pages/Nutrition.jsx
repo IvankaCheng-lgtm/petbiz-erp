@@ -212,7 +212,10 @@ export default function Nutrition({ data }) {
   // ── 儲存配方 ─────────────────────────────────────────────
   function handleSave() {
     if (!formulaName.trim() || !result) return
-    saveFormula(formulaName.trim(), mode, ingredients, result)
+    const dryData = dryCalc && dryBefore && dryAfter
+      ? { dryBefore, dryAfter, concFactor: dryCalc.concFactor, lossRatio: dryCalc.lossRatio }
+      : null
+    saveFormula(formulaName.trim(), mode, ingredients, { ...result, dryData })
     setFormulaName('')
   }
 
@@ -220,6 +223,13 @@ export default function Nutrition({ data }) {
     setMode(f.mode)
     setIngredients(f.inputs)
     setResult(f.results)
+    if (f.results?.dryData) {
+      setDryBefore(f.results.dryData.dryBefore)
+      setDryAfter(f.results.dryData.dryAfter)
+    } else {
+      setDryBefore('')
+      setDryAfter('')
+    }
     setShowSaved(false)
   }
 
