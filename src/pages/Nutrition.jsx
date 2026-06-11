@@ -685,37 +685,42 @@ export default function Nutrition({ data }) {
               </div>
               <div className="px-4 py-2 text-xs text-gray-400 bg-gray-50">
                 {result.mode === 'general'
-                  ? '公式（衛福部）：烘乾後成分 = 原始成分 × 濃縮倍數；熱量 = 蛋白×4 + 脂肪×9 + 碳水×4'
-                  : '公式（AAFCO Modified Atwater）：烘乾後成分 = 原始成分 × 濃縮倍數；NFE重新計算；熱量 = 蛋白×3.5 + 脂肪×8.5 + NFE×3.5'}
+                  ? '公式（衛福部）：烘乾後成分% = 原始成分% ÷ (100 - 烘乾前水分%) × (100 - 烘乾後水分%)；熱量 = 蛋白×4 + 脂×9 + 碳水×4'
+                  : '公式（AAFCO）：烘乾後成分% = 原始成分% ÷ (100 - 烘乾前水分%) × (100 - 烘乾後水分%)；NFE重新計算；熱量 = 蛋白×3.5 + 脂×8.5 + NFE×3.5'}
               </div>
               <div className="divide-y divide-gray-100">
                 {result.mode === 'general' ? (
                   (() => {
-                    // 各成分乘以濃縮倍數（衛福部：烘乾後成分 = 原始 × concFactor）
-                    const adj = (v) => Math.round(v * dryCalc.concFactor * 100) / 100
+                    // 烘乾後水分% = 烘乾後重量中水的比例，由重量直接算出
+                    // 乾物質克數不變，所以：烘乾後水分% = 100 - (烘乾前乾物質% × concFactor)
+                    const beforeMoisture = result.moisture  // 烘乾前水分%
+                    const beforeDry = 100 - beforeMoisture  // 烘乾前乾物質%
+                    const afterDry = Math.min(100, Math.round(beforeDry * dryCalc.concFactor * 100) / 100)
+                    const afterMoisture = Math.max(0, Math.round((100 - afterDry) * 100) / 100)
+                    // 正確公式：成分% ÷ (100 - 烘乾前水分%) × (100 - 烘乾後水分%)
+                    const adj = (v) => beforeDry > 0
+                      ? Math.round(v / beforeDry * afterDry * 100) / 100
+                      : 0
                     const adjProtein  = adj(result.protein)
                     const adjFat      = adj(result.fat)
                     const adjSatFat   = adj(result.satFat)
                     const adjTransFat = adj(result.transFat)
                     const adjCarb     = adj(result.carb)
+                    const adjFiber    = adj(result.fiber || 0)
                     const adjSugar    = adj(result.sugar)
                     const adjSodium   = adj(result.sodium)
-                    const adjFiber    = adj(result.fiber || 0)
                     const adjAsh      = adj(result.ash || 0)
-                    // 烘乾後水分 = 100 - 蛋白 - 脂 - 碳水 - 纖維 - 灰分（正確加總=100g）
-                    const adjMoisture = Math.max(0, Math.round((100 - adjProtein - adjFat - adjCarb - adjFiber - adjAsh) * 100) / 100)
-                    // 熱量用校正後成分重算（衛福部公式）
-                    const adjKcal = Math.round(adjProtein * 4 + adjFat * 9 + adjCarb * 4)
+                    const adjKcal     = Math.round(adjProtein * 4 + adjFat * 9 + adjCarb * 4)
                     const rows = [
-                      ['蛋白質',     result.protein,       adjProtein,  'g'],
-                      ['脂肪',       result.fat,           adjFat,      'g'],
-                      ['　飽和脂肪', result.satFat,        adjSatFat,  'g'],
-                      ['　反式脂肪', result.transFat,      adjTransFat,'g'],
-                      ['碳水化合物', result.carb,          adjCarb,    'g'],
-                      ['　膳食纖維', result.fiber || 0,    adjFiber,   'g'],
-                      ['　糖',       result.sugar,         adjSugar,   'g'],
-                      ['鈉',         result.sodium,        adjSodium,  'mg'],
-                      ['灰分',       result.ash || 0,      adjAsh,     'g'],
+                      ['蛋白質',     result.protein,    adjProtein,  'g'],
+                      ['脂肪',       result.fat,        adjFat,      'g'],
+                      ['　飽和脂肪', result.satFat,     adjSatFat,   'g'],
+                      ['　反式脂肪', result.transFat,   adjTransFat, 'g'],
+                      ['碳水化合物', result.carb,       adjCarb,     'g'],
+                      ['　膳食纖維', result.fiber || 0, adjFiber,    'g'],
+                      ['　糖',       result.sugar,      adjSugar,    'g'],
+                      ['鈉',         result.sodium,     adjSodium,   'mg'],
+                      ['灰分',       result.ash || 0,   adjAsh,      'g'],
                     ].filter(([, v]) => v > 0)
                     return (
                       <>
@@ -730,19 +735,17 @@ export default function Nutrition({ data }) {
                           </div>
                         ))}
                         <div className="flex items-center justify-between px-4 py-2 text-sm bg-blue-50">
-                          <span className="text-gray-600">水分（烘乾後估算）</span>
+                          <span className="text-gray-600">水分（烘乾後）</span>
                           <div className="flex items-center gap-3">
-                            <span className="text-gray-400 text-xs">{result.moisture}g/100g</span>
+                            <span className="text-gray-400 text-xs">{beforeMoisture}g/100g</span>
                             <span className="text-gray-400 text-xs">→</span>
-                            <span className="font-bold text-blue-600">{adjMoisture}g/100g</span>
+                            <span className="font-bold text-blue-600">{afterMoisture}g/100g</span>
                           </div>
                         </div>
                         <div className="flex items-center justify-between px-4 py-2 text-sm bg-orange-50">
                           <div>
                             <span className="text-orange-700 font-semibold">烘乾後每 100g 熱量</span>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              蛋白({adjProtein}g)×4 + 脂肪({adjFat}g)×9 + 碳水({adjCarb}g)×4
-                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">蛋白({adjProtein}g)×4 + 脂肪({adjFat}g)×9 + 碳水({adjCarb}g)×4</p>
                           </div>
                           <span className="text-2xl font-black text-orange-600">{adjKcal} kcal</span>
                         </div>
@@ -751,23 +754,26 @@ export default function Nutrition({ data }) {
                   })()
                 ) : (
                   (() => {
-                    // AAFCO：各成分 × concFactor
-                    const adj = (v) => Math.round(v * dryCalc.concFactor * 100) / 100
-                    const adjProtein  = adj(result.protein)
-                    const adjFat      = adj(result.fat)
-                    const adjFiber    = adj(result.fiber)
-                    const adjAsh      = adj(result.ash)
-                    const adjMoisture = Math.max(0, Math.round((100 - adjProtein - adjFat - adjFiber - adjAsh) * 10) / 10)
-                    // NFE 重新算（烘乾後）
-                    const adjNFE = Math.max(0, Math.round((100 - adjProtein - adjFat - adjFiber - adjMoisture - adjAsh) * 100) / 100)
-                    // 熱量用校正後成分重算（Modified Atwater）
+                    const beforeMoisture = result.moisture
+                    const beforeDry = 100 - beforeMoisture
+                    const afterDry = Math.min(100, Math.round(beforeDry * dryCalc.concFactor * 100) / 100)
+                    const afterMoisture = Math.max(0, Math.round((100 - afterDry) * 100) / 100)
+                    const adj = (v) => beforeDry > 0
+                      ? Math.round(v / beforeDry * afterDry * 100) / 100
+                      : 0
+                    const adjProtein = adj(result.protein)
+                    const adjFat     = adj(result.fat)
+                    const adjFiber   = adj(result.fiber)
+                    const adjAsh     = adj(result.ash)
+                    // NFE 重新算（烘乾後所有已知成分扣掉後的餘值）
+                    const adjNFE = Math.max(0, Math.round((100 - adjProtein - adjFat - adjFiber - afterMoisture - adjAsh) * 100) / 100)
                     const adjKcal = Math.round(adjProtein * 3.5 + adjFat * 8.5 + adjNFE * 3.5)
                     const rows = [
-                      ['粗蛋白', result.protein, adjProtein],
-                      ['粗脂肪', result.fat,     adjFat],
-                      ['粗纖維', result.fiber,   adjFiber],
-                      ['灰分',   result.ash,     adjAsh],
-                      ['碳水化合物(NFE)', result.carb, adjNFE],
+                      ['粗蛋白',          result.protein, adjProtein],
+                      ['粗脂肪',          result.fat,     adjFat],
+                      ['粗纖維',          result.fiber,   adjFiber],
+                      ['灰分',            result.ash,     adjAsh],
+                      ['碳水化合物(NFE)', result.carb,    adjNFE],
                     ]
                     return (
                       <>
@@ -782,19 +788,17 @@ export default function Nutrition({ data }) {
                           </div>
                         ))}
                         <div className="flex items-center justify-between px-4 py-2 text-sm bg-blue-50">
-                          <span className="text-gray-600">水分（烘乾後估算）</span>
+                          <span className="text-gray-600">水分（烘乾後）</span>
                           <div className="flex items-center gap-3">
-                            <span className="text-gray-400 text-xs">{result.moisture}%</span>
+                            <span className="text-gray-400 text-xs">{beforeMoisture}%</span>
                             <span className="text-gray-400 text-xs">→</span>
-                            <span className="font-bold text-blue-600">{adjMoisture}%</span>
+                            <span className="font-bold text-blue-600">{afterMoisture}%</span>
                           </div>
                         </div>
                         <div className="flex items-center justify-between px-4 py-2 text-sm bg-orange-50">
                           <div>
                             <span className="text-orange-700 font-semibold">烘乾後每 100g 熱量</span>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              蛋白({adjProtein}%)×3.5 + 脂肪({adjFat}%)×8.5 + NFE({adjNFE}%)×3.5
-                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">蛋白({adjProtein}%)×3.5 + 脂肪({adjFat}%)×8.5 + NFE({adjNFE}%)×3.5</p>
                           </div>
                           <span className="text-2xl font-black text-orange-600">{adjKcal} kcal</span>
                         </div>
