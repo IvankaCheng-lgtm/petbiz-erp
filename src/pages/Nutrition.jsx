@@ -676,20 +676,32 @@ export default function Nutrition({ data }) {
               <div className="bg-purple-50 px-4 py-2 text-xs font-semibold text-purple-700">
                 📊 烘乾後校正{result.mode === 'general' ? '（每100g含量）' : '百分比'}（原始 × {dryCalc.concFactor}x）
               </div>
+              {result.mode === 'general' && (
+                <div className="px-4 py-2 text-xs text-gray-400 bg-gray-50">
+                  公式：烘乾後成分 = 原始成分% × （100% - 烘乾後水分%）÷（100% - 烘乾前水分%）　所有成分＋烘乾後水分 = 100g
+                </div>
+              )}
               <div className="divide-y divide-gray-100">
                 {result.mode === 'general' ? (
-                  [
-                    ['蛋白質', result.protein, 'g'],
-                    ['脂肪',     result.fat,     'g'],
-                    ['飽和脂肪', result.satFat,  'g'],
-                    ['反式脂肪', result.transFat,'g'],
-                    ['碳水化合物', result.carb,   'g'],
-                    ['糖',       result.sugar,   'g'],
-                    ['鈉',       result.sodium,  'mg'],
-                  ]
-                    .filter(([, per100g]) => per100g > 0)
-                    .map(([label, per100g, unit]) => {
-                      const adjusted = Math.round(per100g * dryCalc.concFactor * 100) / 100
+                  (() => {
+                    // 烘乾後水分：烘乾後水分% = 烘乾前水分% - 水分流失%
+                    const afterMoisture = Math.max(0, Math.round((result.moisture - dryCalc.lossRatio) * 100) / 100)
+                    // 剩下的乾物質占比（烘乾後所有非水分成分的總和空間）
+                    const drySpace = 100 - afterMoisture
+                    // 烘乾後成分 = 原始乾物質% × (drySpace / 原始乾物質總%)
+                    const origDry = 100 - result.moisture
+                    const scale = origDry > 0 ? drySpace / origDry : dryCalc.concFactor
+                    const rows = [
+                      ['蛋白質', result.protein, 'g'],
+                      ['脂肪',     result.fat,     'g'],
+                      ['飽和脂肪', result.satFat,  'g'],
+                      ['反式脂肪', result.transFat,'g'],
+                      ['碳水化合物', result.carb,   'g'],
+                      ['糖',       result.sugar,   'g'],
+                      ['鈉',       result.sodium,  'mg'],
+                    ].filter(([, v]) => v > 0)
+                    return rows.map(([label, per100g, unit]) => {
+                      const adjusted = Math.round(per100g * scale * 100) / 100
                       return (
                         <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
                           <span className="text-gray-600">{label}</span>
@@ -701,6 +713,7 @@ export default function Nutrition({ data }) {
                         </div>
                       )
                     })
+                  })()
                 ) : (
                   [['粗蛋白', result.protein], ['粗脂肪', result.fat],
                    ['粗纖維', result.fiber], ['灰分', result.ash], ['碳水化合物(NFE)', result.carb]]
