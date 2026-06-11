@@ -130,20 +130,21 @@ export default function Nutrition({ data }) {
 
       const calcCal  = protein * 4 + fat * 9 + carb * 4
       const calPer100g = totalAmount > 0 ? Math.round(calcCal / totalAmount * 100) : 0
-      // 乃物比：先將克數轉成百分比再計算
       const proteinPct = protein / totalAmount * 100
       const fatPct     = fat     / totalAmount * 100
       const carbPct    = carb    / totalAmount * 100
       const dm = (pct) => moisture < 100 ? Math.round(pct / (100 - moisture) * 100 * 10) / 10 : 0
+      // 每100g含量
+      const p100 = (v) => Math.round(v / totalAmount * 100 * 100) / 100
       setResult({
         mode: 'general',
-        protein: Math.round(protein * 100) / 100,
-        fat:     Math.round(fat * 100) / 100,
-        satFat:  Math.round(satFat * 100) / 100,
-        transFat:Math.round(transFat * 100) / 100,
-        carb:    Math.round(carb * 100) / 100,
-        sugar:   Math.round(sugar * 100) / 100,
-        sodium:  Math.round(sodium * 100) / 100,
+        protein:  p100(protein),
+        fat:      p100(fat),
+        satFat:   p100(satFat),
+        transFat: p100(transFat),
+        carb:     p100(carb),
+        sugar:    p100(sugar),
+        sodium:   p100(sodium),
         moisture: Math.round(moisture * 100) / 100,
         calcCal: Math.round(calcCal),
         calPer100g,
@@ -499,13 +500,9 @@ export default function Nutrition({ data }) {
               {/* 營養標示表 */}
               <SectionCard title="📊 營養標示結果">
                 <div className="border border-gray-200 rounded-xl overflow-hidden text-sm">
-                  <div className="bg-gray-800 text-white px-4 py-2 font-bold text-base">營養標示</div>
-                  <div className="px-4 py-2 border-b border-gray-200 flex justify-between">
-                    <span className="font-bold text-lg">熱量（計算值）</span>
-                    <span className="font-bold text-lg">{result.calcCal} 大卡</span>
-                  </div>
+                  <div className="bg-gray-800 text-white px-4 py-2 font-bold text-base">營養標示（每 100g）</div>
                   <div className="px-4 py-2 border-b border-gray-200 flex justify-between bg-orange-50">
-                    <span className="font-bold text-base text-orange-700">每 100g 熱量</span>
+                    <span className="font-bold text-base text-orange-700">熱量</span>
                     <span className="font-bold text-base text-orange-700">{result.calPer100g} 大卡</span>
                   </div>
                   {[
@@ -523,10 +520,9 @@ export default function Nutrition({ data }) {
                     </div>
                   ))}
                 </div>
-
-                {/* 熱量公式說明 */}
                 <div className="mt-3 bg-blue-50 rounded-xl px-4 py-2.5 text-xs text-blue-600">
-                  熱量 = 蛋白質({result.protein}g)×4 + 脂肪({result.fat}g)×9 + 碳水({result.carb}g)×4 = <strong>{result.calcCal} kcal</strong>
+                  熱量 = 蛋白質({result.protein}g)×4 + 脂肪({result.fat}g)×9 + 碳水({result.carb}g)×4 = <strong>{result.calPer100g} kcal/100g</strong>
+                  <span className="ml-2 text-gray-400">（整批總熱量 {result.calcCal} kcal）</span>
                 </div>
               </SectionCard>
 
@@ -678,18 +674,18 @@ export default function Nutrition({ data }) {
           {dryCalc && result && (
             <div className="mt-2 border border-purple-100 rounded-xl overflow-hidden">
               <div className="bg-purple-50 px-4 py-2 text-xs font-semibold text-purple-700">
-                📊 烘乾後校正百分比（原始 × {dryCalc.concFactor}x）
+                📊 烘乾後校正{result.mode === 'general' ? '（每100g含量）' : '百分比'}（原始 × {dryCalc.concFactor}x）
               </div>
               <div className="divide-y divide-gray-100">
                 {result.mode === 'general' ? (
                   [
-                    ['蛋白質', result.protein / result.totalAmount * 100, 'g'],
-                    ['脂肪',     result.fat     / result.totalAmount * 100, 'g'],
-                    ['飽和脂肪', result.satFat  / result.totalAmount * 100, 'g'],
-                    ['反式脂肪', result.transFat/ result.totalAmount * 100, 'g'],
-                    ['碳水化合物', result.carb   / result.totalAmount * 100, 'g'],
-                    ['糖',       result.sugar   / result.totalAmount * 100, 'g'],
-                    ['鈉',       result.sodium  / result.totalAmount * 100, 'mg'],
+                    ['蛋白質', result.protein, 'g'],
+                    ['脂肪',     result.fat,     'g'],
+                    ['飽和脂肪', result.satFat,  'g'],
+                    ['反式脂肪', result.transFat,'g'],
+                    ['碳水化合物', result.carb,   'g'],
+                    ['糖',       result.sugar,   'g'],
+                    ['鈉',       result.sodium,  'mg'],
                   ]
                     .filter(([, per100g]) => per100g > 0)
                     .map(([label, per100g, unit]) => {
@@ -698,7 +694,7 @@ export default function Nutrition({ data }) {
                         <div key={label} className="flex items-center justify-between px-4 py-2 text-sm">
                           <span className="text-gray-600">{label}</span>
                           <div className="flex items-center gap-3">
-                            <span className="text-gray-400 text-xs">{Math.round(per100g * 100) / 100}{unit}/100g</span>
+                            <span className="text-gray-400 text-xs">{per100g}{unit}/100g</span>
                             <span className="text-gray-400 text-xs">→</span>
                             <span className="font-bold text-purple-700">{adjusted}{unit}/100g</span>
                           </div>
