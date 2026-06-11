@@ -123,18 +123,21 @@ export default function Nutrition({ data }) {
       const satFat   = sumField('satFat')
       const transFat = sumField('transFat')
       const carb     = sumField('carb')
+      const fiber    = sumField('fiber')
       const sugar    = sumField('sugar')
       const sodium   = sumField('sodium')
       const moistureG = sumField('moisture')
+      const ashG      = sumField('ash')
       const moisture  = moistureG / totalAmount * 100
+      const ash       = ashG      / totalAmount * 100
 
+      // 衛福部熱量公式：蛋白×4 + 脂×9 + 碳水×4（碳水含膳食纖維）
       const calcCal  = protein * 4 + fat * 9 + carb * 4
       const calPer100g = totalAmount > 0 ? Math.round(calcCal / totalAmount * 100) : 0
       const proteinPct = protein / totalAmount * 100
       const fatPct     = fat     / totalAmount * 100
       const carbPct    = carb    / totalAmount * 100
       const dm = (pct) => moisture < 100 ? Math.round(pct / (100 - moisture) * 100 * 10) / 10 : 0
-      // 每100g含量
       const p100 = (v) => Math.round(v / totalAmount * 100 * 100) / 100
       setResult({
         mode: 'general',
@@ -143,9 +146,11 @@ export default function Nutrition({ data }) {
         satFat:   p100(satFat),
         transFat: p100(transFat),
         carb:     p100(carb),
+        fiber:    p100(fiber),
         sugar:    p100(sugar),
         sodium:   p100(sodium),
         moisture: Math.round(moisture * 100) / 100,
+        ash:      Math.round(ash * 100) / 100,
         calcCal: Math.round(calcCal),
         calPer100g,
         dmProtein: dm(proteinPct),
@@ -241,9 +246,11 @@ export default function Nutrition({ data }) {
     { key: 'satFat',   label: '飽和脂肪(g)' },
     { key: 'transFat', label: '反式脂肪(g)' },
     { key: 'carb',     label: '碳水(g)' },
+    { key: 'fiber',    label: '膳食纖維(g)' },
     { key: 'sugar',    label: '糖(g)' },
     { key: 'sodium',   label: '鈉(mg)' },
-    { key: 'moisture', label: '水分(%)' },
+    { key: 'moisture', label: '水分(g)' },
+    { key: 'ash',      label: '灰分(g)' },
   ]
 
   // AAFCO 模式欄位定義
@@ -693,19 +700,22 @@ export default function Nutrition({ data }) {
                     const adjCarb     = adj(result.carb)
                     const adjSugar    = adj(result.sugar)
                     const adjSodium   = adj(result.sodium)
-                    // 烘乾後水分 = 100 - 所有校正後成分總和（確保加總=100g）
-                    const sumDry = adjProtein + adjFat + adjCarb
-                    const adjMoisture = Math.max(0, Math.round((100 - sumDry) * 100) / 100)
+                    const adjFiber    = adj(result.fiber || 0)
+                    const adjAsh      = adj(result.ash || 0)
+                    // 烘乾後水分 = 100 - 蛋白 - 脂 - 碳水 - 纖維 - 灰分（正確加總=100g）
+                    const adjMoisture = Math.max(0, Math.round((100 - adjProtein - adjFat - adjCarb - adjFiber - adjAsh) * 100) / 100)
                     // 熱量用校正後成分重算（衛福部公式）
                     const adjKcal = Math.round(adjProtein * 4 + adjFat * 9 + adjCarb * 4)
                     const rows = [
-                      ['蛋白質',   result.protein,  adjProtein,  'g'],
-                      ['脂肪',     result.fat,      adjFat,      'g'],
-                      ['飽和脂肪', result.satFat,   adjSatFat,  'g'],
-                      ['反式脂肪', result.transFat, adjTransFat,'g'],
-                      ['碳水化合物', result.carb,   adjCarb,    'g'],
-                      ['糖',       result.sugar,    adjSugar,   'g'],
-                      ['鈉',       result.sodium,   adjSodium,  'mg'],
+                      ['蛋白質',     result.protein,       adjProtein,  'g'],
+                      ['脂肪',       result.fat,           adjFat,      'g'],
+                      ['　飽和脂肪', result.satFat,        adjSatFat,  'g'],
+                      ['　反式脂肪', result.transFat,      adjTransFat,'g'],
+                      ['碳水化合物', result.carb,          adjCarb,    'g'],
+                      ['　膳食纖維', result.fiber || 0,    adjFiber,   'g'],
+                      ['　糖',       result.sugar,         adjSugar,   'g'],
+                      ['鈉',         result.sodium,        adjSodium,  'mg'],
+                      ['灰分',       result.ash || 0,      adjAsh,     'g'],
                     ].filter(([, v]) => v > 0)
                     return (
                       <>
