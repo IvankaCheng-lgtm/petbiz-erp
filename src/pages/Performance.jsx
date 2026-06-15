@@ -390,9 +390,9 @@ export default function Performance({ data }) {
   const purchaseCogs = useMemo(
     () =>
       expenses
-        .filter((e) => e.type === "進貨")
+        .filter((e) => e.type === "進貨" && inRange(e.date))
         .reduce((s, e) => s + e.amount, 0),
-    [expenses],
+    [expenses, rangeType, rangeYear, rangeMonth, rangeQ],
   );
 
   const totalCogs = useMemo(
