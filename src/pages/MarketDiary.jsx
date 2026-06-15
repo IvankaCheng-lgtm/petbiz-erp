@@ -636,12 +636,17 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
   const [selectedEventId, setSelectedEventId] = useState(marketEvents[0]?.id ?? '')
 
   // marketEvents 更新時，若目前選擇無效則自動 fallback 到第一筆
-  const [rangeMode, setRangeMode] = useState('3m') // '3m' | '6m' | 'all' | 'custom'
+  const [rangeMode, setRangeMode] = useState('3m') // 'today'|'month'|'3m'|'6m'|'all'|'custom'
   const [customStart, setCustomStart] = useState('')
   const [customEnd,   setCustomEnd]   = useState('')
 
   const filteredEvents = useMemo(() => {
     const todayStr = today()
+    if (rangeMode === 'today') return marketEvents.filter(ev => ev.startDate <= todayStr && ev.endDate >= todayStr)
+    if (rangeMode === 'month') {
+      const ym = todayStr.slice(0, 7)
+      return marketEvents.filter(ev => ev.startDate.slice(0, 7) === ym || ev.endDate.slice(0, 7) === ym)
+    }
     if (rangeMode === 'all') return marketEvents
     if (rangeMode === 'custom') {
       if (!customStart && !customEnd) return marketEvents
@@ -704,7 +709,7 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
       <SectionCard title="選擇市集活動">
         {/* 篩選模式 */}
         <div className="flex flex-wrap gap-1.5 mb-3">
-          {[['3m','近3個月'],['6m','近6個月'],['all','全部'],['custom','自訂']].map(([val, label]) => (
+          {[['today','當天'],['month','當月'],['3m','近3個月'],['6m','近6個月'],['all','全部'],['custom','自訂']].map(([val, label]) => (
             <button key={val} onClick={() => setRangeMode(val)}
               className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
                 rangeMode === val ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400'
