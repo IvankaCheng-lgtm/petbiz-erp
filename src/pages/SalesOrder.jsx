@@ -265,6 +265,8 @@ export default function SalesOrder({ data }) {
     const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice, 0)
     const discountAmt = subtotalAmt - (o.total ?? o.totalAmount ?? subtotalAmt)
     const gifts = o.giftItems ?? []
+    // 官網以外的電商平台只顯示數量與原始金額，不顯示折扣與合計
+    const hideDiscount = PLATFORMS_ECOMMERCE.includes(o.platform) && o.platform !== '萌獸官網'
 
     // 將 LOGO 轉成 base64 嵌入 HTML
     const logoUrl = new URL('../assets/LOGO.png', import.meta.url).href
@@ -304,17 +306,17 @@ export default function SalesOrder({ data }) {
         </div>
         <div class="sub">訂單日期：${o.orderDate} &nbsp;|  通路：${o.platform} &nbsp;|  訂單編號：${o.id.slice(-6).toUpperCase()}</div>
         <table>
-          <thead><tr><th>品名</th><th class="right">單價</th><th class="right">數量</th><th class="right">小計</th></tr></thead>
+          <thead><tr><th>品名</th><th class="right">單價</th><th class="right">數量</th>${hideDiscount ? '' : '<th class="right">小計</th>'}</tr></thead>
           <tbody>
-            ${(o.items ?? []).map(i => `<tr><td>${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td><td class="right">$${i.qty * i.unitPrice}</td></tr>`).join('')}
-            ${gifts.map(i => `<tr class="gift"><td>🎁 ${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td><td class="right">贈品</td></tr>`).join('')}
+            ${(o.items ?? []).map(i => `<tr><td>${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td>${hideDiscount ? '' : `<td class="right">$${i.qty * i.unitPrice}</td>`}</tr>`).join('')}
+            ${gifts.map(i => `<tr class="gift"><td>🎁 ${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td>${hideDiscount ? '' : '<td class="right">贈品</td>'}</tr>`).join('')}
           </tbody>
         </table>
-        <table style="width:260px;margin-left:auto">
+        ${!hideDiscount ? `<table style="width:260px;margin-left:auto">
           <tr><td>小計</td><td class="right">$${subtotalAmt}</td></tr>
           ${discountAmt > 0 ? `<tr><td>折扣</td><td class="right" style="color:#16a34a">−$${discountAmt}</td></tr>` : ''}
           <tr class="total-row"><td>合計</td><td class="right">$${o.total ?? o.totalAmount}</td></tr>
-        </table>
+        </table>` : ''}
         ${o.note ? `<div class="note">📝 備註：${o.note.replace(/\n/g, '<br>')}</div>` : ''}
         <div class="footer">萌獸探險隊 &copy; ${new Date().getFullYear()}</div>
         </body></html>`
