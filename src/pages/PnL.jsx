@@ -143,9 +143,9 @@ export default function PnL({ data }) {
       return date.startsWith(String(rangeYear))
     }
     const pendingRevenues = revenues.filter(r => r.isPending && inRange(r.date))
-    const mktSales = marketSales.filter(r => inRange(r.date) && r.channel === '市集' && r.paymentMethod === 'LINE Pay')
-    const orderLinePay = marketSales.filter(r => inRange(r.date) && r.paymentMethod === 'LINE Pay' && r.channel !== '市集')
-    const ecItems = pendingRevenues.filter(r => r.channel !== '市集' && r.paymentMethod !== 'LINE Pay')
+    const mktSales = marketSales.filter(r => inRange(r.date) && r.channel === '市集')
+    const orderLinePay = marketSales.filter(r => inRange(r.date) && r.channel !== '市集')
+    const ecItems = pendingRevenues.filter(r => r.channel !== '市集')
     const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
     const orderLinePayAmount = orderLinePay.reduce((s, r) => s + r.amount, 0)
     const ecAmount = ecItems.reduce((s, r) => s + r.amount, 0)

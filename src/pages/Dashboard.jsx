@@ -133,12 +133,12 @@ export default function Dashboard({ data }) {
   const linepayPending = useMemo(() => {
     const prefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
     const pendingRevenues = revenues.filter(r => r.isPending && r.date.startsWith(prefix))
-    // 市集 LINE Pay：marketSales 中 paymentMethod==='LINE Pay' && channel==='市集'
-    const mktSales = marketSales.filter(r => r.date.startsWith(prefix) && r.channel === '市集' && r.paymentMethod === 'LINE Pay')
-    // 銷售訂單 LINE Pay：marketSales 中 paymentMethod==='LINE Pay' && channel!=='市集'
-    const orderLinePay = marketSales.filter(r => r.date.startsWith(prefix) && r.paymentMethod === 'LINE Pay' && r.channel !== '市集')
+    // 市集 LINE Pay：marketSales 中 channel==='市集'
+    const mktSales = marketSales.filter(r => r.date.startsWith(prefix) && r.channel === '市集')
+    // 銷售訂單 LINE Pay：marketSales 中 channel!=='市集'（電商訂單 LINE Pay）
+    const orderLinePay = marketSales.filter(r => r.date.startsWith(prefix) && r.channel !== '市集')
     // 電商平台待撥款：revenues isPending
-    const ecItems = pendingRevenues.filter(r => r.channel !== '市集' && r.paymentMethod !== 'LINE Pay')
+    const ecItems = pendingRevenues.filter(r => r.channel !== '市集')
     const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
     const orderLinePayAmount = orderLinePay.reduce((s, r) => s + r.amount, 0)
     const ecAmount = ecItems.reduce((s, r) => s + r.amount, 0)
