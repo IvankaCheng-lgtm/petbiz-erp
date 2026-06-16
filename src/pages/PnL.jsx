@@ -27,6 +27,7 @@ export default function PnL({ data }) {
   const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [], suppliers = [], marketEvents = [], marketSales = [] } = data
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const [pendingOpen, setPendingOpen] = useState(false)
   const printRef = useRef()
 
   // 本月月份
@@ -607,43 +608,45 @@ export default function PnL({ data }) {
 
       {/* 待撥款差異說明 */}
       {(linepayPending.mktCount > 0 || linepayPending.ecCount > 0) && (
-        <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">💚</span>
-              <div>
-                <p className="text-sm font-semibold text-green-800">待撥款——損益表與營業總覽差異說明</p>
-                <p className="text-xs text-green-600 mt-0.5">已計入損益表營收，但尚未撥入帳戶，撥款後請在收支管理新增入帳</p>
-              </div>
-            </div>
-            <p className="text-xl font-black text-green-700 shrink-0">{fmt(linepayPending.total)}</p>
-          </div>
-          {linepayPending.mktCount > 0 && (
-            <div className="bg-white rounded-xl px-4 py-2.5 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-gray-700">🏪 市集 LINE Pay</p>
-                <p className="text-xs text-gray-400">{linepayPending.mktCount} 筆</p>
-              </div>
-              <p className="text-sm font-black text-green-700">{fmt(linepayPending.mktAmount)}</p>
-            </div>
-          )}
-          {linepayPending.ecCount > 0 && (
-            <div className="bg-white rounded-xl px-4 py-2.5">
-              <div className="flex items-center justify-between mb-1.5">
-                <div>
-                  <p className="text-xs font-semibold text-gray-700">💻 電商平台待撥款</p>
-                  <p className="text-xs text-gray-400">{linepayPending.ecCount} 筆</p>
-                </div>
-                <p className="text-sm font-black text-amber-600">{fmt(linepayPending.ecAmount)}</p>
-              </div>
-              <div className="space-y-1">
-                {linepayPending.ecItems.map(r => (
-                  <div key={r.id} className="flex justify-between text-xs text-gray-500">
-                    <span>{r.channel} · {r.date}</span>
-                    <span className="font-medium">{fmt(r.amount)}</span>
+        <div className="bg-green-50 border border-green-200 rounded-2xl overflow-hidden">
+          <button onClick={() => setPendingOpen(v => !v)}
+            className="w-full flex items-center gap-2 px-5 py-4 hover:bg-green-100/50 transition-colors">
+            <span className="text-base">💚</span>
+            <span className="text-sm font-semibold text-green-800">待撥款——損益表與營業總覽差異說明</span>
+            <span className="ml-auto text-lg font-black text-green-700">{fmt(linepayPending.total)}</span>
+            <span className="text-green-400 text-xs ml-2">{pendingOpen ? '▲' : '▼'}</span>
+          </button>
+          {pendingOpen && (
+            <div className="px-5 pb-4 space-y-2 border-t border-green-200">
+              <p className="text-xs text-green-600 pt-3">已計入損益表營收，但尚未撥入帳戶，撥款後請在收支管理新增入帳。</p>
+              {linepayPending.mktCount > 0 && (
+                <div className="bg-white rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700">🏪 市集 LINE Pay 待撥款</p>
+                    <p className="text-xs text-gray-400">{linepayPending.mktCount} 筆</p>
                   </div>
-                ))}
-              </div>
+                  <p className="text-sm font-black text-green-700">{fmt(linepayPending.mktAmount)}</p>
+                </div>
+              )}
+              {linepayPending.ecCount > 0 && (
+                <div className="bg-white rounded-xl px-4 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-700">💻 電商平台待撥款</p>
+                      <p className="text-xs text-gray-400">{linepayPending.ecCount} 筆</p>
+                    </div>
+                    <p className="text-sm font-black text-amber-600">{fmt(linepayPending.ecAmount)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    {linepayPending.ecItems.map(r => (
+                      <div key={r.id} className="flex justify-between text-xs text-gray-500">
+                        <span>{r.channel} · {r.date}</span>
+                        <span className="font-medium">{fmt(r.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
