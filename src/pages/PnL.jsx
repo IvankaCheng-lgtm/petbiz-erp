@@ -97,12 +97,14 @@ export default function PnL({ data }) {
   }
 
   const pnl = useMemo(() => {
-    const totalRev = filteredRevenues.reduce((s, r) => s + r.amount, 0)
-    const EC_PLATFORMS = ['萌獸官網', 'PChome', 'Yahoo', '蝦皮']
-    const OTHER_PLATFORMS = ['私訊訂購', 'LINE訂購']
-    const ecRev = filteredRevenues.filter(r => r.channel === '電商' || EC_PLATFORMS.includes(r.channel)).reduce((s, r) => s + r.amount, 0)
-    const mktRev = filteredRevenues.filter(r => r.channel === '市集').reduce((s, r) => s + r.amount, 0)
-    const otherRev = filteredRevenues.filter(r => OTHER_PLATFORMS.includes(r.channel)).reduce((s, r) => s + r.amount, 0)
+    const PAYOUT_CHANNELS = ['平台撥款', 'LINE Pay 撥款']
+    const EC_CHANNELS = ['電商', '社群', '萌獸官網', 'PChome', 'Yahoo', '蝦皮']
+    const OTHER_CHANNELS = ['私訊訂購', 'LINE訂購', '大宗/B2B', '寄賣點銷售']
+    const salesRevenues = filteredRevenues.filter(r => !PAYOUT_CHANNELS.includes(r.channel))
+    const totalRev = salesRevenues.reduce((s, r) => s + r.amount, 0)
+    const ecRev = salesRevenues.filter(r => EC_CHANNELS.includes(r.channel)).reduce((s, r) => s + r.amount, 0)
+    const mktRev = salesRevenues.filter(r => r.channel === '市集').reduce((s, r) => s + r.amount, 0)
+    const otherRev = salesRevenues.filter(r => OTHER_CHANNELS.includes(r.channel) || (!EC_CHANNELS.includes(r.channel) && r.channel !== '市集')).reduce((s, r) => s + r.amount, 0)
 
     const byCategory = ['食品', '用品'].map(cat => ({
       cat, amount: filteredRevenues.filter(r =>
@@ -165,7 +167,7 @@ export default function PnL({ data }) {
         .filter(r => r.eventId && orgEventIds.has(r.eventId))
         .reduce((s, r) => s + r.amount, 0)
       const boothCost = marketEvents
-        .filter(e => e.supplierId === org.id)
+        .filter(e => e.supplierId === org.id && filteredRevenues.some(r => r.eventId === e.id))
         .reduce((s, e) => s + (e.boothFee || 0), 0)
       const netProfit = rev - boothCost
       return { name: org.name, rev, boothCost, netProfit }
@@ -613,7 +615,7 @@ export default function PnL({ data }) {
       </div>
 
       {/* 待撥款差異說明 */}
-      {(linepayPending.mktCount > 0 || linepayPending.ecCount > 0) && (
+      {(linepayPending.mktCount > 0 || linepayPending.orderLinePayCount > 0 || linepayPending.ecCount > 0) && (
         <div className="bg-green-50 border border-green-200 rounded-2xl overflow-hidden">
           <button onClick={() => setPendingOpen(v => !v)}
             className="w-full flex items-center gap-2 px-5 py-4 hover:bg-green-100/50 transition-colors">
