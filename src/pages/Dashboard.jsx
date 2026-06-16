@@ -121,15 +121,20 @@ export default function Dashboard({ data }) {
   const linepayPending = useMemo(() => {
     const prefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
     const pendingRevenues = revenues.filter(r => r.isPending && r.date.startsWith(prefix))
+    // 市集 LINE Pay：marketSales + revenues 中 channel==='市集'的 isPending
+    const mktFromRevenues = pendingRevenues.filter(r => r.channel === '市集' || r.paymentMethod === 'LINE Pay')
     const mktSales = marketSales.filter(r => r.date.startsWith(prefix))
-    const ecAmount  = pendingRevenues.reduce((s, r) => s + r.amount, 0)
-    const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
+    const allMkt = [...mktSales, ...mktFromRevenues]
+    // 電商平台待撥款：排除市集和 LINE Pay
+    const ecItems = pendingRevenues.filter(r => r.channel !== '市集' && r.paymentMethod !== 'LINE Pay')
+    const ecAmount  = ecItems.reduce((s, r) => s + r.amount, 0)
+    const mktAmount = allMkt.reduce((s, r) => s + r.amount, 0)
     return {
       total: ecAmount + mktAmount,
       ecAmount, mktAmount,
-      ecCount: pendingRevenues.length,
-      mktCount: mktSales.length,
-      ecItems: pendingRevenues, // 各平台明細
+      ecCount: ecItems.length,
+      mktCount: allMkt.length,
+      ecItems,
     }
   }, [revenues, marketSales])
 

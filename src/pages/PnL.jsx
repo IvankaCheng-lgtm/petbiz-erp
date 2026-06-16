@@ -143,10 +143,13 @@ export default function PnL({ data }) {
       return date.startsWith(String(rangeYear))
     }
     const pendingRevenues = revenues.filter(r => r.isPending && inRange(r.date))
+    const mktFromRevenues = pendingRevenues.filter(r => r.channel === '市集' || r.paymentMethod === 'LINE Pay')
     const mktSales = marketSales.filter(r => inRange(r.date))
-    const ecAmount  = pendingRevenues.reduce((s, r) => s + r.amount, 0)
-    const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
-    return { total: ecAmount + mktAmount, ecAmount, mktAmount, ecCount: pendingRevenues.length, mktCount: mktSales.length, ecItems: pendingRevenues }
+    const allMkt = [...mktSales, ...mktFromRevenues]
+    const ecItems = pendingRevenues.filter(r => r.channel !== '市集' && r.paymentMethod !== 'LINE Pay')
+    const ecAmount  = ecItems.reduce((s, r) => s + r.amount, 0)
+    const mktAmount = allMkt.reduce((s, r) => s + r.amount, 0)
+    return { total: ecAmount + mktAmount, ecAmount, mktAmount, ecCount: ecItems.length, mktCount: allMkt.length, ecItems }
   }, [revenues, marketSales, rangeType, rangeYear, rangeMonth, rangeQ])
 
   // 市集主辦收益與支出分析
