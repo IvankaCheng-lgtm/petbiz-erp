@@ -200,6 +200,7 @@ export default function SalesOrder({ data }) {
     const giftItems = cart.filter(c => c.isGift);
     const skipRevenue = isConsignment ? consignSkipRevenue : revenueMode === 'skip';
     const pendingRevenue = !isConsignment && revenueMode === 'pending_payout';
+    const linePayRevenue = !isConsignment && revenueMode === 'linepay';
     await processOrder?.({
       platform: effectivePlatform,
       items: saleItems,
@@ -213,6 +214,7 @@ export default function SalesOrder({ data }) {
       supplierId: selectedConsignee?.id ?? null,
       skipRevenue,
       pendingRevenue,
+      linePayRevenue,
       note,
       withShipment,
     });
@@ -629,13 +631,15 @@ export default function SalesOrder({ data }) {
             <p className="text-xs font-medium text-gray-500">收款方式</p>
             <div className="space-y-2">
               {[
-                { value: 'immediate', label: '立即收款', desc: '現金／刷卡／轉帳，直接計入收入', color: 'blue' },
-                { value: 'pending_payout', label: '等待平台撥款', desc: '電商平台月結，撥款時再到收支管理新增「平台撥款」', color: 'amber' },
-                { value: 'skip', label: '只扣庫存，不計收入', desc: '樣品、自用、換貨等不產生收入的出貨', color: 'gray' },
+                { value: 'immediate',      label: '立即收款',           desc: '現金／刷卡／轉帳，直接計入收入',                                          color: 'blue'  },
+                { value: 'linepay',        label: 'LINE Pay',          desc: '撥款後自動計入市集 LINE Pay 待撥款，撥款後請在收支管理新增入帳', color: 'green' },
+                { value: 'pending_payout', label: '等待平台撥款',       desc: '電商平台月結，撥款時再到收支管理新增「平台撥款」',              color: 'amber' },
+                { value: 'skip',           label: '只扣庫存，不計收入', desc: '樣品、自用、換貨等不產生收入的出貨',                                  color: 'gray'  },
               ].map(opt => (
                 <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
                   revenueMode === opt.value
-                    ? opt.color === 'blue' ? 'bg-blue-50 border-blue-300'
+                    ? opt.color === 'blue'  ? 'bg-blue-50 border-blue-300'
+                    : opt.color === 'green' ? 'bg-green-50 border-green-300'
                     : opt.color === 'amber' ? 'bg-amber-50 border-amber-300'
                     : 'bg-gray-100 border-gray-300'
                     : 'bg-white border-gray-200 hover:border-gray-300'

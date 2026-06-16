@@ -642,7 +642,7 @@ export default function usePetBusiness() {
     cloudUpdate("expenses", list => list.filter(e => e.orderId !== id));
   }, [cloudUpdate]);
 
-  const processOrder = useCallback(async ({ platform, items, giftItems = [], discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, pendingRevenue = false, note = '', withShipment = true }) => {
+  const processOrder = useCallback(async ({ platform, items, giftItems = [], discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, pendingRevenue = false, linePayRevenue = false, note = '', withShipment = true }) => {
     const today = new Date().toISOString().slice(0, 10);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const discount = subtotal - totalAmount;
@@ -659,6 +659,7 @@ export default function usePetBusiness() {
       supplierId: supplierId || null,
       skipRevenue,
       pendingRevenue,
+      linePayRevenue,
       note: note || '',
     };
 
@@ -698,14 +699,26 @@ export default function usePetBusiness() {
       await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
       if (costExp) await cloudUpdate("expenses", list => [...list, costExp]);
       if (!skipRevenue) {
-        const revenueItem = {
-          id: uid(), date: today, channel: platform, category: "電商銷售",
-          amount: totalAmount, isReported: false, orderId: order.id, items,
-          platformCost: cost, supplierId: supplierId || null,
-          isPending: pendingRevenue,
-        };
-        setRevenues(prev => [...prev, revenueItem]);
-        await cloudUpdate("revenues", list => [...list, revenueItem]);
+        if (linePayRevenue) {
+          // LINE Pay：存入 marketSales，不寫 revenues（撥款後再人工入帳）
+          const saleRecord = {
+            id: uid(), date: today, channel: platform, category: '電商銷售',
+            amount: totalAmount, paymentMethod: 'LINE Pay',
+            items: items.map(({ itemId, itemName, category, qty, unitPrice }) => ({ itemId, itemName, category, qty, unitPrice })),
+            giftItems: [],
+          };
+          setMarketSales(prev => [...prev, saleRecord]);
+          await cloudUpdate('marketSales', list => [...list, saleRecord]);
+        } else {
+          const revenueItem = {
+            id: uid(), date: today, channel: platform, category: "電商銷售",
+            amount: totalAmount, isReported: false, orderId: order.id, items,
+            platformCost: cost, supplierId: supplierId || null,
+            isPending: pendingRevenue,
+          };
+          setRevenues(prev => [...prev, revenueItem]);
+          await cloudUpdate("revenues", list => [...list, revenueItem]);
+        }
       }
     }
   }, [cloudUpdate]);
