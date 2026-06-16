@@ -143,13 +143,13 @@ export default function PnL({ data }) {
       return date.startsWith(String(rangeYear))
     }
     const pendingRevenues = revenues.filter(r => r.isPending && inRange(r.date))
-    const mktFromRevenues = pendingRevenues.filter(r => r.channel === '市集' || r.paymentMethod === 'LINE Pay')
-    const mktSales = marketSales.filter(r => inRange(r.date))
-    const allMkt = [...mktSales, ...mktFromRevenues]
+    const mktSales = marketSales.filter(r => inRange(r.date) && r.channel === '市集')
+    const orderLinePay = marketSales.filter(r => inRange(r.date) && r.channel !== '市集')
     const ecItems = pendingRevenues.filter(r => r.channel !== '市集' && r.paymentMethod !== 'LINE Pay')
-    const ecAmount  = ecItems.reduce((s, r) => s + r.amount, 0)
-    const mktAmount = allMkt.reduce((s, r) => s + r.amount, 0)
-    return { total: ecAmount + mktAmount, ecAmount, mktAmount, ecCount: ecItems.length, mktCount: allMkt.length, ecItems }
+    const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
+    const orderLinePayAmount = orderLinePay.reduce((s, r) => s + r.amount, 0)
+    const ecAmount = ecItems.reduce((s, r) => s + r.amount, 0)
+    return { total: mktAmount + orderLinePayAmount + ecAmount, mktAmount, mktCount: mktSales.length, orderLinePayAmount, orderLinePayCount: orderLinePay.length, ecAmount, ecCount: ecItems.length, ecItems }
   }, [revenues, marketSales, rangeType, rangeYear, rangeMonth, rangeQ])
 
   // 市集主辦收益與支出分析
@@ -629,6 +629,15 @@ export default function PnL({ data }) {
                     <p className="text-xs text-gray-400">{linepayPending.mktCount} 筆</p>
                   </div>
                   <p className="text-sm font-black text-green-700">{fmt(linepayPending.mktAmount)}</p>
+                </div>
+              )}
+              {linepayPending.orderLinePayCount > 0 && (
+                <div className="bg-white rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700">📱 銷售訂單 LINE Pay 待撥款</p>
+                    <p className="text-xs text-gray-400">{linepayPending.orderLinePayCount} 筆</p>
+                  </div>
+                  <p className="text-sm font-black text-green-700">{fmt(linepayPending.orderLinePayAmount)}</p>
                 </div>
               )}
               {linepayPending.ecCount > 0 && (

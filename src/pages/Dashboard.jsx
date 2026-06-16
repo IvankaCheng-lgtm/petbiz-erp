@@ -15,9 +15,10 @@ const FILTERS = ['月', '季', '年']
 
 function PendingPayoutBanner({ linepayPending }) {
   const [open, setOpen] = useState(false)
+  const hasAny = linepayPending.mktCount > 0 || linepayPending.orderLinePayCount > 0 || linepayPending.ecCount > 0
+  if (!hasAny) return null
   return (
     <div className="bg-green-50 border border-green-200 rounded-2xl overflow-hidden">
-      {/* 摘要列（点擊折疊） */}
       <button onClick={() => setOpen(v => !v)}
         className="w-full flex items-center gap-2 px-5 py-4 hover:bg-green-100/50 transition-colors">
         <span className="text-base">💚</span>
@@ -25,7 +26,6 @@ function PendingPayoutBanner({ linepayPending }) {
         <span className="ml-auto text-lg font-black text-green-700">{fmt(linepayPending.total)}</span>
         <span className="text-green-400 text-xs ml-2">{open ? '▲' : '▼'}</span>
       </button>
-      {/* 展開內容 */}
       {open && (
         <div className="px-5 pb-4 space-y-2 border-t border-green-200">
           {linepayPending.mktCount > 0 && (
@@ -37,6 +37,18 @@ function PendingPayoutBanner({ linepayPending }) {
               <div className="text-right shrink-0">
                 <p className="text-sm font-black text-green-700">{fmt(linepayPending.mktAmount)}</p>
                 <p className="text-xs text-gray-400">{linepayPending.mktCount} 筆</p>
+              </div>
+            </div>
+          )}
+          {linepayPending.orderLinePayCount > 0 && (
+            <div className="bg-white rounded-xl px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-gray-700">📱 銷售訂單 LINE Pay 待撥款</p>
+                <p className="text-xs text-gray-400 mt-0.5">撥款後請在收支管理新增「 LINE Pay 撥款」入帳</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-black text-green-700">{fmt(linepayPending.orderLinePayAmount)}</p>
+                <p className="text-xs text-gray-400">{linepayPending.orderLinePayCount} 筆</p>
               </div>
             </div>
           )}
@@ -121,20 +133,20 @@ export default function Dashboard({ data }) {
   const linepayPending = useMemo(() => {
     const prefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
     const pendingRevenues = revenues.filter(r => r.isPending && r.date.startsWith(prefix))
-    // 市集 LINE Pay：marketSales + revenues 中 channel==='市集'的 isPending
-    const mktFromRevenues = pendingRevenues.filter(r => r.channel === '市集' || r.paymentMethod === 'LINE Pay')
-    const mktSales = marketSales.filter(r => r.date.startsWith(prefix))
-    const allMkt = [...mktSales, ...mktFromRevenues]
-    // 電商平台待撥款：排除市集和 LINE Pay
+    // 市集 LINE Pay：marketSales 中 channel==='市集'
+    const mktSales = marketSales.filter(r => r.date.startsWith(prefix) && r.channel === '市集')
+    // 銷售訂單 LINE Pay：marketSales 中 channel!=='市集'（電商訂單 LINE Pay）
+    const orderLinePay = marketSales.filter(r => r.date.startsWith(prefix) && r.channel !== '市集')
+    // 電商平台待撥款：revenues isPending（排除 LINE Pay 和市集）
     const ecItems = pendingRevenues.filter(r => r.channel !== '市集' && r.paymentMethod !== 'LINE Pay')
-    const ecAmount  = ecItems.reduce((s, r) => s + r.amount, 0)
-    const mktAmount = allMkt.reduce((s, r) => s + r.amount, 0)
+    const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
+    const orderLinePayAmount = orderLinePay.reduce((s, r) => s + r.amount, 0)
+    const ecAmount = ecItems.reduce((s, r) => s + r.amount, 0)
     return {
-      total: ecAmount + mktAmount,
-      ecAmount, mktAmount,
-      ecCount: ecItems.length,
-      mktCount: allMkt.length,
-      ecItems,
+      total: mktAmount + orderLinePayAmount + ecAmount,
+      mktAmount, mktCount: mktSales.length,
+      orderLinePayAmount, orderLinePayCount: orderLinePay.length,
+      ecAmount, ecCount: ecItems.length, ecItems,
     }
   }, [revenues, marketSales])
 
