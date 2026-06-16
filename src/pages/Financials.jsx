@@ -327,8 +327,8 @@ export default function Financials({ data }) {
   const PAYOUT_CHANNELS = ['平台撥款', 'LINE Pay 撥款']
   const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
 
-  const sortedRevenues = useMemo(() => [...revenues].filter(r => !r.isPending).sort((a, b) => b.date.localeCompare(a.date)), [revenues])
-  const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.date.localeCompare(a.date)), [expenses])
+  const sortedRevenues = useMemo(() => [...revenues].filter(r => !r.isPending).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)), [revenues])
+  const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)), [expenses])
 
   const baseList = tab === '營收' ? sortedRevenues : sortedExpenses
   const list     = useMemo(

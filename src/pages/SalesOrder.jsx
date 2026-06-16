@@ -329,7 +329,7 @@ export default function SalesOrder({ data }) {
   }
 
   const sortedOrders = useMemo(
-    () => [...orders].sort((a, b) => b.orderDate?.localeCompare(a.orderDate)),
+    () => [...orders].sort((a, b) => b.orderDate?.localeCompare(a.orderDate) || b.id?.localeCompare(a.id)),
     [orders]
   );
 
