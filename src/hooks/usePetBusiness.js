@@ -186,19 +186,6 @@ export default function usePetBusiness() {
     return { total, ecAmount, mktAmount, ecCount: pendingRevenues.length, mktCount: marketSales.length, count: pendingRevenues.length + marketSales.length };
   }, [revenues, marketSales]);
 
-  // ── LINEPAY 待撥款統計 ────────────────────────────────────────
-  // 來源1：revenues 中 isPending:true（電商訂單標記待撥款）
-  // 來源2：marketSales（市集 LINE Pay 收款，尚未入帳至 revenues）
-  const linepayPending = useMemo(() => {
-    const pendingRevenues = revenues.filter(r => r.isPending)
-    const ecAmount   = pendingRevenues.reduce((s, r) => s + r.amount, 0)
-    const mktAmount  = marketSales.reduce((s, r) => s + r.amount, 0)
-    const total      = ecAmount + mktAmount
-    const ecCount    = pendingRevenues.length
-    const mktCount   = marketSales.length
-    return { total, ecAmount, mktAmount, ecCount, mktCount, count: ecCount + mktCount }
-  }, [revenues, marketSales]);
-
   const inventoryAlerts = useMemo(
     () => inventory.filter(i => (i.category === "C食材" || i.category === "D包材") && i.currentQty < i.safetyQty),
     [inventory]
