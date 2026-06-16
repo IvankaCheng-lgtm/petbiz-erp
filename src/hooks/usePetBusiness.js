@@ -175,17 +175,6 @@ export default function usePetBusiness() {
     return { totalRevenue, totalExpense, netProfit, profitRate };
   }, [revenues, expenses]);
 
-  // ── LINEPAY 待撥款統計 ────────────────────────────────────────
-  // 來源1：revenues 中 isPending:true（電商訂單標記待撥款）
-  // 來源2：marketSales（市集 LINE Pay 收款，尚未入帳至 revenues）
-  const linepayPending = useMemo(() => {
-    const pendingRevenues = revenues.filter(r => r.isPending);
-    const ecAmount  = pendingRevenues.reduce((s, r) => s + r.amount, 0);
-    const mktAmount = marketSales.reduce((s, r) => s + r.amount, 0);
-    const total     = ecAmount + mktAmount;
-    return { total, ecAmount, mktAmount, ecCount: pendingRevenues.length, mktCount: marketSales.length, count: pendingRevenues.length + marketSales.length };
-  }, [revenues, marketSales]);
-
   const inventoryAlerts = useMemo(
     () => inventory.filter(i => (i.category === "C食材" || i.category === "D包材") && i.currentQty < i.safetyQty),
     [inventory]
@@ -967,8 +956,8 @@ export default function usePetBusiness() {
   }, []);
 
   return {
-    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, inventoryLogs, suppliers, ingredientLibrary, loading,
-    kpi, inventoryAlerts, upcomingEvents, linepayPending,
+    revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, inventoryLogs, marketSales, suppliers, ingredientLibrary, loading,
+    kpi, inventoryAlerts, upcomingEvents,
     addRevenue, deleteRevenue, toggleRevenueReported,
     addExpense, deleteExpense, toggleExpenseReported,
     addPurchase,

@@ -21,7 +21,7 @@ const REMINDER_STYLE = {
 }
 
 export default function Dashboard({ data }) {
-  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [], linepayPending, onDoneRemindersChange } = data
+  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [], marketSales = [], linepayPending, onDoneRemindersChange } = data
   const [filter, setFilter] = useState('月')
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -59,6 +59,16 @@ export default function Dashboard({ data }) {
     () => todayOrders.reduce((s, o) => s + o.total, 0),
     [todayOrders]
   )
+
+  // 當月 LINEPAY 待撥款
+  const linepayPending = useMemo(() => {
+    const prefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+    const pendingRevenues = revenues.filter(r => r.isPending && r.date.startsWith(prefix))
+    const mktSales = marketSales.filter(r => r.date.startsWith(prefix))
+    const ecAmount  = pendingRevenues.reduce((s, r) => s + r.amount, 0)
+    const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
+    return { total: ecAmount + mktAmount, ecAmount, mktAmount, ecCount: pendingRevenues.length, mktCount: mktSales.length }
+  }, [revenues, marketSales])
 
   const trend = useMemo(() => buildMonthlyTrend(revenues, expenses), [revenues, expenses])
 

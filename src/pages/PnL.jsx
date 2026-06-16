@@ -24,7 +24,7 @@ function PnLRow({ label, value, indent = 0, bold = false, highlight, border }) {
 }
 
 export default function PnL({ data }) {
-  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [], suppliers = [], marketEvents = [], linepayPending } = data
+  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [], suppliers = [], marketEvents = [], marketSales = [] } = data
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const printRef = useRef()
@@ -133,6 +133,20 @@ export default function PnL({ data }) {
 
     return { totalRev, ecRev, mktRev, otherRev, byCategory, rawMaterialCost, packagingCost, goodsCost, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
   }, [filteredRevenues, filteredExpenses])
+
+  // 依選擇期間的 LINEPAY 待撥款
+  const linepayPending = useMemo(() => {
+    const inRange = (date) => {
+      if (rangeType === 'month') return date.startsWith(rangeYear + '-' + String(rangeMonth).padStart(2, '0'))
+      if (rangeType === 'quarter') { const m = parseInt(date.slice(5, 7)); return date.startsWith(String(rangeYear)) && Math.ceil(m / 3) === rangeQ }
+      return date.startsWith(String(rangeYear))
+    }
+    const pendingRevenues = revenues.filter(r => r.isPending && inRange(r.date))
+    const mktSales = marketSales.filter(r => inRange(r.date))
+    const ecAmount  = pendingRevenues.reduce((s, r) => s + r.amount, 0)
+    const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
+    return { total: ecAmount + mktAmount, ecAmount, mktAmount, ecCount: pendingRevenues.length, mktCount: mktSales.length }
+  }, [revenues, marketSales, rangeType, rangeYear, rangeMonth, rangeQ])
 
   // 市集主辦收益與支出分析
   const organizerAnalysis = useMemo(() => {
