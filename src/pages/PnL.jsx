@@ -24,7 +24,7 @@ function PnLRow({ label, value, indent = 0, bold = false, highlight, border }) {
 }
 
 export default function PnL({ data }) {
-  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [], suppliers = [], marketEvents = [] } = data
+  const { revenues, expenses, kpi, inventoryAlerts, inventory = [], orders = [], suppliers = [], marketEvents = [], linepayPending } = data
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const printRef = useRef()
@@ -590,6 +590,35 @@ export default function PnL({ data }) {
           </button>
         </div>
       </div>
+
+      {/* LINEPAY 待撥款說明 */}
+      {linepayPending?.total > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-2">
+              <span className="text-lg mt-0.5">💚</span>
+              <div>
+                <p className="text-sm font-semibold text-green-800">LINE Pay 待撥款——道理表與營業總覽差異說明</p>
+                <p className="text-xs text-green-600 mt-1 leading-relaxed">
+                  以下金額已計入損益表營收，但尚未撥入帳戶，因此營業總覽的「營收」較小。撥款後請在收支管理新增「 LINE Pay 撥款」入帳。
+                </p>
+                <div className="flex gap-4 mt-2 text-xs text-green-700">
+                  {linepayPending.mktCount > 0 && (
+                    <span>🏪 市集現場 {linepayPending.mktCount} 筆  <strong>{fmt(linepayPending.mktAmount)}</strong></span>
+                  )}
+                  {linepayPending.ecCount > 0 && (
+                    <span>💻 電商訂單 {linepayPending.ecCount} 筆  <strong>{fmt(linepayPending.ecAmount)}</strong></span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-xs text-green-500 mb-0.5">待入帳總額</p>
+              <p className="text-2xl font-black text-green-700">{fmt(linepayPending.total)}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SectionCard title="損益結構">

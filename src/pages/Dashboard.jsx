@@ -21,7 +21,7 @@ const REMINDER_STYLE = {
 }
 
 export default function Dashboard({ data }) {
-  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [], onDoneRemindersChange } = data
+  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [], linepayPending, onDoneRemindersChange } = data
   const [filter, setFilter] = useState('月')
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -181,6 +181,31 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
         <KpiCard title={`利潤率（${filterLabel}）`}  value={`${filteredKpi.profitRate.toFixed(1)}%`} icon={<TrendingUp size={20} />}
           color={filteredKpi.profitRate >= 25 ? 'green' : filteredKpi.profitRate >= 15 ? 'orange' : 'red'} />
       </div>
+
+      {/* LINEPAY 待撥款提示 */}
+      {linepayPending?.total > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">💚</span>
+              <div>
+                <span className="text-sm font-semibold text-green-800">LINE Pay 待撥款（尚未入帳）</span>
+                <p className="text-xs text-green-600 mt-0.5">
+                  已計入損益表但尚未撥入帳戶，營業總覽不含此金額
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xl font-black text-green-700">{fmt(linepayPending.total)}</p>
+              <p className="text-xs text-green-500">
+                {linepayPending.mktCount > 0 && `市集 ${linepayPending.mktCount} 筆 ${fmt(linepayPending.mktAmount)}`}
+                {linepayPending.mktCount > 0 && linepayPending.ecCount > 0 && '　'}
+                {linepayPending.ecCount > 0 && `電商 ${linepayPending.ecCount} 筆 ${fmt(linepayPending.ecAmount)}`}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 今日銷售訂單小計 */}
       {todayOrders.length > 0 && (

@@ -99,6 +99,7 @@ export default function usePetBusiness() {
   const [marketEvents,  setMarketEvents]  = useState([]);
   const [orders,        setOrders]        = useState([]);
   const [inventoryLogs, setInventoryLogs] = useState([]);
+  const [marketSales,   setMarketSales]   = useState([]);
   const [suppliers,     setSuppliers]     = useState(() => {
     try { return JSON.parse(localStorage.getItem('petbiz_suppliers') || '[]'); } catch { return []; }
   });
@@ -143,6 +144,7 @@ export default function usePetBusiness() {
           }
           setOrders(d.orders               ?? []);
           setInventoryLogs(d.inventoryLogs ?? []);
+          setMarketSales(d.marketSales     ?? []);
           setIngredientLibrary(d.ingredientLibrary ?? []);
           const cloudSuppliers = d.suppliers ?? [];
           setSuppliers(cloudSuppliers);
@@ -172,6 +174,30 @@ export default function usePetBusiness() {
     const profitRate   = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
     return { totalRevenue, totalExpense, netProfit, profitRate };
   }, [revenues, expenses]);
+
+  // ── LINEPAY 待撥款統計 ────────────────────────────────────────
+  // 來源1：revenues 中 isPending:true（電商訂單標記待撥款）
+  // 來源2：marketSales（市集 LINE Pay 收款，尚未入帳至 revenues）
+  const linepayPending = useMemo(() => {
+    const pendingRevenues = revenues.filter(r => r.isPending);
+    const ecAmount  = pendingRevenues.reduce((s, r) => s + r.amount, 0);
+    const mktAmount = marketSales.reduce((s, r) => s + r.amount, 0);
+    const total     = ecAmount + mktAmount;
+    return { total, ecAmount, mktAmount, ecCount: pendingRevenues.length, mktCount: marketSales.length, count: pendingRevenues.length + marketSales.length };
+  }, [revenues, marketSales]);
+
+  // ── LINEPAY 待撥款統計 ────────────────────────────────────────
+  // 來源1：revenues 中 isPending:true（電商訂單標記待撥款）
+  // 來源2：marketSales（市集 LINE Pay 收款，尚未入帳至 revenues）
+  const linepayPending = useMemo(() => {
+    const pendingRevenues = revenues.filter(r => r.isPending)
+    const ecAmount   = pendingRevenues.reduce((s, r) => s + r.amount, 0)
+    const mktAmount  = marketSales.reduce((s, r) => s + r.amount, 0)
+    const total      = ecAmount + mktAmount
+    const ecCount    = pendingRevenues.length
+    const mktCount   = marketSales.length
+    return { total, ecAmount, mktAmount, ecCount, mktCount, count: ecCount + mktCount }
+  }, [revenues, marketSales]);
 
   const inventoryAlerts = useMemo(
     () => inventory.filter(i => (i.category === "C食材" || i.category === "D包材") && i.currentQty < i.safetyQty),
@@ -795,46 +821,66 @@ export default function usePetBusiness() {
     const allForCat = (items.length > 0 ? items : giftItems).filter(Boolean);
     const cats = [...new Set(allForCat.map(i => catMap[i?.category] ?? "食品"))];
     const category = cats.length === 1 ? cats[0] : "食品";
-    const revenueItem = {
+    const isLinePay = paymentMethod === 'LINE Pay';
+
+    const saleRecord = {
       id: uid(), date: today, channel: "市集", category,
-      amount: totalAmount, isReported: false, paymentMethod, eventId,
+      amount: totalAmount, paymentMethod, eventId,
       items: items.map(({ itemId, itemName, category, qty, unitPrice }) => ({ itemId, itemName, category, qty, unitPrice })),
       giftItems: giftItems.map(({ itemId, itemName, category, qty, unitPrice, cost }) => ({ itemId, itemName, category, qty, unitPrice, cost: cost || 0 })),
     };
+
     const applyInv = (list) => {
       let next = [...list];
-      // 一般商品 + 贈品都扣庫存
       allItems.forEach(({ itemId, qty }) => {
         const idx = next.findIndex(i => i.id === itemId);
         if (idx !== -1) next[idx] = deductFIFO(next[idx], qty);
       });
       return next;
     };
+
     const logs = [
       ...items.map(it => ({
         id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
-        change: -it.qty, reason: `市集銷售`,
-        revenueId: revenueItem.id,
+        change: -it.qty, reason: `市集銷售（${paymentMethod}）`,
+        saleId: saleRecord.id,
       })),
       ...giftItems.map(it => ({
         id: uid(), date: today, itemId: it.itemId, itemName: it.itemName,
         change: -it.qty, reason: `市集贈品`,
-        revenueId: revenueItem.id,
+        saleId: saleRecord.id,
       })),
     ];
-    // LINE Pay 加 isPending:true，不計入收支管理，但結算統計可見
-    const finalRevenue = paymentMethod === 'LINE Pay'
-      ? { ...revenueItem, isPending: true }
-      : revenueItem;
-    setRevenues(prev => [...prev, finalRevenue]);
-    setInventory(prev => {
-      const updated = applyInv(prev);
-      cloudUpdate("inventory", () => updated);
-      return updated;
-    });
-    setInventoryLogs(prev => [...prev, ...logs]);
-    await cloudUpdate("revenues",      list => [...list, finalRevenue]);
-    await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
+
+    const giftCost = giftItems.reduce((s, it) => s + (it.cost || 0) * it.qty, 0);
+    const giftExpense = giftCost > 0 ? {
+      id: uid(), date: today, type: '行銷',
+      note: `市集贈品成本：${giftItems.map(i => i?.itemName || '').join('、')}`,
+      amount: giftCost, isProductionCost: false, isReported: false,
+    } : null;
+
+    if (isLinePay) {
+      // LINE Pay：只扣庫存，存 marketSales，不寫 revenues
+      setMarketSales(prev => [...prev, saleRecord]);
+      setInventory(applyInv);
+      setInventoryLogs(prev => [...prev, ...logs]);
+      if (giftExpense) setExpenses(prev => [...prev, giftExpense]);
+      await cloudUpdate("marketSales",   list => [...list, saleRecord]);
+      await cloudUpdate("inventory",     applyInv);
+      await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
+      if (giftExpense) await cloudUpdate("expenses", list => [...list, giftExpense]);
+    } else {
+      // 現金：正常寫入 revenues
+      const revenueItem = { ...saleRecord, isReported: false };
+      setRevenues(prev => [...prev, revenueItem]);
+      setInventory(applyInv);
+      setInventoryLogs(prev => [...prev, ...logs]);
+      if (giftExpense) setExpenses(prev => [...prev, giftExpense]);
+      await cloudUpdate("revenues",      list => [...list, revenueItem]);
+      await cloudUpdate("inventory",     applyInv);
+      await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
+      if (giftExpense) await cloudUpdate("expenses", list => [...list, giftExpense]);
+    }
   }, [cloudUpdate]);
 
   const shipOrder = useCallback(async (orderId) => {
@@ -935,7 +981,7 @@ export default function usePetBusiness() {
 
   return {
     revenues, expenses, inventory, production, savedFormulas, marketEvents, orders, inventoryLogs, suppliers, ingredientLibrary, loading,
-    kpi, inventoryAlerts, upcomingEvents,
+    kpi, inventoryAlerts, upcomingEvents, linepayPending,
     addRevenue, deleteRevenue, toggleRevenueReported,
     addExpense, deleteExpense, toggleExpenseReported,
     addPurchase,
