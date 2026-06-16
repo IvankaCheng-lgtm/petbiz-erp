@@ -632,7 +632,7 @@ export default function SalesOrder({ data }) {
             <div className="space-y-2">
               {[
                 { value: 'immediate',      label: '立即收款',           desc: '現金／刷卡／轉帳，直接計入收入',                                          color: 'blue'  },
-                { value: 'linepay',        label: 'LINE Pay',          desc: '撥款後自動計入市集 LINE Pay 待撥款，撥款後請在收支管理新增入帳', color: 'green' },
+                { value: 'linepay',        label: 'LINE Pay',          desc: '撥款後請在收支管理新增「 LINE Pay 撥款」入帳', color: 'green' },
                 { value: 'pending_payout', label: '等待平台撥款',       desc: '電商平台月結，撥款時再到收支管理新增「平台撥款」',              color: 'amber' },
                 { value: 'skip',           label: '只扣庫存，不計收入', desc: '樣品、自用、換貨等不產生收入的出貨',                                  color: 'gray'  },
               ].map(opt => (
