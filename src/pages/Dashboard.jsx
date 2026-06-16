@@ -62,6 +62,36 @@ export default function Dashboard({ data }) {
 
   const trend = useMemo(() => buildMonthlyTrend(revenues, expenses), [revenues, expenses])
 
+  // 依 filter 計算 KPI
+  const filteredKpi = useMemo(() => {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = now.getMonth() + 1
+    const q = Math.ceil(m / 3)
+
+    const filterRev = revenues.filter(r => !r.isPending)
+    let revs, exps
+    if (filter === '月') {
+      const prefix = `${y}-${String(m).padStart(2, '0')}`
+      revs = filterRev.filter(r => r.date.startsWith(prefix))
+      exps = expenses.filter(e => e.date.startsWith(prefix))
+    } else if (filter === '季') {
+      const qMonths = [1,2,3].map(i => `${y}-${String((q-1)*3+i).padStart(2,'0')}`)
+      revs = filterRev.filter(r => qMonths.some(p => r.date.startsWith(p)))
+      exps = expenses.filter(e => qMonths.some(p => e.date.startsWith(p)))
+    } else {
+      revs = filterRev.filter(r => r.date.startsWith(String(y)))
+      exps = expenses.filter(e => e.date.startsWith(String(y)))
+    }
+    const totalRevenue = revs.reduce((s, r) => s + r.amount, 0)
+    const totalExpense = exps.reduce((s, e) => s + e.amount, 0)
+    const netProfit = totalRevenue - totalExpense
+    const profitRate = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
+    return { totalRevenue, totalExpense, netProfit, profitRate }
+  }, [revenues, expenses, filter])
+
+  const filterLabel = filter === '月' ? `${new Date().getFullYear()}年${new Date().getMonth()+1}月` : filter === '季' ? `${new Date().getFullYear()} Q${Math.ceil((new Date().getMonth()+1)/3)}` : `${new Date().getFullYear()}年`
+
   const chartData = useMemo(() => {
     if (filter === '月') return trend
     if (filter === '季') {
@@ -144,12 +174,12 @@ ${alertNames ? `- 庫存警示品項：${alertNames}` : '- 庫存狀態正常'}`
 
       {/* KPI 卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <KpiCard title="總營收"  value={fmt(kpi.totalRevenue)} icon={<DollarSign size={20} />} color="orange" />
-        <KpiCard title="總支出"  value={fmt(kpi.totalExpense)} icon={<ShoppingBag size={20} />} color="blue" />
-        <KpiCard title="淨利"    value={fmt(kpi.netProfit)}
-          icon={kpi.netProfit >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />} color={profitColor} />
-        <KpiCard title="利潤率"  value={`${kpi.profitRate.toFixed(1)}%`} icon={<TrendingUp size={20} />}
-          color={kpi.profitRate >= 25 ? 'green' : kpi.profitRate >= 15 ? 'orange' : 'red'} />
+        <KpiCard title={`營收（${filterLabel}）`}  value={fmt(filteredKpi.totalRevenue)} icon={<DollarSign size={20} />} color="orange" />
+        <KpiCard title={`支出（${filterLabel}）`}  value={fmt(filteredKpi.totalExpense)} icon={<ShoppingBag size={20} />} color="blue" />
+        <KpiCard title={`淨利（${filterLabel}）`}    value={fmt(filteredKpi.netProfit)}
+          icon={filteredKpi.netProfit >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />} color={filteredKpi.netProfit >= 0 ? 'green' : 'red'} />
+        <KpiCard title={`利潤率（${filterLabel}）`}  value={`${filteredKpi.profitRate.toFixed(1)}%`} icon={<TrendingUp size={20} />}
+          color={filteredKpi.profitRate >= 25 ? 'green' : filteredKpi.profitRate >= 15 ? 'orange' : 'red'} />
       </div>
 
       {/* 今日銷售訂單小計 */}
