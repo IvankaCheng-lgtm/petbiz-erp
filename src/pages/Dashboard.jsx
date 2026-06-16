@@ -21,7 +21,7 @@ const REMINDER_STYLE = {
 }
 
 export default function Dashboard({ data }) {
-  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [], marketSales = [], linepayPending, onDoneRemindersChange } = data
+  const { kpi, inventoryAlerts, revenues, expenses, inventory = [], upcomingEvents = [], orders = [], marketSales = [], onDoneRemindersChange } = data
   const [filter, setFilter] = useState('月')
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
