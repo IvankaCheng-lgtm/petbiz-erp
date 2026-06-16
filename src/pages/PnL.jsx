@@ -143,13 +143,16 @@ export default function PnL({ data }) {
       return date.startsWith(String(rangeYear))
     }
     const pendingRevenues = revenues.filter(r => r.isPending && inRange(r.date))
-    const mktSales = marketSales.filter(r => inRange(r.date) && r.channel === '市集')
+    const mktItems = [
+      ...marketSales.filter(r => inRange(r.date) && r.channel === '市集'),
+      ...pendingRevenues.filter(r => r.channel === '市集'),
+    ]
     const orderLinePay = marketSales.filter(r => inRange(r.date) && r.channel !== '市集')
     const ecItems = pendingRevenues.filter(r => r.channel !== '市集')
-    const mktAmount = mktSales.reduce((s, r) => s + r.amount, 0)
+    const mktAmount = mktItems.reduce((s, r) => s + r.amount, 0)
     const orderLinePayAmount = orderLinePay.reduce((s, r) => s + r.amount, 0)
     const ecAmount = ecItems.reduce((s, r) => s + r.amount, 0)
-    return { total: mktAmount + orderLinePayAmount + ecAmount, mktAmount, mktCount: mktSales.length, orderLinePayAmount, orderLinePayCount: orderLinePay.length, ecAmount, ecCount: ecItems.length, ecItems }
+    return { total: mktAmount + orderLinePayAmount + ecAmount, mktAmount, mktCount: mktItems.length, orderLinePayAmount, orderLinePayCount: orderLinePay.length, ecAmount, ecCount: ecItems.length, ecItems }
   }, [revenues, marketSales, rangeType, rangeYear, rangeMonth, rangeQ])
 
   // 市集主辦收益與支出分析
