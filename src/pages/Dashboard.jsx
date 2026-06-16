@@ -132,6 +132,8 @@ export default function Dashboard({ data }) {
   // 2. LINE Pay 待撥款：marketSales（市集現場 LINE Pay）
   const linepayPending = useMemo(() => {
     const prefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+    console.log('[DEBUG] marketSales:', JSON.stringify(marketSales))
+    console.log('[DEBUG] prefix:', prefix)
     const pendingRevenues = revenues.filter(r => r.isPending && r.date.startsWith(prefix))
     // 市集 LINE Pay：marketSales 中 channel==='市集'
     const mktSales = marketSales.filter(r => r.date.startsWith(prefix) && r.channel === '市集')
