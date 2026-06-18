@@ -118,8 +118,8 @@ export default function SalesOrder({ data }) {
     };
   }, [isScanning]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 小計只算非贈品
-  const subtotal = useMemo(() => cart.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice, 0), [cart]);
+  // 小計只算非贈品（含單品折價）
+  const subtotal = useMemo(() => cart.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0), 0), [cart]);
 
   const totalAmount = useMemo(() => {
     let t = subtotal;
@@ -153,6 +153,11 @@ export default function SalesOrder({ data }) {
     setCart(prev => prev.map(c => c.itemId === itemId ? { ...c, unitPrice: parseFloat(price) || 0 } : c))
   }
 
+  // 單品項折價
+  function updateItemDiscount(itemId, discount) {
+    setCart(prev => prev.map(c => c.itemId === itemId ? { ...c, itemDiscount: parseFloat(discount) || 0 } : c))
+  }
+
   function addToCart(item) {
     setCart((prev) => {
       const idx = prev.findIndex((c) => c.itemId === item.id);
@@ -161,7 +166,7 @@ export default function SalesOrder({ data }) {
         next[idx] = { ...next[idx], qty: next[idx].qty + 1 };
         return next;
       }
-      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0, listPrice: item.listPrice || item.salePrice || 0, isGift: false }];
+      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0, listPrice: item.listPrice || item.salePrice || 0, isGift: false, itemDiscount: 0 }];
     });
   }
 
@@ -518,39 +523,55 @@ export default function SalesOrder({ data }) {
         <SectionCard title="購物車">
           <div className="space-y-2">
             {cart.map((c) => (
-              <div key={c.itemId} className={`flex items-center gap-2 text-sm rounded-xl px-2 py-1 ${c.isGift ? 'bg-pink-50' : ''}`}>
-                <div className="flex-1 min-w-0">
-                  <div className={`${c.isGift ? 'text-pink-600' : 'text-gray-700'}`}>
-                    {c.isGift && <span className="text-xs mr-1">🎁</span>}{c.itemName}
+              <div key={c.itemId} className={`text-sm rounded-xl px-2 py-1.5 ${c.isGift ? 'bg-pink-50' : ''}`}>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className={`${c.isGift ? 'text-pink-600' : 'text-gray-700'}`}>
+                      {c.isGift && <span className="text-xs mr-1">🎁</span>}{c.itemName}
+                    </div>
+                    {!c.isGift && c.listPrice !== c.unitPrice && <div className="text-xs text-gray-300">定價 ${c.listPrice}</div>}
                   </div>
-                  {!c.isGift && c.listPrice !== c.unitPrice && <div className="text-xs text-gray-300">定價 ${c.listPrice}</div>}
-                </div>
-                <button
-                  onClick={() => toggleGift(c.itemId)}
-                  className={`text-xs px-2 py-1 rounded-lg border font-medium transition-colors flex-shrink-0 ${
-                    c.isGift ? 'bg-pink-100 text-pink-600 border-pink-300' : 'bg-white text-gray-400 border-gray-200 hover:border-pink-300'
-                  }`}>
-                  贈品
-                </button>
-                {!c.isGift && selectedConsignee ? (
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={c.unitPrice}
-                    onChange={e => updateUnitPrice(c.itemId, e.target.value)}
-                    className="w-20 text-right border border-purple-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
-                ) : (
-                  <span className={`w-16 text-right ${c.isGift ? 'text-pink-400 line-through text-xs' : 'text-gray-400'}`}>
-                    ${c.isGift ? c.unitPrice : c.unitPrice}
+                  <button
+                    onClick={() => toggleGift(c.itemId)}
+                    className={`text-xs px-2 py-1 rounded-lg border font-medium transition-colors flex-shrink-0 ${
+                      c.isGift ? 'bg-pink-100 text-pink-600 border-pink-300' : 'bg-white text-gray-400 border-gray-200 hover:border-pink-300'
+                    }`}>
+                    贈品
+                  </button>
+                  {!c.isGift && selectedConsignee ? (
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={c.unitPrice}
+                      onChange={e => updateUnitPrice(c.itemId, e.target.value)}
+                      className="w-20 text-right border border-purple-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                  ) : (
+                    <span className={`w-16 text-right ${c.isGift ? 'text-pink-400 line-through text-xs' : 'text-gray-400'}`}>
+                      ${c.unitPrice}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => updateQty(c.itemId, c.qty - 1)} className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold">−</button>
+                    <span className="w-8 text-center">{c.qty}</span>
+                    <button onClick={() => updateQty(c.itemId, c.qty + 1)} className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold">+</button>
+                  </div>
+                  <span className={`w-16 text-right font-medium ${c.isGift ? 'text-pink-400' : c.itemDiscount > 0 ? 'text-blue-600' : 'text-gray-800'}`}>
+                    {c.isGift ? '贈' : `$${c.qty * c.unitPrice - (c.itemDiscount || 0)}`}
                   </span>
-                )}
-                <div className="flex items-center gap-1">
-                  <button onClick={() => updateQty(c.itemId, c.qty - 1)} className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold">−</button>
-                  <span className="w-8 text-center">{c.qty}</span>
-                  <button onClick={() => updateQty(c.itemId, c.qty + 1)} className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold">+</button>
                 </div>
-                <span className={`w-16 text-right font-medium ${c.isGift ? 'text-pink-400' : 'text-gray-800'}`}>
-                  {c.isGift ? '贈' : `$${c.qty * c.unitPrice}`}
-                </span>
+                {!c.isGift && (
+                  <div className="flex items-center gap-2 mt-1 pl-1">
+                    <span className="text-xs text-gray-400">單品折價 $</span>
+                    <input
+                      type="number" min="0" step="1"
+                      value={c.itemDiscount || ''}
+                      onChange={e => updateItemDiscount(c.itemId, e.target.value)}
+                      placeholder="0"
+                      className="w-20 border border-blue-200 rounded-lg px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    {c.itemDiscount > 0 && (
+                      <span className="text-xs text-blue-500">已折 ${c.itemDiscount}</span>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -737,7 +758,7 @@ export default function SalesOrder({ data }) {
                     )}
                     <button onClick={() => printShippingSlip(o)} className="text-xs text-emerald-600 hover:underline">📄 出貨單</button>
                     {deleteOrder && (
-                      <button onClick={() => deleteOrder(o.id)} className="text-xs text-red-400 hover:underline">刪除</button>
+                      <button onClick={() => { if (window.confirm('確定刪除此筆訂單？')) deleteOrder(o.id) }} className="text-xs text-red-400 hover:underline">刪除</button>
                     )}
                   </div>
                 )}

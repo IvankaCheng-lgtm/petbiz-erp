@@ -181,7 +181,7 @@ function CalendarTab({ marketEvents, addMarketEvent, updateMarketEvent, deleteMa
                   </button>
                 )}
                 <button onClick={() => openEdit(ev)} className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors text-xs">編輯</button>
-                <button onClick={() => deleteMarketEvent(ev.id)} className={btnDanger}><Trash2 size={13} /></button>
+                <button onClick={() => { if (window.confirm('確定刪除此市集活動？')) deleteMarketEvent(ev.id) }} className={btnDanger}><Trash2 size={13} /></button>
               </div>
             </div>
           ))}

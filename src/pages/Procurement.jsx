@@ -825,7 +825,7 @@ export default function Procurement({ data }) {
                           className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-1.5 rounded-lg transition-colors">
                           <Edit2 size={13} />
                         </button>
-                        <button onClick={e => { e.stopPropagation(); deleteInventoryItem(item.id) }} className={btnDanger}>
+                        <button onClick={e => { e.stopPropagation(); if (window.confirm('確定刪除此庫存品項？')) deleteInventoryItem(item.id) }} className={btnDanger}>
                           <Trash2 size={13} />
                         </button>
                       </div>

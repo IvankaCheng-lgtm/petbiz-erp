@@ -493,7 +493,7 @@ export default function Financials({ data }) {
                     </button>
                   </td>
                   <td className="py-3 text-center">
-                    <button onClick={e => { e.stopPropagation(); tab === '營收' ? deleteRevenue(item.id) : deleteExpense(item.id) }}
+                    <button onClick={e => { e.stopPropagation(); if (!window.confirm(`確定刪除此筆${tab}？`)) return; tab === '營收' ? deleteRevenue(item.id) : deleteExpense(item.id) }}
                       className={btnDanger}>
                       <Trash2 size={14} />
                     </button>

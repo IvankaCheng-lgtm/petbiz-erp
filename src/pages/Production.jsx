@@ -1626,7 +1626,7 @@ export default function Production({ data }) {
                             title="複製此批次到新增表單">
                             <Copy size={14} />
                           </button>
-                          <button onClick={e => { e.stopPropagation(); deleteProductionGroup(groupItems); }}
+                          <button onClick={e => { e.stopPropagation(); if (window.confirm('確定刪除此生產批次？庫存不會自動補回。')) deleteProductionGroup(groupItems) }}
                             className={btnDanger}>
                             <Trash2 size={14} />
                           </button>
@@ -1662,7 +1662,7 @@ export default function Production({ data }) {
                               title="複製此規格到新增表單">
                               <Copy size={14} />
                             </button>
-                            <button onClick={e => { e.stopPropagation(); deleteProduction(p.id); }}
+                            <button onClick={e => { e.stopPropagation(); if (window.confirm('確定刪除此規格？庫存不會自動補回。')) deleteProduction(p.id) }}
                               className={btnDanger}>
                               <Trash2 size={14} />
                             </button>
