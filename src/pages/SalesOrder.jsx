@@ -269,7 +269,7 @@ export default function SalesOrder({ data }) {
   }
 
   function printShippingSlip(o) {
-    const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice, 0)
+    const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0), 0)
     const discountAmt = subtotalAmt - (o.total ?? o.totalAmount ?? subtotalAmt)
     const gifts = o.giftItems ?? []
     // 官網以外的電商平台只顯示數量與原始金額，不顯示折扣與合計
@@ -315,7 +315,12 @@ export default function SalesOrder({ data }) {
         <table>
           <thead><tr><th>品名</th><th class="right">單價</th><th class="right">數量</th>${hideDiscount ? '' : '<th class="right">小計</th>'}</tr></thead>
           <tbody>
-            ${(o.items ?? []).map(i => `<tr><td>${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td>${hideDiscount ? '' : `<td class="right">$${i.qty * i.unitPrice}</td>`}</tr>`).join('')}
+            ${(o.items ?? []).map(i => {
+              const itemDisc = i.itemDiscount || 0
+              const lineTotal = i.qty * i.unitPrice - itemDisc
+              const discNote = itemDisc > 0 ? ` <span style="color:#16a34a;font-size:11px">(-$${itemDisc})</span>` : ''
+              return `<tr><td>${i.itemName}${discNote}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td>${hideDiscount ? '' : `<td class="right">$${lineTotal}</td>`}</tr>`
+            }).join('')}
             ${gifts.map(i => `<tr class="gift"><td>🎁 ${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td>${hideDiscount ? '' : '<td class="right">贈品</td>'}</tr>`).join('')}
           </tbody>
         </table>
