@@ -849,11 +849,14 @@ export default function usePetBusiness() {
     } : null;
 
     if (isLinePay) {
-      // LINE Pay：只扣庫存，存 marketSales，不寫 revenues
+      // LINE Pay：isPending:true 寫入 revenues 供結算統計顯示，待撥款後再人工確認
+      const revenueItem = { ...saleRecord, isReported: false, isPending: true };
+      setRevenues(prev => [...prev, revenueItem]);
       setMarketSales(prev => [...prev, saleRecord]);
       setInventory(applyInv);
       setInventoryLogs(prev => [...prev, ...logs]);
       if (giftExpense) setExpenses(prev => [...prev, giftExpense]);
+      await cloudUpdate("revenues",      list => [...list, revenueItem]);
       await cloudUpdate("marketSales",   list => [...list, saleRecord]);
       await cloudUpdate("inventory",     applyInv);
       await cloudUpdate("inventoryLogs", list => [...list, ...logs]);

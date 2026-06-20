@@ -632,7 +632,7 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 }
 
 // ── 結算統計分頁 ──────────────────────────────────────────────
-function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSale }) {
+function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSale, marketSales, addRevenue }) {
   const [selectedEventId, setSelectedEventId] = useState(marketEvents[0]?.id ?? '')
 
   // marketEvents 更新時，若目前選擇無效則自動 fallback 到第一筆
@@ -696,7 +696,32 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
 
   const trueProfit = netProfit - goodsCost
 
-  const cashRev    = eventRevenues.filter(r => r.paymentMethod === '現金').reduce((s, r) => s + r.amount, 0)
+  // marketSales 裡屬於此市集、LINE Pay、且尚未補入 revenues 的舊紀錄
+  const unpaidLinePay = useMemo(() => {
+    if (!selectedEvent) return []
+    const revenueIds = new Set(revenues.map(r => r.id))
+    return (marketSales || []).filter(s =>
+      s.paymentMethod === 'LINE Pay' &&
+      !revenueIds.has(s.id) &&
+      (s.eventId === effectiveEventId ||
+        (s.channel === '市集' && s.date >= selectedEvent.startDate && s.date <= selectedEvent.endDate))
+    )
+  }, [marketSales, revenues, selectedEvent, effectiveEventId])
+
+  function handleBackfill(sale) {
+    addRevenue({
+      id: sale.id,
+      date: sale.date,
+      channel: '市集',
+      category: sale.category,
+      amount: sale.amount,
+      paymentMethod: 'LINE Pay',
+      isPending: true,
+      isReported: false,
+      eventId: sale.eventId,
+      items: sale.items,
+    })
+  }
   const linePayRev = eventRevenues.filter(r => r.paymentMethod === 'LINE Pay').reduce((s, r) => s + r.amount, 0)
   const cashPct    = totalRev > 0 ? (cashRev / totalRev * 100).toFixed(0) : 0
   const linePayPct = totalRev > 0 ? (linePayRev / totalRev * 100).toFixed(0) : 0
@@ -832,6 +857,32 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
                 })()
             }
           </SectionCard>
+
+          {/* 舊 LINE Pay 補入區塊 */}
+          {unpaidLinePay.length > 0 && (
+            <SectionCard title="💚 舊 LINE Pay 紀錄（未補入結算）">
+              <p className="text-xs text-gray-400 mb-3">以下為使用舊版記帳的 LINE Pay 紀錄，點擊「補入收入」即可加入結算統計。</p>
+              <div className="space-y-1.5">
+                {unpaidLinePay.map(s => (
+                  <div key={s.id} className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">{s.date}</span>
+                      <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">LINE Pay</span>
+                      <span className="ml-2 text-xs text-gray-400">{s.items?.map(i => `${i.itemName}×${i.qty}`).join('、')}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-gray-800">{fmt(s.amount)}</span>
+                      <button
+                        onClick={() => handleBackfill(s)}
+                        className="text-xs bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors font-medium">
+                        補入收入
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          )}
 
           {/* 交易明細 */}
           <SectionCard title="交易明細">
@@ -1200,6 +1251,7 @@ export default function MarketDiary({ data }) {
   const { marketEvents, inventory, revenues, expenses,
           addMarketEvent, updateMarketEvent, deleteMarketEvent,
           processMarketSale, addExpense, deleteMarketSale,
+          addRevenue, marketSales,
           suppliers, addSupplier } = data
   const [tab, setTab] = useState('calendar')
 
@@ -1252,6 +1304,8 @@ export default function MarketDiary({ data }) {
           expenses={expenses}
           inventory={inventory}
           deleteMarketSale={deleteMarketSale}
+          marketSales={marketSales}
+          addRevenue={addRevenue}
         />
       )}
       {tab === 'analysis' && (
