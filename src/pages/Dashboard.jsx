@@ -133,9 +133,12 @@ export default function Dashboard({ data }) {
   const linepayPending = useMemo(() => {
     const prefix = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
     const pendingRevenues = revenues.filter(r => r.isPending && r.date.startsWith(prefix))
-    // 市集 LINE Pay：marketSales + revenues isPending && channel==='市集'
+    // 市集 LINE Pay：從 revenues isPending 擈取，marketSales 只補入尚未補進 revenues 的舊筆
     const mktFromRevenues = pendingRevenues.filter(r => r.channel === '市集')
-    const mktFromSales = marketSales.filter(r => r.date.startsWith(prefix) && r.channel === '市集')
+    const revenueIds = new Set(revenues.map(r => r.id))
+    const mktFromSales = marketSales.filter(r =>
+      r.date.startsWith(prefix) && r.channel === '市集' && !revenueIds.has(r.id)
+    )
     const mktAll = [...mktFromRevenues, ...mktFromSales]
     // 銷售訂單 LINE Pay：marketSales 中 channel!=='市集'
     const orderLinePay = marketSales.filter(r => r.date.startsWith(prefix) && r.channel !== '市集')
