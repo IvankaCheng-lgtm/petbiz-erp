@@ -722,6 +722,8 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
       items: sale.items,
     })
   }
+
+  const cashRev    = eventRevenues.filter(r => r.paymentMethod === '現金').reduce((s, r) => s + r.amount, 0)
   const linePayRev = eventRevenues.filter(r => r.paymentMethod === 'LINE Pay').reduce((s, r) => s + r.amount, 0)
   const cashPct    = totalRev > 0 ? (cashRev / totalRev * 100).toFixed(0) : 0
   const linePayPct = totalRev > 0 ? (linePayRev / totalRev * 100).toFixed(0) : 0
