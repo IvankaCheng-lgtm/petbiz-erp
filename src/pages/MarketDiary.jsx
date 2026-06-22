@@ -632,13 +632,33 @@ function POSTab({ marketEvents, inventory, processMarketSale }) {
 }
 
 // ── 結算統計分頁 ──────────────────────────────────────────────
-function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSale, marketSales, addRevenue }) {
+function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSale, marketSales, addRevenue, processMarketSale }) {
   const [selectedEventId, setSelectedEventId] = useState(marketEvents[0]?.id ?? '')
-
-  // marketEvents 更新時，若目前選擇無效則自動 fallback 到第一筆
-  const [rangeMode, setRangeMode] = useState('3m') // 'today'|'month'|'3m'|'6m'|'all'|'custom'
+  const [rangeMode, setRangeMode] = useState('3m')
   const [customStart, setCustomStart] = useState('')
   const [customEnd,   setCustomEnd]   = useState('')
+
+  // 補登 modal
+  const [backlogModal, setBacklogModal] = useState(false)
+  const [backlogForm, setBacklogForm] = useState({ date: today(), amount: '', paymentMethod: '現金', note: '' })
+  const [backlogDone, setBacklogDone] = useState(false)
+
+  async function handleBacklogSubmit(e) {
+    e.preventDefault()
+    if (!backlogForm.amount || !selectedEvent) return
+    await processMarketSale({
+      items: [],
+      giftItems: [],
+      paymentMethod: backlogForm.paymentMethod,
+      totalAmount: parseFloat(backlogForm.amount),
+      eventId: effectiveEventId,
+      overrideDate: backlogForm.date,
+      note: backlogForm.note,
+    })
+    setBacklogDone(true)
+    setBacklogForm({ date: today(), amount: '', paymentMethod: '現金', note: '' })
+    setTimeout(() => { setBacklogDone(false); setBacklogModal(false) }, 1500)
+  }
 
   const filteredEvents = useMemo(() => {
     const todayStr = today()
@@ -887,7 +907,15 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
           )}
 
           {/* 交易明細 */}
-          <SectionCard title="交易明細">
+          <SectionCard title={
+            <div className="flex items-center justify-between w-full">
+              <span>交易明細</span>
+              <button onClick={() => setBacklogModal(true)}
+                className="flex items-center gap-1 text-xs bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors font-medium">
+                <Plus size={13} /> 補登交易
+              </button>
+            </div>
+          }>
             {eventRevenues.length === 0
               ? <p className="text-sm text-gray-400 text-center py-4">尚無交易紀錄</p>
               : (
@@ -957,6 +985,52 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
               )
             }
           </SectionCard>
+
+          {/* 補登交易 Modal */}
+          {backlogModal && (
+            <Modal title="補登市集交易" size="sm" onClose={() => setBacklogModal(false)}>
+              <form onSubmit={handleBacklogSubmit} className="space-y-4">
+                <FormRow label="日期">
+                  <input type="date" className={inputCls} required
+                    min={selectedEvent?.startDate} max={selectedEvent?.endDate}
+                    value={backlogForm.date}
+                    onChange={e => setBacklogForm(p => ({ ...p, date: e.target.value }))} />
+                  <p className="text-xs text-gray-400 mt-1">必須在市集日期區間內：{selectedEvent?.startDate} ～ {selectedEvent?.endDate}</p>
+                </FormRow>
+                <FormRow label="金額（元）">
+                  <input type="number" min="1" className={inputCls} placeholder="0" required
+                    value={backlogForm.amount}
+                    onChange={e => setBacklogForm(p => ({ ...p, amount: e.target.value }))} />
+                </FormRow>
+                <FormRow label="付款方式">
+                  <div className="flex gap-2">
+                    {['現金', 'LINE Pay'].map(m => (
+                      <button type="button" key={m}
+                        onClick={() => setBacklogForm(p => ({ ...p, paymentMethod: m }))}
+                        className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+                          backlogForm.paymentMethod === m
+                            ? 'bg-gray-800 text-white border-gray-800'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                        }`}>
+                        {m === '現金' ? '💵 現金' : '💚 LINE Pay'}
+                      </button>
+                    ))}
+                  </div>
+                </FormRow>
+                <FormRow label="備註（選填）">
+                  <input type="text" className={inputCls} placeholder="例：補登漏記收款"
+                    value={backlogForm.note}
+                    onChange={e => setBacklogForm(p => ({ ...p, note: e.target.value }))} />
+                </FormRow>
+                <div className="flex gap-2 pt-1">
+                  <button type="submit" className={btnPrimary + ' flex-1'}>
+                    {backlogDone ? '✅ 補登成功' : '確認補登'}
+                  </button>
+                  <button type="button" onClick={() => setBacklogModal(false)} className={btnSecondary}>取消</button>
+                </div>
+              </form>
+            </Modal>
+          )}
         </>
       )}
     </div>
@@ -1308,6 +1382,7 @@ export default function MarketDiary({ data }) {
           deleteMarketSale={deleteMarketSale}
           marketSales={marketSales}
           addRevenue={addRevenue}
+          processMarketSale={processMarketSale}
         />
       )}
       {tab === 'analysis' && (

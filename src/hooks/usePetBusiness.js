@@ -803,8 +803,8 @@ export default function usePetBusiness() {
   }, [cloudUpdate]);
 
   // ── 市集現場收款 ──────────────────────────────────────────────
-  const processMarketSale = useCallback(async ({ items, giftItems = [], paymentMethod, totalAmount, eventId }) => {
-    const today = new Date().toISOString().slice(0, 10);
+  const processMarketSale = useCallback(async ({ items, giftItems = [], paymentMethod, totalAmount, eventId, overrideDate, note }) => {
+    const today = overrideDate || new Date().toISOString().slice(0, 10);
     const allItems = [...items, ...giftItems];
     const catMap = { "A用品": "用品", "B食品": "食品" };
     const allForCat = (items.length > 0 ? items : giftItems).filter(Boolean);
