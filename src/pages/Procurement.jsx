@@ -379,7 +379,7 @@ export default function Procurement({ data }) {
           date:             today(),
           type:             '進貨',
           note:             names,
-          amount:           total,
+          amount:           Math.round(total),
           isProductionCost: addCategory === 'C食材',
           supplierId:       null,
           customSupplierName: '',
