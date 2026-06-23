@@ -253,11 +253,16 @@ export default function usePetBusiness() {
         const newBatches = expiryBatch
           ? [...prevBatches, normalizeBatch({ ...expiryBatch, qty })]
           : prevBatches;
+        const oldQty = item.currentQty ?? 0;
+        const oldCost = item.cost ?? unitPrice;
+        const newAvgCost = oldQty + qty > 0
+          ? Math.round(((oldQty * oldCost) + (qty * unitPrice)) / (oldQty + qty) * 100) / 100
+          : unitPrice;
         const n = [...list];
-        n[idx] = { ...item, currentQty: item.currentQty + qty, expiryBatches: newBatches };
+        n[idx] = { ...item, currentQty: oldQty + qty, cost: newAvgCost, expiryBatches: newBatches };
         return n;
       }
-      return [...list, { id: uid(), category, itemName, currentQty: qty, safetyQty: 0, unit: '個' }];
+      return [...list, { id: uid(), category, itemName, currentQty: qty, cost: unitPrice, safetyQty: 0, unit: '個' }];
     };
     const log = { id: uid(), date, itemId, itemName, change: +qty, reason: `進貨${note ? `（${note}）` : ''}` };
     if (newExp) setExpenses(prev => [...prev, newExp]);
