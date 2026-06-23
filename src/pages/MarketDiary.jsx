@@ -640,23 +640,52 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
 
   // 補登 modal
   const [backlogModal, setBacklogModal] = useState(false)
-  const [backlogForm, setBacklogForm] = useState({ date: today(), amount: '', paymentMethod: '現金', note: '' })
+  const [backlogForm, setBacklogForm] = useState({ date: today(), paymentMethod: '現金', note: '' })
+  const [backlogItems, setBacklogItems] = useState([]) // { itemId, itemName, category, qty, unitPrice, cost }
   const [backlogDone, setBacklogDone] = useState(false)
+  const [backlogSearch, setBacklogSearch] = useState('')
+
+  const backlogTotal = backlogItems.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice, 0)
+
+  function backlogAddItem(item) {
+    setBacklogItems(prev => {
+      const idx = prev.findIndex(c => c.itemId === item.id)
+      if (idx !== -1) { const n = [...prev]; n[idx] = { ...n[idx], qty: n[idx].qty + 1 }; return n }
+      return [...prev, { itemId: item.id, itemName: item.itemName, category: item.category, qty: 1, unitPrice: item.salePrice || item.listPrice || 0, cost: item.cost || 0, isGift: false }]
+    })
+  }
+  function backlogUpdateQty(itemId, qty) {
+    if (qty <= 0) { setBacklogItems(prev => prev.filter(c => c.itemId !== itemId)); return }
+    setBacklogItems(prev => prev.map(c => c.itemId === itemId ? { ...c, qty } : c))
+  }
+
+  const saleItemsForBacklog = useMemo(
+    () => inventory.filter(i => i.category === 'A用品' || i.category === 'B食品'),
+    [inventory]
+  )
+  const filteredBacklogItems = useMemo(() => {
+    const q = backlogSearch.trim().toLowerCase()
+    return !q ? saleItemsForBacklog : saleItemsForBacklog.filter(i => i.itemName?.toLowerCase().includes(q))
+  }, [saleItemsForBacklog, backlogSearch])
 
   async function handleBacklogSubmit(e) {
     e.preventDefault()
-    if (!backlogForm.amount || !selectedEvent) return
+    if (backlogItems.length === 0 || !selectedEvent) return
+    const saleItems = backlogItems.filter(c => !c.isGift)
+    const giftItems = backlogItems.filter(c => c.isGift)
     await processMarketSale({
-      items: [],
-      giftItems: [],
+      items: saleItems,
+      giftItems,
       paymentMethod: backlogForm.paymentMethod,
-      totalAmount: parseFloat(backlogForm.amount),
+      totalAmount: backlogTotal,
       eventId: effectiveEventId,
       overrideDate: backlogForm.date,
       note: backlogForm.note,
     })
     setBacklogDone(true)
-    setBacklogForm({ date: today(), amount: '', paymentMethod: '現金', note: '' })
+    setBacklogForm({ date: today(), paymentMethod: '現金', note: '' })
+    setBacklogItems([])
+    setBacklogSearch('')
     setTimeout(() => { setBacklogDone(false); setBacklogModal(false) }, 1500)
   }
 
@@ -706,11 +735,15 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
   // 購買商品成本：各筆交易的商品數量 × 庫存成本
   const goodsCost = useMemo(() => {
     return eventRevenues.reduce((total, r) => {
-      if (!r.items) return total
-      return total + r.items.reduce((s, item) => {
+      const itemsCost = (r.items ?? []).reduce((s, item) => {
         const inv = inventory.find(i => i.id === item.itemId)
         return s + (inv?.cost || 0) * item.qty
       }, 0)
+      const giftsCost = (r.giftItems ?? []).reduce((s, item) => {
+        const inv = inventory.find(i => i.id === item.itemId)
+        return s + (inv?.cost || item.cost || 0) * item.qty
+      }, 0)
+      return total + itemsCost + giftsCost
     }, 0)
   }, [eventRevenues, inventory])
 
@@ -988,7 +1021,7 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
 
           {/* 補登交易 Modal */}
           {backlogModal && (
-            <Modal title="補登市集交易" size="sm" onClose={() => setBacklogModal(false)}>
+            <Modal title="補登市集交易" size="md" onClose={() => { setBacklogModal(false); setBacklogItems([]); setBacklogSearch('') }}>
               <form onSubmit={handleBacklogSubmit} className="space-y-4">
                 <FormRow label="日期">
                   <input type="date" className={inputCls} required
@@ -997,11 +1030,59 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
                     onChange={e => setBacklogForm(p => ({ ...p, date: e.target.value }))} />
                   <p className="text-xs text-gray-400 mt-1">必須在市集日期區間內：{selectedEvent?.startDate} ～ {selectedEvent?.endDate}</p>
                 </FormRow>
-                <FormRow label="金額（元）">
-                  <input type="number" min="1" className={inputCls} placeholder="0" required
-                    value={backlogForm.amount}
-                    onChange={e => setBacklogForm(p => ({ ...p, amount: e.target.value }))} />
-                </FormRow>
+
+                {/* 商品選擇 */}
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">商品（點擊加入）</p>
+                  <input type="text" placeholder="搜尋商品..."
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 mb-2"
+                    value={backlogSearch} onChange={e => setBacklogSearch(e.target.value)} />
+                  <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
+                    {filteredBacklogItems.map(item => (
+                      <button type="button" key={item.id} onClick={() => backlogAddItem(item)}
+                        disabled={item.currentQty <= 0}
+                        className="bg-gray-50 hover:bg-orange-50 border border-gray-200 hover:border-orange-300 rounded-xl p-2.5 text-left transition-colors disabled:opacity-40 text-xs">
+                        <p className="font-semibold text-gray-800 truncate">{item.itemName}</p>
+                        <p className="text-orange-500 font-bold mt-0.5">{fmt(item.salePrice || item.listPrice || 0)}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 購物車 */}
+                {backlogItems.length > 0 && (
+                  <div className="space-y-1.5 border border-gray-100 rounded-xl p-3">
+                    {backlogItems.map(c => (
+                      <div key={c.itemId} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${
+                        c.isGift ? 'bg-pink-50' : 'bg-gray-50'
+                      }`}>
+                        <span className="flex-1 text-sm text-gray-700 truncate">{c.itemName}</span>
+                        <div className="flex items-center gap-1">
+                          <button type="button" onClick={() => backlogUpdateQty(c.itemId, c.qty - 1)}
+                            className="w-5 h-5 rounded bg-gray-200 hover:bg-gray-300 text-xs font-bold flex items-center justify-center">−</button>
+                          <span className="w-5 text-center text-sm font-bold">{c.qty}</span>
+                          <button type="button" onClick={() => backlogUpdateQty(c.itemId, c.qty + 1)}
+                            className="w-5 h-5 rounded bg-gray-200 hover:bg-gray-300 text-xs font-bold flex items-center justify-center">+</button>
+                        </div>
+                        <span className={`text-xs font-semibold w-14 text-right ${
+                          c.isGift ? 'text-pink-400 line-through' : 'text-gray-700'
+                        }`}>{fmt(c.qty * c.unitPrice)}</span>
+                        <button type="button"
+                          onClick={() => setBacklogItems(prev => prev.map(x => x.itemId === c.itemId ? { ...x, isGift: !x.isGift } : x))}
+                          className={`text-xs px-1.5 py-0.5 rounded border shrink-0 ${
+                            c.isGift ? 'bg-pink-100 text-pink-600 border-pink-300' : 'bg-white text-gray-400 border-gray-200 hover:border-pink-300'
+                          }`}>贈</button>
+                        <button type="button" onClick={() => backlogUpdateQty(c.itemId, 0)}
+                          className="text-gray-300 hover:text-red-400"><X size={13} /></button>
+                      </div>
+                    ))}
+                    <div className="flex justify-between text-sm font-bold pt-1 border-t border-gray-100">
+                      <span className="text-gray-600">合計</span>
+                      <span className="text-gray-800">{fmt(backlogTotal)}</span>
+                    </div>
+                  </div>
+                )}
+
                 <FormRow label="付款方式">
                   <div className="flex gap-2">
                     {['現金', 'LINE Pay'].map(m => (
@@ -1023,10 +1104,10 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
                     onChange={e => setBacklogForm(p => ({ ...p, note: e.target.value }))} />
                 </FormRow>
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" className={btnPrimary + ' flex-1'}>
+                  <button type="submit" disabled={backlogItems.length === 0} className={btnPrimary + ' flex-1 disabled:opacity-40'}>
                     {backlogDone ? '✅ 補登成功' : '確認補登'}
                   </button>
-                  <button type="button" onClick={() => setBacklogModal(false)} className={btnSecondary}>取消</button>
+                  <button type="button" onClick={() => { setBacklogModal(false); setBacklogItems([]); setBacklogSearch('') }} className={btnSecondary}>取消</button>
                 </div>
               </form>
             </Modal>
@@ -1076,11 +1157,15 @@ function AnalysisTab({ marketEvents, revenues, inventory }) {
       const boothFee  = ev.boothFee ?? 0
       const netProfit = totalRev - boothFee
       const goodsCost = evRevs.reduce((total, r) => {
-        if (!r.items) return total
-        return total + r.items.reduce((s, item) => {
+        const itemsCost = (r.items ?? []).reduce((s, item) => {
           const inv = inventory.find(i => i.id === item.itemId)
           return s + (inv?.cost || 0) * item.qty
         }, 0)
+        const giftsCost = (r.giftItems ?? []).reduce((s, item) => {
+          const inv = inventory.find(i => i.id === item.itemId)
+          return s + (inv?.cost || item.cost || 0) * item.qty
+        }, 0)
+        return total + itemsCost + giftsCost
       }, 0)
       const trueProfit = netProfit - goodsCost
       const days      = Math.max(1, Math.ceil((new Date(ev.endDate) - new Date(ev.startDate)) / 86400000) + 1)

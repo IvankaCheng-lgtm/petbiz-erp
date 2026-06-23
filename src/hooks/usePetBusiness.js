@@ -256,7 +256,7 @@ export default function usePetBusiness() {
         const oldQty = item.currentQty ?? 0;
         const oldCost = item.cost ?? unitPrice;
         const newAvgCost = oldQty + qty > 0
-          ? Math.round(((oldQty * oldCost) + (qty * unitPrice)) / (oldQty + qty) * 100) / 100
+          ? Math.round(((oldQty * oldCost) + (qty * unitPrice)) / (oldQty + qty) * 1000) / 1000
           : unitPrice;
         const n = [...list];
         n[idx] = { ...item, currentQty: oldQty + qty, cost: newAvgCost, expiryBatches: newBatches };
@@ -847,36 +847,27 @@ export default function usePetBusiness() {
     ];
 
     const giftCost = giftItems.reduce((s, it) => s + (it.cost || 0) * it.qty, 0);
-    const giftExpense = giftCost > 0 ? {
-      id: uid(), date: today, type: '行銷',
-      note: `市集贈品成本：${giftItems.map(i => i?.itemName || '').join('、')}`,
-      amount: giftCost, isProductionCost: false, isReported: false,
-    } : null;
+    // giftCost 只存入 saleRecord 供結算統計計算淨利，不另開支出（食材成本已在進貨時記錄）
+    const saleRecordWithCost = { ...saleRecord, giftCost };
 
     if (isLinePay) {
-      // LINE Pay：isPending:true 寫入 revenues 供結算統計顯示，待撥款後再人工確認
-      const revenueItem = { ...saleRecord, isReported: false, isPending: true };
+      const revenueItem = { ...saleRecordWithCost, isReported: false, isPending: true };
       setRevenues(prev => [...prev, revenueItem]);
-      setMarketSales(prev => [...prev, saleRecord]);
+      setMarketSales(prev => [...prev, saleRecordWithCost]);
       setInventory(applyInv);
       setInventoryLogs(prev => [...prev, ...logs]);
-      if (giftExpense) setExpenses(prev => [...prev, giftExpense]);
       await cloudUpdate("revenues",      list => [...list, revenueItem]);
-      await cloudUpdate("marketSales",   list => [...list, saleRecord]);
+      await cloudUpdate("marketSales",   list => [...list, saleRecordWithCost]);
       await cloudUpdate("inventory",     applyInv);
       await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
-      if (giftExpense) await cloudUpdate("expenses", list => [...list, giftExpense]);
     } else {
-      // 現金：正常寫入 revenues
-      const revenueItem = { ...saleRecord, isReported: false };
+      const revenueItem = { ...saleRecordWithCost, isReported: false };
       setRevenues(prev => [...prev, revenueItem]);
       setInventory(applyInv);
       setInventoryLogs(prev => [...prev, ...logs]);
-      if (giftExpense) setExpenses(prev => [...prev, giftExpense]);
       await cloudUpdate("revenues",      list => [...list, revenueItem]);
       await cloudUpdate("inventory",     applyInv);
       await cloudUpdate("inventoryLogs", list => [...list, ...logs]);
-      if (giftExpense) await cloudUpdate("expenses", list => [...list, giftExpense]);
     }
   }, [cloudUpdate]);
 

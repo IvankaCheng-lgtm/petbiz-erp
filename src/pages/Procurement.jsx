@@ -1299,7 +1299,7 @@ export default function Procurement({ data }) {
                 onChange={e => setPurchaseForm(p => ({ ...p, qty: e.target.value }))} required />
             </FormRow>
             <FormRow label="進貨單價（元）">
-              <input type="number" min="0" step="0.01" className={inputCls} placeholder="0" value={purchaseForm.unitPrice}
+              <input type="number" min="0" step="0.001" className={inputCls} placeholder="0" value={purchaseForm.unitPrice}
                 onChange={e => setPurchaseForm(p => ({ ...p, unitPrice: e.target.value }))} required />
             </FormRow>
             <FormRow label="來源廠商">
