@@ -118,8 +118,8 @@ export default function SalesOrder({ data }) {
     };
   }, [isScanning]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 小計只算非贈品（含單品折價）
-  const subtotal = useMemo(() => cart.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0), 0), [cart]);
+  // 小計只算非贈品（含單品折價，折價乘以數量）
+  const subtotal = useMemo(() => cart.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0) * c.qty, 0), [cart]);
 
   const totalAmount = useMemo(() => {
     let t = subtotal;
@@ -269,7 +269,7 @@ export default function SalesOrder({ data }) {
   }
 
   function printShippingSlip(o) {
-    const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0), 0)
+    const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0) * c.qty, 0)
     const discountAmt = subtotalAmt - (o.total ?? o.totalAmount ?? subtotalAmt)
     const gifts = o.giftItems ?? []
     // 官網以外的電商平台只顯示數量與原始金額，不顯示折扣與合計
@@ -316,7 +316,7 @@ export default function SalesOrder({ data }) {
           <thead><tr><th>品名</th><th class="right">單價</th><th class="right">數量</th>${hideDiscount ? '' : '<th class="right">小計</th>'}</tr></thead>
           <tbody>
             ${(o.items ?? []).map(i => {
-              const itemDisc = i.itemDiscount || 0
+              const itemDisc = (i.itemDiscount || 0) * i.qty
               const lineTotal = i.qty * i.unitPrice - itemDisc
               const discNote = itemDisc > 0 ? ` <span style="color:#16a34a;font-size:11px">(-$${itemDisc})</span>` : ''
               return `<tr><td>${i.itemName}${discNote}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td>${hideDiscount ? '' : `<td class="right">$${lineTotal}</td>`}</tr>`
@@ -560,7 +560,7 @@ export default function SalesOrder({ data }) {
                     <button onClick={() => updateQty(c.itemId, c.qty + 1)} className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold">+</button>
                   </div>
                   <span className={`w-16 text-right font-medium ${c.isGift ? 'text-pink-400' : c.itemDiscount > 0 ? 'text-blue-600' : 'text-gray-800'}`}>
-                    {c.isGift ? '贈' : `$${c.qty * c.unitPrice - (c.itemDiscount || 0)}`}
+                    {c.isGift ? '贈' : `$${c.qty * c.unitPrice - (c.itemDiscount || 0) * c.qty}`}
                   </span>
                 </div>
                 {!c.isGift && (
@@ -573,7 +573,7 @@ export default function SalesOrder({ data }) {
                       placeholder="0"
                       className="w-20 border border-blue-200 rounded-lg px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-300" />
                     {c.itemDiscount > 0 && (
-                      <span className="text-xs text-blue-500">已折 ${c.itemDiscount}</span>
+                      <span className="text-xs text-blue-500">每件折 ${c.itemDiscount}，共折 ${c.itemDiscount * c.qty}</span>
                     )}
                   </div>
                 )}
