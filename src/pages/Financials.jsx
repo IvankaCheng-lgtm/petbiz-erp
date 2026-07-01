@@ -33,6 +33,7 @@ const CHANNELS = [
   { group: '線下', options: ['市集', '寄賣點銷售'] },
   { group: '撥款', options: ['平台撥款', 'LINE Pay 撥款'] },
   { group: '其他', options: ['大宗/B2B', '其他營收'] },
+  { group: '非營業收入', options: ['利息收入', '補助款', '租金收入', '其他非營業收入'] },
 ]
 const CHANNELS_FLAT = CHANNELS.flatMap(g => g.options)
 const CATEGORIES    = ['食品', '烘焙', '蛋糕', '用品']
@@ -325,6 +326,7 @@ export default function Financials({ data }) {
   const [revForm, setRevForm] = useState({ date: today(), channel: '電商', category: '食品', amount: '', note: '', supplierId: null, customSupplierName: '' })
 
   const PAYOUT_CHANNELS = ['平台撥款', 'LINE Pay 撥款']
+  const NON_SALES_CHANNELS = ['利息收入', '補助款', '租金收入', '其他非營業收入']
   const [expForm, setExpForm] = useState({ date: today(), type: '租金', note: '', amount: '', isProductionCost: false, organizerId: '', organizerName: '', supplierId: null, customSupplierName: '' })
 
   const sortedRevenues = useMemo(() => [...revenues].filter(r => !r.isPending).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)), [revenues])
@@ -350,7 +352,8 @@ export default function Financials({ data }) {
       ? suppliers.find(s => s.id === revForm.supplierId)?.name || ''
       : revForm.customSupplierName.trim()
     const isPayout = PAYOUT_CHANNELS.includes(revForm.channel)
-    addRevenue({ ...revForm, amount: parseFloat(revForm.amount), supplierName, category: isPayout ? null : revForm.category })
+    const isNonSales = NON_SALES_CHANNELS.includes(revForm.channel)
+    addRevenue({ ...revForm, amount: parseFloat(revForm.amount), supplierName, category: (isPayout || isNonSales) ? null : revForm.category })
     setModal(null)
     setRevForm({ date: today(), channel: '電商', category: '食品', amount: '', note: '', supplierId: null, customSupplierName: '' })
   }
@@ -545,7 +548,7 @@ export default function Financials({ data }) {
                 ))}
               </select>
             </FormRow>
-            {!PAYOUT_CHANNELS.includes(revForm.channel) && (
+            {!PAYOUT_CHANNELS.includes(revForm.channel) && !NON_SALES_CHANNELS.includes(revForm.channel) && (
               <FormRow label="商品類別">
                 <select className={inputCls} value={revForm.category}
                   onChange={e => setRevForm(p => ({ ...p, category: e.target.value }))}>

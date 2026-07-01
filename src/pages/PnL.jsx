@@ -100,7 +100,9 @@ export default function PnL({ data }) {
     const PAYOUT_CHANNELS = ['平台撥款', 'LINE Pay 撥款']
     const EC_CHANNELS = ['電商', '社群', '萌獸官網', 'PChome', 'Yahoo', '蝦皮']
     const OTHER_CHANNELS = ['私訊訂購', 'LINE訂購', '大宗/B2B', '寄賣點銷售']
-    const salesRevenues = filteredRevenues.filter(r => !PAYOUT_CHANNELS.includes(r.channel))
+    const NON_SALES_CHANNELS = ['利息收入', '補助款', '租金收入', '其他非營業收入']
+    const salesRevenues = filteredRevenues.filter(r => !PAYOUT_CHANNELS.includes(r.channel) && !NON_SALES_CHANNELS.includes(r.channel))
+    const nonSalesRev = filteredRevenues.filter(r => NON_SALES_CHANNELS.includes(r.channel)).reduce((s, r) => s + r.amount, 0)
     const totalRev = salesRevenues.reduce((s, r) => s + r.amount, 0)
     const ecRev = salesRevenues.filter(r => EC_CHANNELS.includes(r.channel)).reduce((s, r) => s + r.amount, 0)
     const mktRev = salesRevenues.filter(r => r.channel === '市集').reduce((s, r) => s + r.amount, 0)
@@ -134,7 +136,7 @@ export default function PnL({ data }) {
     const totalOpExp = Object.values(opExpenses).reduce((s, v) => s + v, 0)
     const netProfit = grossProfit - totalOpExp
 
-    return { totalRev, ecRev, mktRev, otherRev, byCategory, rawMaterialCost, packagingCost, goodsCost, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
+    return { totalRev, nonSalesRev, ecRev, mktRev, otherRev, byCategory, rawMaterialCost, packagingCost, goodsCost, cogs, grossProfit, opExpenses, totalOpExp, netProfit }
   }, [filteredRevenues, filteredExpenses])
 
   // 依選擇期間的待撥款統計
@@ -546,6 +548,7 @@ export default function PnL({ data }) {
       '<tr class="indent1"><td>運費</td><td>(' + fmt(pnl.opExpenses.shipping) + ')</td></tr>',
       '<tr class="indent1"><td>雜項</td><td>(' + fmt(pnl.opExpenses.misc) + ')</td></tr>',
       '<tr class="bold section-gap ' + npClass + '"><td>▌ 稅前淨利</td><td>' + npFmt + '</td></tr>',
+      pnl.nonSalesRev > 0 ? '<tr class="bold section-gap"><td>▌ (+) 非營業收入</td><td>' + fmt(pnl.nonSalesRev) + '</td></tr>' : '',
       '</table>',
       '<div class="profit-box">',
       '<h2>稅前淨利</h2>',
@@ -564,7 +567,7 @@ export default function PnL({ data }) {
     setTimeout(() => { win.print(); win.close() }, 300)
   }
 
-  const profitRate = pnl.totalRev > 0 ? (pnl.netProfit / pnl.totalRev * 100) : 0
+  const profitRate = (pnl.totalRev + pnl.nonSalesRev) > 0 ? ((pnl.netProfit + pnl.nonSalesRev) / (pnl.totalRev + pnl.nonSalesRev) * 100) : 0
 
   return (
     <div className="p-6 space-y-6">
@@ -703,9 +706,16 @@ export default function PnL({ data }) {
             <PnLRow label="運費" value={-pnl.opExpenses.shipping} indent={1} />
             <PnLRow label="雜項" value={-pnl.opExpenses.misc} indent={1} />
 
+            {/* 非營業收入 */}
+            {pnl.nonSalesRev > 0 && (
+              <>
+                <PnLRow label="▌ (+) 非營業收入" value={pnl.nonSalesRev} bold border />
+              </>
+            )}
+
             {/* 稅前淨利 */}
-            <PnLRow label="▌ 稅前淨利" value={pnl.netProfit} bold border
-              highlight={pnl.netProfit >= 0 ? 'green' : 'red'} />
+            <PnLRow label="▌ 稅前淨利" value={pnl.netProfit + pnl.nonSalesRev} bold border
+              highlight={(pnl.netProfit + pnl.nonSalesRev) >= 0 ? 'green' : 'red'} />
           </div>
         </SectionCard>
 
