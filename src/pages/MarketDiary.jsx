@@ -644,8 +644,18 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
   const [backlogItems, setBacklogItems] = useState([]) // { itemId, itemName, category, qty, unitPrice, cost }
   const [backlogDone, setBacklogDone] = useState(false)
   const [backlogSearch, setBacklogSearch] = useState('')
+  const [backlogDiscountPct, setBacklogDiscountPct] = useState('')
+  const [backlogDiscountAmt, setBacklogDiscountAmt] = useState('')
 
-  const backlogTotal = backlogItems.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice, 0)
+  const backlogSubtotal = backlogItems.filter(c => !c.isGift).reduce((s, c) => s + c.qty * c.unitPrice, 0)
+  const backlogTotal = useMemo(() => {
+    let t = backlogSubtotal
+    const pct = parseFloat(backlogDiscountPct)
+    const amt = parseFloat(backlogDiscountAmt)
+    if (!isNaN(pct) && pct > 0 && pct < 100) t = t * (1 - pct / 100)
+    if (!isNaN(amt) && amt > 0) t = t - amt
+    return Math.max(0, Math.round(t * 100) / 100)
+  }, [backlogSubtotal, backlogDiscountPct, backlogDiscountAmt])
 
   function backlogAddItem(item) {
     setBacklogItems(prev => {
@@ -686,6 +696,8 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
     setBacklogForm({ date: today(), paymentMethod: '現金', note: '' })
     setBacklogItems([])
     setBacklogSearch('')
+    setBacklogDiscountPct('')
+    setBacklogDiscountAmt('')
     setTimeout(() => { setBacklogDone(false); setBacklogModal(false) }, 1500)
   }
 
@@ -1021,7 +1033,7 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
 
           {/* 補登交易 Modal */}
           {backlogModal && (
-            <Modal title="補登市集交易" size="md" onClose={() => { setBacklogModal(false); setBacklogItems([]); setBacklogSearch('') }}>
+            <Modal title="補登市集交易" size="md" onClose={() => { setBacklogModal(false); setBacklogItems([]); setBacklogSearch(''); setBacklogDiscountPct(''); setBacklogDiscountAmt('') }}>
               <form onSubmit={handleBacklogSubmit} className="space-y-4">
                 <FormRow label="日期">
                   <input type="date" className={inputCls} required
@@ -1076,7 +1088,34 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
                           className="text-gray-300 hover:text-red-400"><X size={13} /></button>
                       </div>
                     ))}
-                    <div className="flex justify-between text-sm font-bold pt-1 border-t border-gray-100">
+                    <div className="flex justify-between text-sm text-gray-500 pt-1 border-t border-gray-100">
+                      <span>小計</span>
+                      <span>{fmt(backlogSubtotal)}</span>
+                    </div>
+                    {/* 折扣 */}
+                    <div className="mt-2 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2.5 space-y-2">
+                      <p className="text-xs font-medium text-orange-600">折扣（選填）</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">打折 %（例：15 = 八五折）</label>
+                          <input type="number" min="0" max="99" placeholder="不打折請留空"
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+                            value={backlogDiscountPct}
+                            onChange={e => setBacklogDiscountPct(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">折抵金額（元）</label>
+                          <input type="number" min="0" placeholder="不折抵請留空"
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+                            value={backlogDiscountAmt}
+                            onChange={e => setBacklogDiscountAmt(e.target.value)} />
+                        </div>
+                      </div>
+                      {backlogSubtotal > backlogTotal && (
+                        <p className="text-xs text-emerald-600 font-medium">共省 {fmt(backlogSubtotal - backlogTotal)}</p>
+                      )}
+                    </div>
+                    <div className="flex justify-between text-sm font-bold pt-1">
                       <span className="text-gray-600">合計</span>
                       <span className="text-gray-800">{fmt(backlogTotal)}</span>
                     </div>
@@ -1107,7 +1146,7 @@ function StatsTab({ marketEvents, revenues, expenses, inventory, deleteMarketSal
                   <button type="submit" disabled={backlogItems.length === 0} className={btnPrimary + ' flex-1 disabled:opacity-40'}>
                     {backlogDone ? '✅ 補登成功' : '確認補登'}
                   </button>
-                  <button type="button" onClick={() => { setBacklogModal(false); setBacklogItems([]); setBacklogSearch('') }} className={btnSecondary}>取消</button>
+                  <button type="button" onClick={() => { setBacklogModal(false); setBacklogItems([]); setBacklogSearch(''); setBacklogDiscountPct(''); setBacklogDiscountAmt('') }} className={btnSecondary}>取消</button>
                 </div>
               </form>
             </Modal>
