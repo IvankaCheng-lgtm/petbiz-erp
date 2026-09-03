@@ -47,6 +47,8 @@ export default function SalesOrder({ data }) {
   const [itemSearch, setItemSearch] = useState("");
   const [itemCat,    setItemCat]    = useState('all');
   const [shippingFee, setShippingFee] = useState("");
+  const [shippingDiscount, setShippingDiscount] = useState("");
+  const [discountLabel, setDiscountLabel] = useState("");
   const [withShipment, setWithShipment] = useState(true);
   // 'immediate' | 'pending_payout' | 'skip'
   const [revenueMode, setRevenueMode] = useState('immediate');
@@ -128,9 +130,11 @@ export default function SalesOrder({ data }) {
     const amt = parseFloat(discountAmt);
     if (!isNaN(pct) && pct > 0 && pct < 100) t = Math.floor(t * (1 - pct / 100));
     if (!isNaN(amt) && amt > 0) t = Math.floor(t - amt);
-    t += parseFloat(shippingFee) || 0;
+    const fee = parseFloat(shippingFee) || 0;
+    const feeDisc = parseFloat(shippingDiscount) || 0;
+    t += Math.max(0, fee - feeDisc);
     return Math.max(0, t);
-  }, [subtotal, discountPct, discountAmt, shippingFee]);
+  }, [subtotal, discountPct, discountAmt, shippingFee, shippingDiscount]);
 
   // 寄賣點拆帳金額計算
   const consignmentFee = useMemo(() => {
@@ -213,8 +217,11 @@ export default function SalesOrder({ data }) {
       giftItems,
       discountPct: parseFloat(discountPct) || null,
       discountAmt: parseFloat(discountAmt) || null,
+      discountLabel: discountLabel.trim() || null,
       discountType: discountPct && discountAmt ? 'both' : discountPct ? 'pct' : discountAmt ? 'amt' : null,
       discountValue: discountPct ? parseFloat(discountPct) : discountAmt ? parseFloat(discountAmt) : null,
+      shippingFee: parseFloat(shippingFee) || null,
+      shippingDiscount: parseFloat(shippingDiscount) || null,
       totalAmount,
       platformCost: isConsignment ? consignmentFee : computedCost,
       supplierId: selectedConsignee?.id ?? null,
@@ -228,7 +235,9 @@ export default function SalesOrder({ data }) {
     setCart([]);
     setDiscountPct("");
     setDiscountAmt("");
+    setDiscountLabel("");
     setShippingFee("");
+    setShippingDiscount("");
     setPlatformCost("");
     setNote("");
     setConsignSkipRevenue(false);
@@ -272,9 +281,11 @@ export default function SalesOrder({ data }) {
 
   function printShippingSlip(o) {
     const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0) * c.qty, 0)
-    const discountAmt = subtotalAmt - (o.total ?? o.totalAmount ?? subtotalAmt)
+    const fee = o.shippingFee || 0
+    const feeDisc = o.shippingDiscount || 0
+    const netFee = Math.max(0, fee - feeDisc)
+    const productDiscount = subtotalAmt - ((o.total ?? o.totalAmount ?? subtotalAmt) - netFee)
     const gifts = o.giftItems ?? []
-    // 官網以外的電商平台只顯示數量與原始金額，不顯示折扣與合計
     const hideDiscount = PLATFORMS_ECOMMERCE.includes(o.platform) && o.platform !== '萌獸官網'
 
     // 將 LOGO 轉成 base64 嵌入 HTML
@@ -326,9 +337,11 @@ export default function SalesOrder({ data }) {
             ${gifts.map(i => `<tr class="gift"><td>🎁 ${i.itemName}</td><td class="right">$${i.unitPrice}</td><td class="right">${i.qty}</td>${hideDiscount ? '' : '<td class="right">贈品</td>'}</tr>`).join('')}
           </tbody>
         </table>
-        ${!hideDiscount ? `<table style="width:260px;margin-left:auto">
-          <tr><td>小計</td><td class="right">$${subtotalAmt}</td></tr>
-          ${discountAmt > 0 ? `<tr><td>折扣</td><td class="right" style="color:#16a34a">−$${discountAmt}</td></tr>` : ''}
+        ${!hideDiscount ? `<table style="width:280px;margin-left:auto">
+          <tr><td>商品小計</td><td class="right">$${subtotalAmt}</td></tr>
+          ${productDiscount > 0 ? `<tr><td style="color:#16a34a">${o.discountLabel || '折扣'}</td><td class="right" style="color:#16a34a">−$${productDiscount}</td></tr>` : ''}
+          ${fee > 0 ? `<tr><td>配送運費</td><td class="right">$${fee}</td></tr>` : ''}
+          ${feeDisc > 0 ? `<tr><td style="color:#16a34a">運費折扣</td><td class="right" style="color:#16a34a">−$${feeDisc}</td></tr>` : ''}
           <tr class="total-row"><td>合計</td><td class="right">$${o.total ?? o.totalAmount}</td></tr>
         </table>` : ''}
         ${o.note ? `<div class="note">📝 備註：${o.note.replace(/\n/g, '<br>')}</div>` : ''}
@@ -583,6 +596,12 @@ export default function SalesOrder({ data }) {
             ))}
           </div>
           <div className="border-t border-gray-100 mt-3 pt-3 space-y-2">
+            {platform === '萌獸官網' && (
+              <input type="text" value={discountLabel}
+                onChange={e => setDiscountLabel(e.target.value)}
+                placeholder="折扣項目（例：折價券、會員折扣）"
+                className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+            )}
             <div className="flex gap-2">
               <input type="number" min="0" max="99" value={discountPct}
                 onChange={(e) => setDiscountPct(e.target.value)}
@@ -596,22 +615,29 @@ export default function SalesOrder({ data }) {
             <div className="flex justify-between text-sm text-gray-500">
               <span>小計</span><span>${subtotal}</span>
             </div>
-            {(() => { const disc = subtotal - (totalAmount - (parseFloat(shippingFee) || 0)); return disc > 0 ? (
+            {(() => { const disc = subtotal - (totalAmount - Math.max(0, (parseFloat(shippingFee)||0) - (parseFloat(shippingDiscount)||0))); return disc > 0 ? (
               <div className="flex justify-between text-sm text-green-600">
-                <span>折扣</span><span>−${disc}</span>
+                <span>{discountLabel || '折扣'}</span><span>−${disc}</span>
               </div>
-            ) : null })()
-            }
-            {/* 配送運費 */}
+            ) : null })()}
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm text-gray-500 shrink-0">配送運費</span>
-              <input
-                type="number" min="0" step="1"
-                value={shippingFee}
-                onChange={e => setShippingFee(e.target.value)}
-                placeholder="0"
+              <input type="number" min="0" step="1" value={shippingFee}
+                onChange={e => setShippingFee(e.target.value)} placeholder="0"
                 className="w-28 text-right border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
             </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-gray-500 shrink-0">運費折扣</span>
+              <input type="number" min="0" step="1" value={shippingDiscount}
+                onChange={e => setShippingDiscount(e.target.value)} placeholder="0"
+                className="w-28 text-right border border-green-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+            </div>
+            {parseFloat(shippingDiscount) > 0 && (
+              <div className="flex justify-between text-xs text-green-600">
+                <span>運費實收</span>
+                <span>${Math.max(0, (parseFloat(shippingFee)||0) - (parseFloat(shippingDiscount)||0))}</span>
+              </div>
+            )}
             <div className="flex justify-between text-base font-bold text-gray-800">
               <span>合計</span><span>${totalAmount}</span>
             </div>
