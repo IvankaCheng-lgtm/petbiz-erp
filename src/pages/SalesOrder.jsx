@@ -280,13 +280,16 @@ export default function SalesOrder({ data }) {
   }
 
   function printShippingSlip(o) {
-    const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0) * c.qty, 0)
+    const itemsSubtotal = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice, 0)
+    const itemDiscounts = (o.items ?? []).reduce((s, c) => s + (c.itemDiscount || 0) * c.qty, 0)
+    const subtotalAmt = itemsSubtotal - itemDiscounts
     const fee = o.shippingFee || 0
     const feeDisc = o.shippingDiscount || 0
     const netFee = Math.max(0, fee - feeDisc)
     const productDiscount = subtotalAmt - ((o.total ?? o.totalAmount ?? subtotalAmt) - netFee)
     const gifts = o.giftItems ?? []
-    const hideDiscount = PLATFORMS_ECOMMERCE.includes(o.platform) && o.platform !== '萌獸官網'
+    // 只有 PChome / Yahoo / 蝦皮 才隱藏金額明細
+    const hideDiscount = ['PChome', 'Yahoo', '跑皮'].includes(o.platform)
 
     // 將 LOGO 轉成 base64 嵌入 HTML
     const logoUrl = new URL('../assets/LOGO.png', import.meta.url).href

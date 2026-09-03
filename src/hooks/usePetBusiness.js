@@ -647,7 +647,7 @@ export default function usePetBusiness() {
     cloudUpdate("expenses", list => list.filter(e => e.orderId !== id));
   }, [cloudUpdate]);
 
-  const processOrder = useCallback(async ({ platform, items, giftItems = [], discountType, discountValue, totalAmount, platformCost, supplierId = null, skipRevenue = false, pendingRevenue = false, linePayRevenue = false, note = '', withShipment = true }) => {
+  const processOrder = useCallback(async ({ platform, items, giftItems = [], discountType, discountValue, discountLabel, shippingFee, shippingDiscount, totalAmount, platformCost, supplierId = null, skipRevenue = false, pendingRevenue = false, linePayRevenue = false, note = '', withShipment = true }) => {
     const today = new Date().toISOString().slice(0, 10);
     const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const discount = subtotal - totalAmount;
@@ -660,6 +660,9 @@ export default function usePetBusiness() {
       shipped: withShipment,
       discountType: discountType ?? null,
       discountValue: discountValue ?? null,
+      discountLabel: discountLabel || null,
+      shippingFee: shippingFee || null,
+      shippingDiscount: shippingDiscount || null,
       platformCost: cost,
       supplierId: supplierId || null,
       skipRevenue,
