@@ -46,6 +46,7 @@ export default function SalesOrder({ data }) {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [itemCat,    setItemCat]    = useState('all');
+  const [shippingFee, setShippingFee] = useState("");
   const [withShipment, setWithShipment] = useState(true);
   // 'immediate' | 'pending_payout' | 'skip'
   const [revenueMode, setRevenueMode] = useState('immediate');
@@ -125,11 +126,11 @@ export default function SalesOrder({ data }) {
     let t = subtotal;
     const pct = parseFloat(discountPct);
     const amt = parseFloat(discountAmt);
-    // 折扣 % 和折扣金額可同時使用：先套 %，再減金額
     if (!isNaN(pct) && pct > 0 && pct < 100) t = Math.floor(t * (1 - pct / 100));
     if (!isNaN(amt) && amt > 0) t = Math.floor(t - amt);
+    t += parseFloat(shippingFee) || 0;
     return Math.max(0, t);
-  }, [subtotal, discountPct, discountAmt]);
+  }, [subtotal, discountPct, discountAmt, shippingFee]);
 
   // 寄賣點拆帳金額計算
   const consignmentFee = useMemo(() => {
@@ -227,6 +228,7 @@ export default function SalesOrder({ data }) {
     setCart([]);
     setDiscountPct("");
     setDiscountAmt("");
+    setShippingFee("");
     setPlatformCost("");
     setNote("");
     setConsignSkipRevenue(false);
@@ -543,14 +545,14 @@ export default function SalesOrder({ data }) {
                     }`}>
                     贈品
                   </button>
-                  {!c.isGift && selectedConsignee ? (
+                  {!c.isGift ? (
                     <input
                       type="number" min="0" step="0.01"
                       value={c.unitPrice}
                       onChange={e => updateUnitPrice(c.itemId, e.target.value)}
-                      className="w-20 text-right border border-purple-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                      className="w-20 text-right border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                   ) : (
-                    <span className={`w-16 text-right ${c.isGift ? 'text-pink-400 line-through text-xs' : 'text-gray-400'}`}>
+                    <span className="w-16 text-right text-pink-400 line-through text-xs">
                       ${c.unitPrice}
                     </span>
                   )}
@@ -594,11 +596,22 @@ export default function SalesOrder({ data }) {
             <div className="flex justify-between text-sm text-gray-500">
               <span>小計</span><span>${subtotal}</span>
             </div>
-            {subtotal !== totalAmount && (
+            {(() => { const disc = subtotal - (totalAmount - (parseFloat(shippingFee) || 0)); return disc > 0 ? (
               <div className="flex justify-between text-sm text-green-600">
-                <span>折扣</span><span>−${subtotal - totalAmount}</span>
+                <span>折扣</span><span>−${disc}</span>
               </div>
-            )}
+            ) : null })()
+            }
+            {/* 配送運費 */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-gray-500 shrink-0">配送運費</span>
+              <input
+                type="number" min="0" step="1"
+                value={shippingFee}
+                onChange={e => setShippingFee(e.target.value)}
+                placeholder="0"
+                className="w-28 text-right border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+            </div>
             <div className="flex justify-between text-base font-bold text-gray-800">
               <span>合計</span><span>${totalAmount}</span>
             </div>
