@@ -35,8 +35,7 @@ export default function SalesOrder({ data }) {
   const [platform, setPlatform] = useState(PLATFORMS_ECOMMERCE[0]);
   const [consigneeId, setConsigneeId] = useState('');  // 選擇的寄賣點廠商 id
   const [cart, setCart] = useState([]);
-  const [discountPct, setDiscountPct] = useState("");
-  const [discountAmt, setDiscountAmt] = useState("");
+  const [discounts, setDiscounts] = useState([{ label: '', pct: '', amt: '' }]);
   const [platformCost, setPlatformCost] = useState("");
   const [costMode, setCostMode] = useState("pct");
   const [note, setNote] = useState("");
@@ -48,7 +47,6 @@ export default function SalesOrder({ data }) {
   const [itemCat,    setItemCat]    = useState('all');
   const [shippingFee, setShippingFee] = useState("");
   const [shippingDiscount, setShippingDiscount] = useState("");
-  const [discountLabel, setDiscountLabel] = useState("");
   const [withShipment, setWithShipment] = useState(true);
   // 'immediate' | 'pending_payout' | 'skip'
   const [revenueMode, setRevenueMode] = useState('immediate');
@@ -126,15 +124,16 @@ export default function SalesOrder({ data }) {
 
   const totalAmount = useMemo(() => {
     let t = subtotal;
-    const pct = parseFloat(discountPct);
-    const amt = parseFloat(discountAmt);
-    if (!isNaN(pct) && pct > 0 && pct < 100) t = Math.floor(t * (1 - pct / 100));
-    if (!isNaN(amt) && amt > 0) t = Math.floor(t - amt);
+    discounts.forEach(({ pct, amt }) => {
+      const p = parseFloat(pct), a = parseFloat(amt);
+      if (!isNaN(p) && p > 0 && p < 100) t = Math.floor(t * (1 - p / 100));
+      if (!isNaN(a) && a > 0) t = Math.floor(t - a);
+    });
     const fee = parseFloat(shippingFee) || 0;
     const feeDisc = parseFloat(shippingDiscount) || 0;
     t += Math.max(0, fee - feeDisc);
     return Math.max(0, t);
-  }, [subtotal, discountPct, discountAmt, shippingFee, shippingDiscount]);
+  }, [subtotal, discounts, shippingFee, shippingDiscount]);
 
   // 寄賣點拆帳金額計算
   const consignmentFee = useMemo(() => {
@@ -215,11 +214,7 @@ export default function SalesOrder({ data }) {
       platform: effectivePlatform,
       items: saleItems,
       giftItems,
-      discountPct: parseFloat(discountPct) || null,
-      discountAmt: parseFloat(discountAmt) || null,
-      discountLabel: discountLabel.trim() || null,
-      discountType: discountPct && discountAmt ? 'both' : discountPct ? 'pct' : discountAmt ? 'amt' : null,
-      discountValue: discountPct ? parseFloat(discountPct) : discountAmt ? parseFloat(discountAmt) : null,
+      discounts: discounts.filter(d => d.pct || d.amt),
       shippingFee: parseFloat(shippingFee) || null,
       shippingDiscount: parseFloat(shippingDiscount) || null,
       totalAmount,
@@ -233,9 +228,7 @@ export default function SalesOrder({ data }) {
     });
     setDone(true);
     setCart([]);
-    setDiscountPct("");
-    setDiscountAmt("");
-    setDiscountLabel("");
+    setDiscounts([{ label: '', pct: '', amt: '' }]);
     setShippingFee("");
     setShippingDiscount("");
     setPlatformCost("");
@@ -341,7 +334,23 @@ export default function SalesOrder({ data }) {
         </table>
         ${!hideDiscount ? `<table style="width:280px;margin-left:auto">
           <tr><td>商品小計</td><td class="right">$${subtotalAmt}</td></tr>
-          ${productDiscount > 0 ? `<tr><td style="color:#16a34a">${o.discountLabel || '折扣'}</td><td class="right" style="color:#16a34a">−$${productDiscount}</td></tr>` : ''}
+          ${(() => {
+            const discList = o.discounts && o.discounts.length > 0 ? o.discounts : []
+            if (discList.length > 0) {
+              let base = subtotalAmt
+              return discList.map(d => {
+                const p = parseFloat(d.pct), a = parseFloat(d.amt)
+                let after = base
+                if (!isNaN(p) && p > 0 && p < 100) after = Math.floor(after * (1 - p / 100))
+                if (!isNaN(a) && a > 0) after = Math.floor(after - a)
+                const saved = base - after
+                base = after
+                return saved > 0 ? `<tr><td style="color:#16a34a">${d.label || '折扣'}</td><td class="right" style="color:#16a34a">−$${saved}</td></tr>` : ''
+              }).join('')
+            }
+            // 相容舊訂單格式
+            return productDiscount > 0 ? `<tr><td style="color:#16a34a">${o.discountLabel || '折扣'}</td><td class="right" style="color:#16a34a">−$${productDiscount}</td></tr>` : ''
+          })()}
           <tr><td>配送運費</td><td class="right">${fee > 0 ? '$' + fee : '—'}</td></tr>
           ${feeDisc > 0 ? `<tr><td style="color:#16a34a">運費折扣</td><td class="right" style="color:#16a34a">−$${feeDisc}</td></tr>` : ''}
           <tr class="total-row"><td>合計</td><td class="right">$${o.total ?? o.totalAmount}</td></tr>
@@ -598,30 +607,73 @@ export default function SalesOrder({ data }) {
             ))}
           </div>
           <div className="border-t border-gray-100 mt-3 pt-3 space-y-2">
-            {platform === '萌獸官網' && (
-              <input type="text" value={discountLabel}
-                onChange={e => setDiscountLabel(e.target.value)}
-                placeholder="折扣項目（例：折價券、會員折扣）"
-                className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
-            )}
-            <div className="flex gap-2">
-              <input type="number" min="0" max="99" value={discountPct}
-                onChange={(e) => setDiscountPct(e.target.value)}
-                placeholder="折扣 %"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
-              <input type="number" min="0" value={discountAmt}
-                onChange={(e) => setDiscountAmt(e.target.value)}
-                placeholder="折扣金額 $"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+            {/* 折扣列表 */}
+            <div className="space-y-2">
+              {discounts.map((d, i) => {
+                let base = subtotal
+                discounts.slice(0, i).forEach(({ pct, amt }) => {
+                  const p = parseFloat(pct), a = parseFloat(amt)
+                  if (!isNaN(p) && p > 0 && p < 100) base = Math.floor(base * (1 - p / 100))
+                  if (!isNaN(a) && a > 0) base = Math.floor(base - a)
+                })
+                const p = parseFloat(d.pct), a = parseFloat(d.amt)
+                let after = base
+                if (!isNaN(p) && p > 0 && p < 100) after = Math.floor(after * (1 - p / 100))
+                if (!isNaN(a) && a > 0) after = Math.floor(after - a)
+                const saved = base - after
+                return (
+                  <div key={i} className="bg-green-50 border border-green-100 rounded-xl px-3 py-2 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-green-700">折扣優惠 {discounts.length > 1 ? i + 1 : ''}</span>
+                      {discounts.length > 1 && (
+                        <button type="button" onClick={() => setDiscounts(prev => prev.filter((_, j) => j !== i))}
+                          className="text-xs text-red-400 hover:text-red-600">✕ 移除</button>
+                      )}
+                    </div>
+                    <input type="text" placeholder="折扣項目名稱（例：折價券、會員折扣）"
+                      value={d.label}
+                      onChange={e => setDiscounts(prev => prev.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                      className="w-full border border-green-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                    <div className="flex gap-2">
+                      <input type="number" min="0" max="99" placeholder="折扣 %"
+                        value={d.pct}
+                        onChange={e => setDiscounts(prev => prev.map((x, j) => j === i ? { ...x, pct: e.target.value } : x))}
+                        className="flex-1 border border-green-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                      <input type="number" min="0" placeholder="折抵金額 $"
+                        value={d.amt}
+                        onChange={e => setDiscounts(prev => prev.map((x, j) => j === i ? { ...x, amt: e.target.value } : x))}
+                        className="flex-1 border border-green-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                    </div>
+                    {saved > 0 && <p className="text-xs text-green-600">折抵 ${saved}</p>}
+                  </div>
+                )
+              })}
+              <button type="button"
+                onClick={() => setDiscounts(prev => [...prev, { label: '', pct: '', amt: '' }])}
+                className="w-full text-xs text-green-600 border border-dashed border-green-300 rounded-xl py-2 hover:bg-green-50 transition-colors">
+                ＋ 新增折扣優惠
+              </button>
             </div>
             <div className="flex justify-between text-sm text-gray-500">
               <span>小計</span><span>${subtotal}</span>
             </div>
-            {(() => { const disc = subtotal - (totalAmount - Math.max(0, (parseFloat(shippingFee)||0) - (parseFloat(shippingDiscount)||0))); return disc > 0 ? (
-              <div className="flex justify-between text-sm text-green-600">
-                <span>{discountLabel || '折扣'}</span><span>−${disc}</span>
-              </div>
-            ) : null })()}
+            {(() => {
+              let base = subtotal
+              return discounts.filter(d => d.pct || d.amt).map((d, i) => {
+                const p = parseFloat(d.pct), a = parseFloat(d.amt)
+                let after = base
+                if (!isNaN(p) && p > 0 && p < 100) after = Math.floor(after * (1 - p / 100))
+                if (!isNaN(a) && a > 0) after = Math.floor(after - a)
+                const saved = base - after
+                base = after
+                return saved > 0 ? (
+                  <div key={i} className="flex justify-between text-sm text-green-600">
+                    <span>{d.label || `折扣${discounts.length > 1 ? i + 1 : ''}`}</span>
+                    <span>−${saved}</span>
+                  </div>
+                ) : null
+              })
+            })()}
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm text-gray-500 shrink-0">配送運費</span>
               <input type="number" min="0" step="1" value={shippingFee}
