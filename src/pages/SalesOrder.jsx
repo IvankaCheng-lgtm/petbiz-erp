@@ -280,9 +280,8 @@ export default function SalesOrder({ data }) {
   }
 
   function printShippingSlip(o) {
-    const itemsSubtotal = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice, 0)
-    const itemDiscounts = (o.items ?? []).reduce((s, c) => s + (c.itemDiscount || 0) * c.qty, 0)
-    const subtotalAmt = itemsSubtotal - itemDiscounts
+    const subtotalAmt = (o.items ?? []).reduce((s, c) => s + c.qty * c.unitPrice - (c.itemDiscount || 0) * c.qty, 0)
+    const itemDiscounts = 0 // 單品折價已反映在各品項小計，不在明細表重複顯示
     const fee = o.shippingFee || 0
     const feeDisc = o.shippingDiscount || 0
     const netFee = Math.max(0, fee - feeDisc)
@@ -342,7 +341,6 @@ export default function SalesOrder({ data }) {
         </table>
         ${!hideDiscount ? `<table style="width:280px;margin-left:auto">
           <tr><td>商品小計</td><td class="right">$${subtotalAmt}</td></tr>
-          ${itemDiscounts > 0 ? `<tr><td style="color:#16a34a">單品折價</td><td class="right" style="color:#16a34a">−$${itemDiscounts}</td></tr>` : ''}
           ${productDiscount > 0 ? `<tr><td style="color:#16a34a">${o.discountLabel || '折扣'}</td><td class="right" style="color:#16a34a">−$${productDiscount}</td></tr>` : ''}
           <tr><td>配送運費</td><td class="right">${fee > 0 ? '$' + fee : '—'}</td></tr>
           ${feeDisc > 0 ? `<tr><td style="color:#16a34a">運費折扣</td><td class="right" style="color:#16a34a">−$${feeDisc}</td></tr>` : ''}
