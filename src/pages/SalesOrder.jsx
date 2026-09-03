@@ -289,7 +289,7 @@ export default function SalesOrder({ data }) {
     const productDiscount = subtotalAmt - ((o.total ?? o.totalAmount ?? subtotalAmt) - netFee)
     const gifts = o.giftItems ?? []
     // 只有 PChome / Yahoo / 蝦皮 才隱藏金額明細
-    const hideDiscount = ['PChome', 'Yahoo', '跑皮'].includes(o.platform)
+    const hideDiscount = ['PChome', 'Yahoo', '蝦皮'].includes(o.platform)
 
     // 將 LOGO 轉成 base64 嵌入 HTML
     const logoUrl = new URL('../assets/LOGO.png', import.meta.url).href
@@ -342,8 +342,9 @@ export default function SalesOrder({ data }) {
         </table>
         ${!hideDiscount ? `<table style="width:280px;margin-left:auto">
           <tr><td>商品小計</td><td class="right">$${subtotalAmt}</td></tr>
+          ${itemDiscounts > 0 ? `<tr><td style="color:#16a34a">單品折價</td><td class="right" style="color:#16a34a">−$${itemDiscounts}</td></tr>` : ''}
           ${productDiscount > 0 ? `<tr><td style="color:#16a34a">${o.discountLabel || '折扣'}</td><td class="right" style="color:#16a34a">−$${productDiscount}</td></tr>` : ''}
-          ${fee > 0 ? `<tr><td>配送運費</td><td class="right">$${fee}</td></tr>` : ''}
+          <tr><td>配送運費</td><td class="right">${fee > 0 ? '$' + fee : '—'}</td></tr>
           ${feeDisc > 0 ? `<tr><td style="color:#16a34a">運費折扣</td><td class="right" style="color:#16a34a">−$${feeDisc}</td></tr>` : ''}
           <tr class="total-row"><td>合計</td><td class="right">$${o.total ?? o.totalAmount}</td></tr>
         </table>` : ''}
